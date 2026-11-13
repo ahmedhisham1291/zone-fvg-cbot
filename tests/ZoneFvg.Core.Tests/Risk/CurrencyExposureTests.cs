@@ -7,8 +7,9 @@ namespace ZoneFvg.Core.Tests;
 
 /// <summary>
 /// RSK-005: buying a pair is long its base and short its quote currency; selling is the mirror.
-/// For each currency, the number of bot positions and pending orders on the same side, including
-/// the new trade, must not exceed MaxPositionsPerCurrency (2).
+/// For each of the two currencies of the new trade, on the side the new trade takes in it, the
+/// number of bot positions and pending orders on that side, including the new trade, must not
+/// exceed MaxPositionsPerCurrency (2). Currencies the new trade does not touch are not checked.
 /// </summary>
 /// <remarks>
 /// All trades here are 100,000 units with a 20-pip stop (risk 200 each), so the open-risk cap
@@ -149,21 +150,43 @@ public class CurrencyExposureTests
 
     [Fact]
     [Trait("Req", "RSK-005")]
-    public void CheckNewTrade_AnyCurrencyAlreadyAboveTheCap_BlocksEvenAnUnrelatedTrade()
+    public void CheckNewTrade_UnrelatedCurrencyAlreadyAboveTheCap_DoesNotBlock()
     {
-        // Literal reading of "for each currency ... including the new trade": three short-USD bot trades
-        // already exist (EURUSD, GBPUSD, AUDUSD), so the account breaks the rule whatever the new trade is.
+        // Three short-USD bot trades already exist (EURUSD, GBPUSD, AUDUSD longs). The new EURJPY short touches
+        // only EUR (short: 0 + 1) and JPY (long: 0 + 1), so USD is not checked (owner decision 2026-11-14).
         RiskCheckResult result = Check(new[] { Long(1, "EURUSD"), Long(2, "GBPUSD"), Long(3, "AUDUSD") }, NewShort("EURJPY"));
 
-        Assert.Equal(RiskReason.CurrencyExposureCapExceeded, result.Reason);
-        Assert.Equal("USD short", result.Detail);
+        Assert.True(result.IsAllowed);
     }
 
     [Fact]
     [Trait("Req", "RSK-005")]
-    public void CheckNewTrade_SeveralCurrenciesAboveTheCap_ReportsTheFirstInOrdinalOrder()
+    public void CheckNewTrade_TouchedCurrencyOverTheCapOnTheOtherSide_DoesNotBlock()
     {
-        // Long EUR 3 and short USD 3 at once: "EUR long" sorts before "USD short".
+        // Short USD is 3 (EURUSD, GBPUSD, AUDUSD longs). The new USDJPY long is long USD (0 + 1 = 1) and short JPY (1):
+        // only the side the new trade takes is checked.
+        RiskCheckResult result = Check(new[] { Long(1, "EURUSD"), Long(2, "GBPUSD"), Long(3, "AUDUSD") }, NewLong("USDJPY"));
+
+        Assert.True(result.IsAllowed);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-005")]
+    public void CheckNewTrade_UnrelatedCurrencyOverTheCap_DoesNotHideABreachOnATouchedCurrency()
+    {
+        // Short USD is 3 (unrelated to the new trade's EUR side), and long EUR becomes 3 with the new EURJPY long: blocked on EUR.
+        RiskCheckResult result = Check(new[] { Long(1, "EURUSD"), Long(2, "EURGBP"), Long(3, "GBPUSD"), Long(4, "AUDUSD") }, NewLong("EURJPY"));
+
+        Assert.Equal(RiskReason.CurrencyExposureCapExceeded, result.Reason);
+        Assert.Equal("EUR long", result.Detail);
+        Assert.Equal(3.0, result.Measured);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-005")]
+    public void CheckNewTrade_BothCurrenciesOfTheTradeAboveTheCap_ReportsTheBaseCurrencyFirst()
+    {
+        // Long EUR 3 and short USD 3 at once: the base currency (EUR) is checked first.
         RiskCheckResult result = Check(new[] { Long(1, "EURUSD"), Long(2, "EURUSD") }, NewLong("EURUSD"));
 
         Assert.Equal(RiskReason.CurrencyExposureCapExceeded, result.Reason);

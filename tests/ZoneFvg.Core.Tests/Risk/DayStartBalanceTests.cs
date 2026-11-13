@@ -35,7 +35,7 @@ public class DayStartBalanceTests
             ClosedAt(2, Utc(2026, 1, 14, 23, 0, 0), -300.0, RiskData.BotLabel("EURUSD")),
             ClosedAt(3, Utc(2026, 1, 15, 0, 10, 0), 50.0, "manual"),
         };
-        RiskSnapshot snapshot = RiskData.SnapshotAt(now, RiskData.Epoch, RiskData.Account(100000.0), history);
+        RiskSnapshot snapshot = RiskData.SnapshotAt(now, RiskData.EpochStart, RiskData.Account(100000.0), history);
 
         Assert.Equal(100250.0, RiskData.Engine.DayStartBalance(snapshot), 1e-9);
     }
@@ -53,7 +53,7 @@ public class DayStartBalanceTests
             ClosedAt(2, Utc(2026, 7, 14, 22, 0, 0), -300.0, RiskData.BotLabel("EURUSD")),
             ClosedAt(3, Utc(2026, 7, 14, 22, 30, 0), 50.0, "manual"),
         };
-        RiskSnapshot snapshot = RiskData.SnapshotAt(now, RiskData.Epoch, RiskData.Account(100000.0), history);
+        RiskSnapshot snapshot = RiskData.SnapshotAt(now, RiskData.EpochStart, RiskData.Account(100000.0), history);
 
         Assert.Equal(100250.0, RiskData.Engine.DayStartBalance(snapshot), 1e-9);
     }
@@ -70,7 +70,7 @@ public class DayStartBalanceTests
             ClosedAt(1, Utc(2026, 7, 13, 21, 59, 59), -100.0, RiskData.BotLabel("EURUSD")),
             ClosedAt(2, Utc(2026, 7, 14, 21, 0, 0), 200.0, RiskData.BotLabel("EURUSD")),
         };
-        RiskSnapshot snapshot = RiskData.SnapshotAt(now, RiskData.Epoch, RiskData.Account(100000.0), history);
+        RiskSnapshot snapshot = RiskData.SnapshotAt(now, RiskData.EpochStart, RiskData.Account(100000.0), history);
 
         Assert.Equal(99800.0, RiskData.Engine.DayStartBalance(snapshot), 1e-9);
     }
@@ -117,8 +117,8 @@ public class DayStartBalanceTests
     [Trait("Req", "RSK-007")]
     public void DayStartBalance_HistoryNotReachingBackToTheEarlierOfEpochAndDayStart_Throws()
     {
-        // The epoch (2026-01-01) is earlier than the day start, so history must reach back to it.
-        RiskSnapshot late = RiskData.SnapshotAt(RiskData.Now, RiskData.Epoch.AddSeconds(1.0), RiskData.Account(100000.0), Array.Empty<ClosedTradeInfo>());
+        // The epoch (2026-01-01 00:00 CET = 2025-12-31 23:00 UTC) is earlier than the day start, so history must reach back to it.
+        RiskSnapshot late = RiskData.SnapshotAt(RiskData.Now, RiskData.EpochStart.AddSeconds(1.0), RiskData.Account(100000.0), Array.Empty<ClosedTradeInfo>());
 
         Assert.Throws<ArgumentException>(() => RiskData.Engine.DayStartBalance(late));
     }
@@ -127,7 +127,8 @@ public class DayStartBalanceTests
     [Trait("Req", "RSK-007")]
     public void DayStartBalance_EpochAfterDayStart_NeedsHistoryOnlySinceTheDayStart()
     {
-        RiskEngine engine = new(RiskData.Parameters with { RiskEpochDate = RiskData.Now });
+        // Epoch date 2026-01-15 starts at 2026-01-14 23:00 UTC, after the current day start (2026-01-13 23:00 UTC).
+        RiskEngine engine = new(RiskData.Parameters with { RiskEpochDate = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc) });
         RiskSnapshot sinceDayStart = RiskData.SnapshotAt(RiskData.Now, RiskData.DayStart, RiskData.Account(100000.0), Array.Empty<ClosedTradeInfo>());
         RiskSnapshot oneSecondLate = RiskData.SnapshotAt(RiskData.Now, RiskData.DayStart.AddSeconds(1.0), RiskData.Account(100000.0), Array.Empty<ClosedTradeInfo>());
 

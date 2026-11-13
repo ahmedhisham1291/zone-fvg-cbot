@@ -1,4 +1,5 @@
 using Xunit;
+using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Risk;
 
@@ -7,7 +8,9 @@ namespace ZoneFvg.Core.Tests;
 /// <summary>
 /// RSK-009: CloseAllAndHalt if equity &lt;= M - (FtmoDailyLossPercent - FtmoGuardBufferPercent)%
 /// of InitialCapital, or equity &lt;= InitialCapital x (1 - (FtmoMaxLossPercent -
-/// FtmoGuardBufferPercent) / 100). With defaults: M - 4,000 and 91,000 on 100,000.
+/// FtmoGuardBufferPercent) / 100). With defaults: M - 4,000 and 91,000 on 100,000. If M cannot
+/// be computed because broker data is missing or invalid, the second condition still applies from
+/// equity and InitialCapital alone.
 /// </summary>
 public class EmergencyGuardTests
 {
@@ -122,10 +125,83 @@ public class EmergencyGuardTests
 
     [Fact]
     [Trait("Req", "RSK-009")]
-    public void EmergencyGuard_HistoryIncomplete_Throws()
+    public void EmergencyGuard_DayStartKnown_ReportsIt()
     {
-        RiskSnapshot snapshot = RiskData.SnapshotAt(RiskData.Now, RiskData.Now, RiskData.Account(100000.0), Array.Empty<ClosedTradeInfo>());
+        EmergencyDecision decision = Guard(100000.0, 99000.0);
 
-        Assert.Throws<ArgumentException>(() => RiskData.Engine.EmergencyGuard(snapshot));
+        Assert.True(decision.DayStartBalanceKnown);
+        Assert.Equal(EmergencyAction.None, decision.Action);
+    }
+
+    [Theory]
+    [Trait("Req", "RSK-009")]
+    // M cannot be computed (history does not reach back to the day start), so only the static floor applies:
+    // 100,000 x (1 - (10 - 1) / 100) = 91,000. One cent above: nothing; exactly at it and below it: CloseAllAndHalt.
+    [InlineData(91000.01, EmergencyAction.None, false)]
+    [InlineData(91000.0, EmergencyAction.CloseAllAndHalt, true)]
+    [InlineData(90000.0, EmergencyAction.CloseAllAndHalt, true)]
+    public void EmergencyGuard_HistoryIncomplete_StillAppliesTheStaticFloor(double equity, EmergencyAction expected, bool overallReached)
+    {
+        RiskSnapshot snapshot = RiskData.SnapshotAt(RiskData.Now, RiskData.Now, RiskData.Account(100000.0, equity, 0.0), Array.Empty<ClosedTradeInfo>());
+
+        EmergencyDecision decision = RiskData.Engine.EmergencyGuard(snapshot);
+
+        Assert.Equal(expected, decision.Action);
+        Assert.Equal(overallReached, decision.OverallFloorReached);
+        Assert.False(decision.DailyFloorReached);
+        Assert.False(decision.DayStartBalanceKnown);
+        Assert.True(double.IsNaN(decision.DailyFloor));
+        Assert.Equal(91000.0, decision.OverallFloor, 1e-6);
+        Assert.Equal(equity, decision.Equity);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-009")]
+    public void EmergencyGuard_HistoryIncomplete_NewTradesStayRefused()
+    {
+        // Equity 95,000 is above the static floor, so the guard does nothing, but no new trade may be placed.
+        RiskSnapshot snapshot = RiskData.SnapshotAt(RiskData.Now, RiskData.Now, RiskData.Account(100000.0, 95000.0, 95000.0), Array.Empty<ClosedTradeInfo>());
+
+        Assert.Equal(EmergencyAction.None, RiskData.Engine.EmergencyGuard(snapshot).Action);
+        Assert.Equal(RiskReason.HistoryIncomplete, RiskData.Engine.CheckNewTrade(snapshot, RiskData.Trade("EURUSD", Side.Buy, 1.1, 1.098, 1000.0)).Reason);
+    }
+
+    [Theory]
+    [Trait("Req", "RSK-009")]
+    // No snapshot could be built from the broker data (for example a position with a broken value), but the account
+    // equity was read: the static floor of 91,000 is checked from equity and InitialCapital alone.
+    [InlineData(91000.01, EmergencyAction.None)]
+    [InlineData(91000.0, EmergencyAction.CloseAllAndHalt)]
+    [InlineData(85000.0, EmergencyAction.CloseAllAndHalt)]
+    public void EmergencyGuardFromEquity_NoUsableSnapshot_AppliesTheStaticFloor(double equity, EmergencyAction expected)
+    {
+        EmergencyDecision decision = RiskData.Engine.EmergencyGuardFromEquity(equity);
+
+        Assert.Equal(expected, decision.Action);
+        Assert.False(decision.DayStartBalanceKnown);
+        Assert.False(decision.DailyFloorReached);
+        Assert.True(double.IsNaN(decision.DailyFloor));
+        Assert.Equal(91000.0, decision.OverallFloor, 1e-6);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-009")]
+    public void EmergencyGuardFromEquity_OtherBuffer_MovesTheStaticFloor()
+    {
+        // Buffer 2%: 100,000 x (1 - 8 / 100) = 92,000.
+        RiskEngine engine = new(RiskData.Parameters with { FtmoGuardBufferPercent = 2.0 });
+
+        Assert.Equal(EmergencyAction.CloseAllAndHalt, engine.EmergencyGuardFromEquity(92000.0).Action);
+        Assert.Equal(EmergencyAction.None, engine.EmergencyGuardFromEquity(92000.01).Action);
+    }
+
+    [Theory]
+    [Trait("Req", "RSK-009")]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void EmergencyGuardFromEquity_EquityNotFinite_Throws(double equity)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => RiskData.Engine.EmergencyGuardFromEquity(equity));
     }
 }

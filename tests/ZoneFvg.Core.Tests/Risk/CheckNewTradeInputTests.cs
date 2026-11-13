@@ -72,12 +72,13 @@ public class CheckNewTradeInputTests
     [Trait("Req", "RSK-011")]
     public void CheckNewTrade_HistoryNotReachingBackFarEnough_IsRefused()
     {
-        RiskSnapshot snapshot = RiskData.SnapshotAt(RiskData.Now, RiskData.Epoch.AddSeconds(1.0), RiskData.Account(100000.0), Array.Empty<ClosedTradeInfo>());
+        RiskSnapshot snapshot = RiskData.SnapshotAt(RiskData.Now, RiskData.EpochStart.AddSeconds(1.0), RiskData.Account(100000.0), Array.Empty<ClosedTradeInfo>());
 
         RiskCheckResult result = Check(Valid, snapshot);
 
         Assert.Equal(RiskReason.HistoryIncomplete, result.Reason);
-        Assert.Equal("history must reach back to 2026-01-01T00:00:00.0000000Z", result.Detail);
+        // The epoch date 2026-01-01 means 00:00 CET = 2025-12-31 23:00 UTC.
+        Assert.Equal("history must reach back to 2025-12-31T23:00:00.0000000Z", result.Detail);
     }
 
     [Fact]

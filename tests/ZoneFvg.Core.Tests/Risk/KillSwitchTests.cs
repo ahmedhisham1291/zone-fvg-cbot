@@ -96,8 +96,9 @@ public class KillSwitchTests
     [Trait("Req", "RSK-008")]
     public void KillSwitch_TradeClosedExactlyAtTheEpoch_Counts()
     {
-        // Closed at the epoch instant with balance 105,000; current balance 105,000. Peak 105,000; limit 8,400.
-        ClosedTradeInfo atEpoch = Closed(1, RiskData.Epoch, 5000.0, 105000.0);
+        // Epoch date 2026-01-01 = 00:00 CET = 2025-12-31 23:00 UTC. A trade closed at that instant with balance 105,000;
+        // current balance 105,000. Peak 105,000; limit 8,400; equity 96,600 -> drawdown 8,400 -> halt.
+        ClosedTradeInfo atEpoch = Closed(1, RiskData.EpochStart, 5000.0, 105000.0);
         RiskSnapshot snapshot = RiskData.Snapshot(RiskData.Account(105000.0, 96600.0, 90000.0), history: new[] { atEpoch });
 
         KillSwitchDecision decision = RiskData.Engine.KillSwitch(snapshot);
@@ -157,5 +158,40 @@ public class KillSwitchTests
         RiskSnapshot snapshot = RiskData.SnapshotAt(RiskData.Now, RiskData.Epoch.AddDays(1.0), RiskData.Account(100000.0), Array.Empty<ClosedTradeInfo>());
 
         Assert.Throws<ArgumentException>(() => RiskData.Engine.KillSwitch(snapshot));
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-008")]
+    public void KillSwitch_TradeClosedOneSecondBeforeMidnightCetOfTheEpochDate_DoesNotCount()
+    {
+        // Epoch date 2026-01-01 starts at 2025-12-31 23:00 UTC. A balance of 120,000 at 22:59:59 UTC is before it.
+        // Peak = current balance 100,000; equity 92,010 -> 7.99%, no halt. (Counting it would give 23.3% and halt.)
+        ClosedTradeInfo before = Closed(1, RiskData.EpochStart.AddSeconds(-1.0), 0.0, 120000.0);
+        RiskSnapshot snapshot = RiskData.SnapshotAt(RiskData.Now, RiskData.EpochStart.AddDays(-1.0), RiskData.Account(100000.0, 92010.0, 90000.0), new[] { before });
+
+        KillSwitchDecision decision = RiskData.Engine.KillSwitch(snapshot);
+
+        Assert.Equal(100000.0, decision.Peak);
+        Assert.False(decision.Halt);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-008")]
+    public void KillSwitch_SummerEpochDate_StartsAtMidnightCest()
+    {
+        // Epoch date 2026-07-01 = 00:00 CEST = 2026-06-30 22:00 UTC. The trade closed at 21:59:59 UTC (balance 110,000)
+        // is before it; the trade closed at 22:00:00 UTC (+5,000, balance 105,000) counts. Current balance 105,000.
+        // Balance at epoch = 105,000 - 5,000 = 100,000; Peak = 105,000; limit 8,400. Equity 96,600 -> halt.
+        DateTime epochStart = new(2026, 6, 30, 22, 0, 0, DateTimeKind.Utc);
+        RiskEngine engine = new(RiskData.Parameters with { RiskEpochDate = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc) });
+        ClosedTradeInfo[] history = { Closed(1, epochStart.AddSeconds(-1.0), 0.0, 110000.0), Closed(2, epochStart, 5000.0, 105000.0) };
+        DateTime now = new(2026, 7, 14, 10, 0, 0, DateTimeKind.Utc);
+
+        KillSwitchDecision decision = engine.KillSwitch(RiskData.SnapshotAt(now, epochStart, RiskData.Account(105000.0, 96600.0, 90000.0), history));
+
+        Assert.Equal(105000.0, decision.Peak);
+        Assert.Equal(8400.0, decision.LimitMoney, 1e-6);
+        Assert.True(decision.Halt);
+        Assert.Throws<ArgumentException>(() => engine.KillSwitch(RiskData.SnapshotAt(now, epochStart.AddSeconds(1.0), RiskData.Account(105000.0, 96600.0, 90000.0), history)));
     }
 }

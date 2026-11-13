@@ -21,8 +21,14 @@ public static class RiskData
     /// <summary>Start of the CE(S)T day containing <see cref="Now"/>: 2026-01-14 00:00 CET.</summary>
     public static readonly DateTime DayStart = new(2026, 1, 13, 23, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>The risk epoch used by default in these tests.</summary>
+    /// <summary>
+    /// The risk epoch date used by default in these tests: 1 January 2026. It means 00:00 Prague time
+    /// on that date (architecture section 10), which is <see cref="EpochStart"/>.
+    /// </summary>
     public static readonly DateTime Epoch = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>00:00 CET on 1 January 2026 = 2025-12-31 23:00 UTC: the instant the epoch date stands for.</summary>
+    public static readonly DateTime EpochStart = new(2025, 12, 31, 23, 0, 0, DateTimeKind.Utc);
 
     public static RiskParameters Parameters => new() { RiskEpochDate = Epoch };
 
@@ -93,7 +99,7 @@ public static class RiskData
         return new ClosedTradeInfo(positionId, symbol, label, entryTimeUtc, closeTimeUtc, netProfit, 0.0, 0.0, balanceAfterClose);
     }
 
-    /// <summary>A snapshot at <see cref="Now"/> with history since the epoch and all four symbols.</summary>
+    /// <summary>A snapshot at <see cref="Now"/> with history since <see cref="EpochStart"/> and all four symbols.</summary>
     public static RiskSnapshot Snapshot(
         AccountSnapshot account,
         IEnumerable<PositionInfo>? positions = null,
@@ -107,7 +113,7 @@ public static class RiskData
             positions ?? Array.Empty<PositionInfo>(),
             orders ?? Array.Empty<PendingOrderInfo>(),
             history ?? Array.Empty<ClosedTradeInfo>(),
-            Epoch,
+            EpochStart,
             symbols ?? AllSymbols);
     }
 

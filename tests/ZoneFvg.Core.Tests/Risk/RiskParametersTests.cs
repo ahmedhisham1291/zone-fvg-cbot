@@ -52,6 +52,17 @@ public class RiskParametersTests
     }
 
     [Fact]
+    public void Validate_EpochWithATimeOfDay_Throws()
+    {
+        // RiskEpochDate is a date (it means 00:00 Prague time on that date), so a time of day is refused.
+        var parameters = new RiskParameters { RiskEpochDate = new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc) };
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => parameters.Validate());
+
+        Assert.Equal("RiskEpochDate", exception.ParamName);
+    }
+
+    [Fact]
     public void Validate_EpochLeftAtItsDefault_Throws()
     {
         var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new RiskParameters().Validate());

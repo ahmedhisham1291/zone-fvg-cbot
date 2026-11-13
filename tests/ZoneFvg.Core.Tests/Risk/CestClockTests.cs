@@ -214,4 +214,33 @@ public class CestClockTests
         DateTime local = DateTime.ParseExact(text, "yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
         return DateTime.SpecifyKind(local, DateTimeKind.Utc);
     }
+
+    [Theory]
+    [Trait("Req", "RSK-012")]
+    // A calendar date means 00:00 CE(S)T of that date (used for RiskEpochDate, architecture section 10).
+    [InlineData(2026, 1, 1, "2025-12-31T23:00:00")]
+    [InlineData(2026, 7, 1, "2026-06-30T22:00:00")]
+    // The March switch Sunday still starts in CET; the Monday after starts in CEST.
+    [InlineData(2026, 3, 29, "2026-03-28T23:00:00")]
+    [InlineData(2026, 3, 30, "2026-03-29T22:00:00")]
+    // The October switch Sunday still starts in CEST; the Monday after starts in CET.
+    [InlineData(2026, 10, 25, "2026-10-24T22:00:00")]
+    [InlineData(2026, 10, 26, "2026-10-25T23:00:00")]
+    public void StartOfCestDateUtc_CalendarDate_IsMidnightCestOfThatDateInUtc(int year, int month, int day, string expectedUtc)
+    {
+        DateTime start = CestClock.StartOfCestDateUtc(new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(Parse(expectedUtc), start);
+        Assert.Equal(DateTimeKind.Utc, start.Kind);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-012")]
+    public void StartOfCestDateUtc_UsesOnlyTheDatePart()
+    {
+        DateTime expected = Parse("2025-12-31T23:00:00");
+
+        Assert.Equal(expected, CestClock.StartOfCestDateUtc(new DateTime(2026, 1, 1, 18, 30, 0, DateTimeKind.Utc)));
+        Assert.Equal(expected, CestClock.StartOfCestDateUtc(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Unspecified)));
+    }
 }

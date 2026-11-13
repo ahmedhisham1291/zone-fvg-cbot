@@ -91,9 +91,9 @@ public class RiskModulePurityTests
 
     [Fact]
     [Trait("Req", "RSK-011")]
-    public void RiskEngine_DecisionMethods_TakeOnlyTheSnapshotAndThePlannedTrade()
+    public void RiskEngine_DecisionMethods_TakeOnlyTheSnapshotThePlannedTradeOrPlainValues()
     {
-        Type[] allowed = { typeof(RiskSnapshot), typeof(PlannedTrade), typeof(string) };
+        Type[] allowed = { typeof(RiskSnapshot), typeof(PlannedTrade), typeof(string), typeof(double) };
         MethodInfo[] methods = typeof(RiskEngine).GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly)
             .Where(method => !method.IsSpecialName)
             .ToArray();
