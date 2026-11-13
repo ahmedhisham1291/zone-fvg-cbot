@@ -100,8 +100,9 @@ public enum EmergencyAction
 /// <summary>Decision of the FTMO emergency guard (RSK-009), with the floor or floors that were reached.</summary>
 public sealed class EmergencyDecision
 {
-    internal EmergencyDecision(bool dailyFloorReached, bool overallFloorReached, double equity, double dailyFloor, double overallFloor)
+    internal EmergencyDecision(bool dayStartBalanceKnown, bool dailyFloorReached, bool overallFloorReached, double equity, double dailyFloor, double overallFloor)
     {
+        DayStartBalanceKnown = dayStartBalanceKnown;
         DailyFloorReached = dailyFloorReached;
         OverallFloorReached = overallFloorReached;
         Equity = equity;
@@ -112,6 +113,12 @@ public sealed class EmergencyDecision
     /// <summary><see cref="EmergencyAction.CloseAllAndHalt"/> when either floor is reached, otherwise <see cref="EmergencyAction.None"/>.</summary>
     public EmergencyAction Action => DailyFloorReached || OverallFloorReached ? EmergencyAction.CloseAllAndHalt : EmergencyAction.None;
 
+    /// <summary>
+    /// False when M could not be computed from the broker data; then only the static floor was
+    /// checked, <see cref="DailyFloor"/> is NaN and <see cref="DailyFloorReached"/> is false.
+    /// </summary>
+    public bool DayStartBalanceKnown { get; }
+
     /// <summary>True when equity is at or below <see cref="DailyFloor"/>.</summary>
     public bool DailyFloorReached { get; }
 
@@ -121,7 +128,7 @@ public sealed class EmergencyDecision
     /// <summary>Current equity.</summary>
     public double Equity { get; }
 
-    /// <summary>M - (FtmoDailyLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100.</summary>
+    /// <summary>M - (FtmoDailyLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100; NaN when M is unknown.</summary>
     public double DailyFloor { get; }
 
     /// <summary>InitialCapital - (FtmoMaxLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100.</summary>

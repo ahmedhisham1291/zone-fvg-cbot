@@ -119,7 +119,7 @@ public sealed class RiskEngine
     /// <summary>
     /// Drawdown kill switch (RSK-008). Peak = highest end-of-trade balance since RiskEpochDate,
     /// and not less than the balance at RiskEpochDate (current balance minus the net result of
-    /// trades closed at or after the epoch). Halt when (Peak - equity) / Peak &gt;=
+    /// trades closed at or after the epoch). The epoch starts at 00:00 CE(S)T of RiskEpochDate. Halt when (Peak - equity) / Peak &gt;=
     /// MaxDrawdownPercent, and also when Peak is not positive (fail closed). Recomputing from the
     /// same broker data gives the same decision.
     /// </summary>
@@ -131,7 +131,7 @@ public sealed class RiskEngine
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         RequireHistory(snapshot);
-        DateTime epoch = _parameters.RiskEpochDate;
+        DateTime epoch = EpochStartUtc();
         double peak = BalanceAt(snapshot, epoch);
         foreach (ClosedTradeInfo trade in snapshot.History)
         {
@@ -153,23 +153,47 @@ public sealed class RiskEngine
     /// M - (FtmoDailyLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100, or at or below
     /// InitialCapital - (FtmoMaxLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100
     /// (which equals InitialCapital x (1 - (FtmoMaxLossPercent - FtmoGuardBufferPercent) / 100)).
-    /// With defaults: M - 4,000 and 91,000.
+    /// With defaults: M - 4,000 and 91,000. When the history does not reach back far enough to
+    /// compute M, only the second (static) floor is checked and the daily floor is reported as
+    /// unknown; new trades are refused in that case by <see cref="CheckNewTrade"/>.
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <returns>The decision and which floor was reached.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
-    /// <exception cref="ArgumentException">The history does not reach back to the earlier of RiskEpochDate and the day start.</exception>
     public EmergencyDecision EmergencyGuard(RiskSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        RequireHistory(snapshot);
+        double equity = snapshot.Account.Equity;
+        if (!HistoryCovers(snapshot))
+        {
+            return StaticFloorOnly(equity);
+        }
+
         double capital = _parameters.InitialCapital;
         double dailyFloor = DayStart(snapshot) - ((_parameters.FtmoDailyLossPercent - _parameters.FtmoGuardBufferPercent) * capital / 100.0);
-        double overallFloor = capital - ((_parameters.FtmoMaxLossPercent - _parameters.FtmoGuardBufferPercent) * capital / 100.0);
-        double equity = snapshot.Account.Equity;
+        double overallFloor = OverallFloor();
         bool daily = !PriceMath.GreaterThan(equity, dailyFloor, PriceMath.DefaultTolerance);
         bool overall = !PriceMath.GreaterThan(equity, overallFloor, PriceMath.DefaultTolerance);
-        return new EmergencyDecision(daily, overall, equity, dailyFloor, overallFloor);
+        return new EmergencyDecision(true, daily, overall, equity, dailyFloor, overallFloor);
+    }
+
+    /// <summary>
+    /// FTMO emergency guard when no usable <see cref="RiskSnapshot"/> can be built because broker
+    /// data is missing or invalid (RSK-009): only the static floor InitialCapital x (1 -
+    /// (FtmoMaxLossPercent - FtmoGuardBufferPercent) / 100) is checked, from equity alone. The
+    /// caller places no new trade in that case.
+    /// </summary>
+    /// <param name="equity">Account equity read from the broker port.</param>
+    /// <returns>The decision; the daily floor is reported as unknown.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="equity"/> is not a finite number.</exception>
+    public EmergencyDecision EmergencyGuardFromEquity(double equity)
+    {
+        if (!double.IsFinite(equity))
+        {
+            throw new ArgumentOutOfRangeException(nameof(equity), "The equity must be a finite number.");
+        }
+
+        return StaticFloorOnly(equity);
     }
 
     /// <summary>
@@ -251,6 +275,19 @@ public sealed class RiskEngine
         return snapshot.Account.Balance * _parameters.RiskPercent / 100.0;
     }
 
+    private EmergencyDecision StaticFloorOnly(double equity)
+    {
+        double overallFloor = OverallFloor();
+        bool overall = !PriceMath.GreaterThan(equity, overallFloor, PriceMath.DefaultTolerance);
+        return new EmergencyDecision(false, false, overall, equity, double.NaN, overallFloor);
+    }
+
+    private double OverallFloor()
+    {
+        double capital = _parameters.InitialCapital;
+        return capital - ((_parameters.FtmoMaxLossPercent - _parameters.FtmoGuardBufferPercent) * capital / 100.0);
+    }
+
     private double DailyLimit()
     {
         return _parameters.InitialCapital * _parameters.DailyLossLimitPercent / 100.0;
@@ -316,7 +353,13 @@ public sealed class RiskEngine
     private DateTime RequiredHistoryStart(RiskSnapshot snapshot)
     {
         DateTime dayStart = CestClock.StartOfCestDayUtc(snapshot.ServerTimeUtc);
-        return _parameters.RiskEpochDate < dayStart ? _parameters.RiskEpochDate : dayStart;
+        DateTime epochStart = EpochStartUtc();
+        return epochStart < dayStart ? epochStart : dayStart;
+    }
+
+    private DateTime EpochStartUtc()
+    {
+        return CestClock.StartOfCestDateUtc(_parameters.RiskEpochDate);
     }
 
     private static string? BotSymbolProblem(RiskSnapshot snapshot)
@@ -417,7 +460,7 @@ public sealed class RiskEngine
 
     private RiskCheckResult? CheckCurrencyExposure(RiskSnapshot snapshot, PlannedTrade trade)
     {
-        // Keys such as "USD short", in ordinal order, so the first breach reported is deterministic.
+        // Same-side counts per currency, keyed such as "USD short".
         var counts = new SortedDictionary<string, int>(StringComparer.Ordinal);
         foreach (PositionInfo position in snapshot.Positions)
         {
@@ -435,12 +478,17 @@ public sealed class RiskEngine
             }
         }
 
-        AddExposure(counts, Symbol(snapshot, trade.Symbol), trade.Side);
-        foreach (KeyValuePair<string, int> entry in counts)
+        SymbolInfo tradeSymbol = Symbol(snapshot, trade.Symbol);
+        AddExposure(counts, tradeSymbol, trade.Side);
+
+        // Only the two currencies of the new trade, on the side the trade takes in each, are checked (RSK-005).
+        string[] touched = { ExposureKey(tradeSymbol.BaseCurrency, trade.Side == Side.Buy), ExposureKey(tradeSymbol.QuoteCurrency, trade.Side != Side.Buy) };
+        foreach (string key in touched)
         {
-            if (entry.Value > _parameters.MaxPositionsPerCurrency)
+            int count = counts[key];
+            if (count > _parameters.MaxPositionsPerCurrency)
             {
-                return new RiskCheckResult(RiskReason.CurrencyExposureCapExceeded, entry.Value, _parameters.MaxPositionsPerCurrency, entry.Key);
+                return new RiskCheckResult(RiskReason.CurrencyExposureCapExceeded, count, _parameters.MaxPositionsPerCurrency, key);
             }
         }
 
@@ -449,10 +497,13 @@ public sealed class RiskEngine
 
     private static void AddExposure(SortedDictionary<string, int> counts, SymbolInfo symbol, Side side)
     {
-        string baseSide = side == Side.Buy ? " long" : " short";
-        string quoteSide = side == Side.Buy ? " short" : " long";
-        Increment(counts, symbol.BaseCurrency.ToUpperInvariant() + baseSide);
-        Increment(counts, symbol.QuoteCurrency.ToUpperInvariant() + quoteSide);
+        Increment(counts, ExposureKey(symbol.BaseCurrency, side == Side.Buy));
+        Increment(counts, ExposureKey(symbol.QuoteCurrency, side != Side.Buy));
+    }
+
+    private static string ExposureKey(string currency, bool isLong)
+    {
+        return currency.ToUpperInvariant() + (isLong ? " long" : " short");
     }
 
     private static void Increment(SortedDictionary<string, int> counts, string key)

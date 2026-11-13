@@ -53,8 +53,9 @@ public sealed record RiskParameters
     public double FtmoGuardBufferPercent { get; init; } = 1.0;
 
     /// <summary>
-    /// Start of drawdown measurement for the kill switch (RSK-008), as a UTC instant. Set manually;
-    /// the default (kind Unspecified) is rejected by <see cref="Validate"/>.
+    /// Start of drawdown measurement for the kill switch (RSK-008): a date meaning 00:00 Prague time
+    /// (CE(S)T) on that day (architecture section 10). Give it as a date with time 00:00:00 and kind
+    /// UTC. Set manually; the default (kind Unspecified) is rejected by <see cref="Validate"/>.
     /// </summary>
     public DateTime RiskEpochDate { get; init; }
 
@@ -104,7 +105,12 @@ public sealed record RiskParameters
 
         if (RiskEpochDate.Kind != DateTimeKind.Utc)
         {
-            throw OutOfRange(nameof(RiskEpochDate), "must be set as a UTC time (kind UTC)", RiskEpochDate.Kind.ToString());
+            throw OutOfRange(nameof(RiskEpochDate), "must be set as a date of kind UTC", RiskEpochDate.Kind.ToString());
+        }
+
+        if (RiskEpochDate.TimeOfDay != TimeSpan.Zero)
+        {
+            throw OutOfRange(nameof(RiskEpochDate), "must be a date without a time of day", RiskEpochDate.ToString("o", CultureInfo.InvariantCulture));
         }
 
         RequireCount(MaxEntriesPerSymbolPerDay, nameof(MaxEntriesPerSymbolPerDay));

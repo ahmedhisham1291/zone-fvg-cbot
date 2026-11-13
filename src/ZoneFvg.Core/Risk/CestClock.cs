@@ -82,6 +82,19 @@ public static class CestClock
         return localMidnight - WinterOffset;
     }
 
+    /// <summary>
+    /// The instant, in UTC, of 00:00 Central European time on the calendar date of
+    /// <paramref name="date"/> (RSK-012). Only the year, month and day are used. Used for
+    /// RiskEpochDate, which is a date meaning 00:00 Prague time on that day (architecture section 10).
+    /// </summary>
+    /// <param name="date">The calendar date; its time of day and kind are ignored.</param>
+    /// <returns>23:00 UTC of the previous date when that midnight is in winter time, 22:00 UTC in summer time; kind UTC.</returns>
+    public static DateTime StartOfCestDateUtc(DateTime date)
+    {
+        // Noon UTC is inside the same CE(S)T date (13:00 or 14:00 local), whose start is the wanted midnight.
+        return StartOfCestDayUtc(new DateTime(date.Year, date.Month, date.Day, 12, 0, 0, DateTimeKind.Utc));
+    }
+
     private static DateTime LastSundayAtSwitchHour(int year, int month)
     {
         if (year < 1 || year > 9999)
