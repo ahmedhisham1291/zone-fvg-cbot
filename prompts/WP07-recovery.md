@@ -33,7 +33,10 @@ above.
      weekend closure. If data is incomplete, request more once; if still
      incomplete, stay in Recovering.
    - Step 2 creates a fresh `SignalEngine` and feeds bars with `replay: true`
-     in timestamp order, D1 then H4 then M15 at equal times (REC-004).
+     in close-time order (`BarIntakeOrder.CloseTimeUtc`), D1 then H4 then M15
+     at equal close times (REC-004). Ordering by open time is wrong: it would
+     hand the engine a D1 or H4 bar before the M15 bars inside it. The engine
+     rejects any other order (SIG-004).
    - Steps 3 to 6 use only the broker port (REC-005 to REC-007).
    - Step 7 backfills the journal exactly once per trade, keyed by position
      id (REC-008).
