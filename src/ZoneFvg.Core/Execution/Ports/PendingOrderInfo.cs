@@ -30,32 +30,32 @@ public sealed record PendingOrderInfo(
     DateTime CreatedTimeUtc)
 {
     /// <summary>Broker order id.</summary>
-    public long Id { get; } = Id;
+    public long Id { get; init; } = Id;
 
     /// <summary>Symbol name.</summary>
-    public string Symbol { get; } = Symbol;
+    public string Symbol { get; init; } = Symbol;
 
     /// <summary>Direction of the order.</summary>
-    public Side Side { get; } = Side;
+    public Side Side { get; init; } = Side;
 
     /// <summary>Volume in units.</summary>
-    public double VolumeUnits { get; } = VolumeUnits;
+    public double VolumeUnits { get; init; } = VolumeUnits;
 
     /// <summary>Limit (entry) price.</summary>
-    public double EntryPrice { get; } = EntryPrice;
+    public double EntryPrice { get; init; } = EntryPrice;
 
     /// <summary>Stop-loss price, or null when the order has no stop loss.</summary>
-    public double? StopLoss { get; } = StopLoss;
+    public double? StopLoss { get; init; } = StopLoss;
 
     /// <summary>Take-profit price, or null when the order has no take profit.</summary>
-    public double? TakeProfit { get; } = TakeProfit;
+    public double? TakeProfit { get; init; } = TakeProfit;
 
     /// <summary>Order label; a bot order's label starts with <c>ZFVG|</c>.</summary>
-    public string Label { get; } = Label;
+    public string Label { get; init; } = Label;
 
     /// <summary>Order comment.</summary>
-    public string Comment { get; } = Comment;
+    public string Comment { get; init; } = Comment;
 
     /// <summary>Time the order was created, in UTC (RSK-010).</summary>
-    public DateTime CreatedTimeUtc { get; } = CreatedTimeUtc;
+    public DateTime CreatedTimeUtc { get; init; } = CreatedTimeUtc;
 }

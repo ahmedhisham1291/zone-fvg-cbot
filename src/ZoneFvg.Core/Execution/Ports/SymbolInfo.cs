@@ -29,35 +29,35 @@ public sealed record SymbolInfo(
     double RoundTripCommissionPerUnit)
 {
     /// <summary>Symbol name as the broker reports it, for example EURUSD.</summary>
-    public string Name { get; } = Name;
+    public string Name { get; init; } = Name;
 
     /// <summary>Base currency code, for example EUR for EURUSD (RSK-005).</summary>
-    public string BaseCurrency { get; } = BaseCurrency;
+    public string BaseCurrency { get; init; } = BaseCurrency;
 
     /// <summary>Quote currency code, for example USD for EURUSD (RSK-005).</summary>
-    public string QuoteCurrency { get; } = QuoteCurrency;
+    public string QuoteCurrency { get; init; } = QuoteCurrency;
 
     /// <summary>Size of one pip in price units, for example 0.0001 for EURUSD.</summary>
-    public double PipSize { get; } = PipSize;
+    public double PipSize { get; init; } = PipSize;
 
     /// <summary>Value of one pip for one unit of volume, in the account currency (RSK-001).</summary>
-    public double PipValuePerUnit { get; } = PipValuePerUnit;
+    public double PipValuePerUnit { get; init; } = PipValuePerUnit;
 
     /// <summary>Smallest volume the broker accepts, in units (RSK-001).</summary>
-    public double VolumeMinUnits { get; } = VolumeMinUnits;
+    public double VolumeMinUnits { get; init; } = VolumeMinUnits;
 
     /// <summary>Volume step in units (RSK-001).</summary>
-    public double VolumeStepUnits { get; } = VolumeStepUnits;
+    public double VolumeStepUnits { get; init; } = VolumeStepUnits;
 
     /// <summary>Largest volume the broker accepts, in units.</summary>
-    public double VolumeMaxUnits { get; } = VolumeMaxUnits;
+    public double VolumeMaxUnits { get; init; } = VolumeMaxUnits;
 
     /// <summary>Current spread in price units.</summary>
-    public double Spread { get; } = Spread;
+    public double Spread { get; init; } = Spread;
 
     /// <summary>Whether the symbol's market is open.</summary>
-    public bool IsMarketOpen { get; } = IsMarketOpen;
+    public bool IsMarketOpen { get; init; } = IsMarketOpen;
 
     /// <summary>Commission for opening and closing one unit of volume, in the account currency (RSK-006).</summary>
-    public double RoundTripCommissionPerUnit { get; } = RoundTripCommissionPerUnit;
+    public double RoundTripCommissionPerUnit { get; init; } = RoundTripCommissionPerUnit;
 }

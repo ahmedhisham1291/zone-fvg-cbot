@@ -12,14 +12,14 @@ namespace ZoneFvg.Core.Execution.Ports;
 public sealed record AccountSnapshot(double Balance, double Equity, double FreeMargin, string Currency)
 {
     /// <summary>Account balance in the account currency (RSK-001, RSK-007).</summary>
-    public double Balance { get; } = Balance;
+    public double Balance { get; init; } = Balance;
 
     /// <summary>Account equity in the account currency, including open trades (RSK-008, RSK-009).</summary>
-    public double Equity { get; } = Equity;
+    public double Equity { get; init; } = Equity;
 
     /// <summary>Free margin in the account currency (RSK-003).</summary>
-    public double FreeMargin { get; } = FreeMargin;
+    public double FreeMargin { get; init; } = FreeMargin;
 
     /// <summary>Account currency code, for example USD.</summary>
-    public string Currency { get; } = Currency;
+    public string Currency { get; init; } = Currency;
 }

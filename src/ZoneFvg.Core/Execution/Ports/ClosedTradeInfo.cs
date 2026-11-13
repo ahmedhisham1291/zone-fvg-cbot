@@ -27,32 +27,32 @@ public sealed record ClosedTradeInfo(
     double BalanceAfterClose)
 {
     /// <summary>Id of the position the trade closed. Partial closes of one position share it.</summary>
-    public long PositionId { get; } = PositionId;
+    public long PositionId { get; init; } = PositionId;
 
     /// <summary>Symbol name.</summary>
-    public string Symbol { get; } = Symbol;
+    public string Symbol { get; init; } = Symbol;
 
     /// <summary>Label of the closed position; a bot trade's label starts with <c>ZFVG|</c>.</summary>
-    public string Label { get; } = Label;
+    public string Label { get; init; } = Label;
 
     /// <summary>Time the position was opened, in UTC (RSK-010).</summary>
-    public DateTime EntryTimeUtc { get; } = EntryTimeUtc;
+    public DateTime EntryTimeUtc { get; init; } = EntryTimeUtc;
 
     /// <summary>Time the trade closed, in UTC (RSK-007).</summary>
-    public DateTime CloseTimeUtc { get; } = CloseTimeUtc;
+    public DateTime CloseTimeUtc { get; init; } = CloseTimeUtc;
 
     /// <summary>
     /// Net result of the trade in the account currency: gross profit plus commission plus swap,
     /// as the broker books it to the balance (RSK-007).
     /// </summary>
-    public double NetProfit { get; } = NetProfit;
+    public double NetProfit { get; init; } = NetProfit;
 
     /// <summary>Commission of the trade in the account currency; already contained in <see cref="NetProfit"/>.</summary>
-    public double Commission { get; } = Commission;
+    public double Commission { get; init; } = Commission;
 
     /// <summary>Swap of the trade in the account currency; already contained in <see cref="NetProfit"/>.</summary>
-    public double Swap { get; } = Swap;
+    public double Swap { get; init; } = Swap;
 
     /// <summary>Account balance right after the trade closed (RSK-008).</summary>
-    public double BalanceAfterClose { get; } = BalanceAfterClose;
+    public double BalanceAfterClose { get; init; } = BalanceAfterClose;
 }
