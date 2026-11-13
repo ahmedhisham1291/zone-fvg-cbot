@@ -1,0 +1,38 @@
+name: guard
+
+# Runs from the BASE branch (pull_request_target), so a pull request cannot
+# change this workflow or the script it runs. It never checks out or executes
+# code from the pull request; it only reads the list of changed files.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  protected-paths:
+    name: protected-paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the base branch
+        uses: actions/checkout@v6
+
+      - name: List files changed by the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR/files" --paginate \
+            --jq '.[] | {filename, status, previous_filename, patch}' \
+            > "$RUNNER_TEMP/pr-files.jsonl"
+          wc -l "$RUNNER_TEMP/pr-files.jsonl"
+
+      - name: Check protected paths
+        env:
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: python3 tools/check_protected_paths.py "$RUNNER_TEMP/pr-files.jsonl"

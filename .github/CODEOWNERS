@@ -1,0 +1,14 @@
+# The owner reviews everything. Agents never approve or merge.
+*                       @ahmedhisham1291
+
+# Rules, checks and the specification: owner only.
+/.github/               @ahmedhisham1291
+/.claude/               @ahmedhisham1291
+/tools/                 @ahmedhisham1291
+/prompts/               @ahmedhisham1291
+/scripts/               @ahmedhisham1291
+/docs/spec.md           @ahmedhisham1291
+/docs/requirements.yml  @ahmedhisham1291
+/docs/architecture.md   @ahmedhisham1291
+/AGENTS.md              @ahmedhisham1291
+/CLAUDE.md              @ahmedhisham1291

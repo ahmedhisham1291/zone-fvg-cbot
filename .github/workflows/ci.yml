@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: |
+          dotnet restore tests/ZoneFvg.Core.Tests
+          dotnet restore src/ZoneFvg.Bot
+
+      - name: Format check
+        run: |
+          dotnet format src/ZoneFvg.Core --verify-no-changes --no-restore
+          dotnet format src/ZoneFvg.Bot --verify-no-changes --no-restore
+          dotnet format tests/ZoneFvg.Core.Tests --verify-no-changes --no-restore
+
+      - name: Build core and tests (warnings are errors)
+        run: dotnet build tests/ZoneFvg.Core.Tests -c Release --no-restore
+
+      - name: Test with coverage
+        run: >-
+          dotnet test tests/ZoneFvg.Core.Tests -c Release --no-build
+          --collect:"XPlat Code Coverage"
+          --results-directory TestResults
+          --logger "trx;LogFileName=tests.trx"
+
+      - name: Coverage gate
+        run: python3 tools/check_coverage.py TestResults --package ZoneFvg.Core --min-line 90 --min-branch 80
+
+      - name: Build cBot (.algo)
+        run: dotnet build src/ZoneFvg.Bot -c Release --no-restore
+
+      - name: Upload .algo
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZoneFvgBot-algo
+          path: src/ZoneFvg.Bot/bin/Release/**/*.algo
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+  repo-checks:
+    name: repo-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Requirement traceability
+        run: python3 tools/check_traceability.py
+
+      - name: Architecture rules
+        run: python3 tools/check_architecture.py
+
+      - name: Secret scan
+        run: python3 tools/check_secrets.py

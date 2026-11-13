@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+TestResults/
+*.algo
+.vs/
+*.user
+
+# Validator output (posted as a pull request comment, never committed)
+validator-report.json
+validator-report.md
+.validator/
+
+# Secrets and local configuration: never commit
+.env
+*.pwd
+*.cbotset
+!*.cbotset.example
+*.pem
+*.key

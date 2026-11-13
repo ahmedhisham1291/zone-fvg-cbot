@@ -1,0 +1,989 @@
+# Numbered requirements extracted from docs/spec.md (v0.8).
+#
+# Rules for this file
+# - The text of a requirement may only be changed by the human owner.
+# - Implementing agents may change ONLY the `status:` line of the requirements
+#   in their work package, from `planned` to `implemented`.
+# - verify: unit      -> covered by xUnit tests tagged [Trait("Req", "<ID>")]
+#           scenario  -> covered by FakeBroker scenario tests, same tag
+#           build     -> proven by the CI build itself
+#           manual    -> proven by a human test recorded in docs/test-records/
+#           backtest  -> proven by a backtest report in docs/test-records/
+# - CI (tools/check_traceability.py) fails when an `implemented` requirement
+#   with verify unit/scenario has no tagged test.
+
+version: 1
+requirements:
+
+  # ---------------------------------------------------------------- SIGNAL LAYER
+  - id: SIG-001
+    wp: WP01
+    spec: "3, 9.4"
+    verify: unit
+    status: planned
+    text: >-
+      The signal layer reads closed bars only. A bar is passed to the core
+      exactly once, after it has closed. No API of the core accepts or exposes a
+      forming bar.
+
+  - id: SIG-002
+    wp: WP03
+    spec: "9.4"
+    verify: unit
+    status: planned
+    text: >-
+      Determinism. Feeding the same bar sequence with the same parameters into
+      a fresh SignalEngine always produces identical zones (ids, edges, states)
+      and identical signals, bit for bit.
+
+  - id: SIG-003
+    wp: WP01
+    spec: "3"
+    verify: unit
+    status: planned
+    text: >-
+      Windowed indicators. ATR(14) is the arithmetic mean of the true range of
+      the last 14 closed bars (true range uses the previous close; 15 bars are
+      needed). EMA(n) is computed over exactly the last 4*n closed bars, seeded
+      with the simple average of the first n bars of that window, then the
+      standard recursion with alpha = 2/(n+1). Indicator values depend on no
+      bars outside their window.
+
+  - id: SIG-004
+    wp: WP01
+    spec: "3"
+    verify: unit
+    status: planned
+    text: >-
+      Bar intake. Bars of each timeframe must arrive in strictly increasing
+      open-time order; a duplicate or out-of-order bar is rejected with an
+      error and does not change state. When bars of several timeframes close at
+      the same instant they are processed in the order D1, H4, M15.
+
+  - id: SIG-005
+    wp: WP01
+    spec: "3.1"
+    verify: unit
+    status: planned
+    text: >-
+      Bias. Long when the last closed D1 close is above the D1 EMA(BiasEmaPeriod),
+      Short when below, Neutral when equal or when the EMA window is not yet
+      full. Bias is recomputed only when a D1 bar closes.
+
+  - id: SIG-006
+    wp: WP01
+    spec: "3.2"
+    verify: unit
+    status: planned
+    text: >-
+      Swings. A swing high is an H4 bar whose high is strictly greater than the
+      highs of SwingStrength (3) bars on each side; it is confirmed only when
+      the third bar to its right has closed. Swing lows mirror this. Only
+      swings whose bar lies within the last 100 closed H4 bars are retained.
+
+  - id: SIG-007
+    wp: WP02
+    spec: "3.2"
+    verify: unit
+    status: planned
+    text: >-
+      Impulse leg. At each H4 close, the leg is the longest run of 1 to
+      MaxImpulseBars (3) consecutive same-direction bars ending at the
+      just-closed bar (bullish: close > open) whose net move
+      |close(last) - open(first)| is at least ImpulseAtrMult x ATR(H4), where
+      ATR is the value as of the bar immediately before the leg. A bar with
+      close == open ends a run.
+
+  - id: SIG-008
+    wp: WP02
+    spec: "3.2"
+    verify: unit
+    status: planned
+    text: >-
+      Break of structure. A bullish leg qualifies only if its final close is
+      above the most recent confirmed swing high whose bar is before the leg's
+      first bar. No retained swing means no zone. RequireBos=false disables
+      this check. Bearish legs mirror this with swing lows.
+
+  - id: SIG-009
+    wp: WP02
+    spec: "3.2"
+    verify: unit
+    status: planned
+    text: >-
+      Base. The base is the 1 to MaxBaseBars (3) bars immediately before the
+      leg, collected backward while each bar's range (high - low) is at most
+      1.0 x ATR(H4). The bar immediately before the leg is always included
+      even if its range is larger.
+
+  - id: SIG-010
+    wp: WP02
+    spec: "3.2"
+    verify: unit
+    status: planned
+    text: >-
+      Zone edges. Demand: distal = lowest low of the base bars and the first
+      leg bar; proximal = highest body top (max(open, close)) of the base bars.
+      Supply: distal = highest high of the base bars and the first leg bar;
+      proximal = lowest body bottom (min(open, close)) of the base bars. A zone
+      whose proximal is not strictly on the trade side of its distal is
+      discarded.
+
+  - id: SIG-011
+    wp: WP02
+    spec: "3.2"
+    verify: unit
+    status: planned
+    text: >-
+      Width check. A zone is kept only if |proximal - distal| is between
+      MinZoneAtr (0.2) and MaxZoneAtr (1.5) x ATR(H4), inclusive, using the
+      same ATR value as SIG-007.
+
+  - id: SIG-012
+    wp: WP02
+    spec: "3.2"
+    verify: unit
+    status: planned
+    text: >-
+      Supersede rule. A newly created zone removes every older zone of the
+      same type that is still Active (never touched) and whose price range
+      intersects the new zone by more than 50% of the OLDER zone's height.
+      Zones in any other state are never removed by this rule.
+
+  - id: SIG-013
+    wp: WP02
+    spec: "3.2"
+    verify: unit
+    status: planned
+    text: >-
+      Activation and identity. A zone becomes Active at the open time of the H4
+      bar following the leg's last bar. Its id is "D-yyyyMMdd-HHmm" (demand) or
+      "S-yyyyMMdd-HHmm" (supply), built from the UTC open time of the first
+      base bar. The same history always yields the same id.
+
+  - id: SIG-014
+    wp: WP02
+    spec: "3.3"
+    verify: unit
+    status: planned
+    text: >-
+      Zone lifecycle, evaluated at each M15 close using only M15 bars whose
+      open time is at or after the activation time. Active -> Touched on the
+      first bar with low <= proximal (demand). Touched -> Signalled when a
+      valid FVG appears, then immediately Used. Touched -> Used when
+      ConfirmWindowBars (16) bars have closed since the touch bar without a
+      signal. Any state -> Invalid when a bar closes beyond distal (demand:
+      close < distal). Any state -> Expired when MaxZoneAgeBars (120) H4 bars
+      have closed since activation. Invalid, Used and Expired are terminal.
+
+  - id: SIG-015
+    wp: WP02
+    spec: "3.1"
+    verify: unit
+    status: planned
+    text: >-
+      Supply and demand zones are both detected and tracked regardless of
+      bias. Bias only decides whether a zone may produce a signal.
+
+  - id: SIG-016
+    wp: WP03
+    spec: "3.4"
+    verify: unit
+    status: planned
+    text: >-
+      Bullish FVG. With c3, c2, c1 the three most recently closed M15 bars
+      (c1 newest): low(c1) > high(c3); c2 closes above its open; gap height
+      low(c1) - high(c3) is at least MinFvgAtr x ATR(M15); all three bars
+      opened at or after the touch bar opened; c1 closes within
+      ConfirmWindowBars of the touch bar; the gap's lower edge high(c3) is at
+      most proximal + 0.5 x ATR(H4). Only the first FVG meeting all conditions
+      after the touch is used. Bearish FVG mirrors this.
+
+  - id: SIG-017
+    wp: WP03
+    spec: "3.5"
+    verify: unit
+    status: planned
+    text: >-
+      Signal levels (buy). Entry = low(c1) - EntryLevelPct/100 x gap height.
+      Stop = min(zone distal, lowest low since the touch bar inclusive)
+      - StopBufferAtr x ATR(M15). Target = entry + RewardRisk x (entry - stop).
+      Sell mirrors this. The signal carries zone id, levels, stop distance in
+      price, the three FVG bar times and the confirmation bar close time.
+
+  - id: SIG-018
+    wp: WP03
+    spec: "3.3"
+    verify: unit
+    status: planned
+    text: >-
+      A zone produces at most one signal. A signal is emitted only if bias
+      matches the zone type (Long/demand, Short/supply) at the confirmation
+      bar; otherwise the zone still moves to Used and no signal is emitted.
+
+  - id: SIG-019
+    wp: WP03
+    spec: "8.3, 9.4"
+    verify: unit
+    status: planned
+    text: >-
+      Replay equals live. For any time T, an engine that has processed the
+      full history up to T and an engine started from any earlier point that
+      satisfies the warm-up requirement hold identical non-terminal zones
+      (ids, edges, states, touch data) and emit identical signals after T.
+
+  - id: SIG-020
+    wp: WP01
+    spec: "8.3"
+    verify: unit
+    status: planned
+    text: >-
+      Warm-up. The engine computes the minimum number of closed bars per
+      timeframe it needs from its parameters and reports NotReady, emitting no
+      zones or signals, until every timeframe has that many bars. With default
+      parameters the requirement does not exceed 300 D1, 500 H4 and 3,000 M15
+      bars.
+
+  - id: SIG-021
+    wp: WP03
+    spec: "3"
+    verify: unit
+    status: planned
+    text: >-
+      Mirror symmetry. Reflecting every price of a bar sequence around a
+      constant (p -> K - p, swapping high and low) turns every demand zone
+      into the corresponding supply zone and every buy signal into the
+      corresponding sell signal, with reflected levels.
+
+  # ---------------------------------------------------------------- RISK
+  - id: RSK-001
+    wp: WP04
+    spec: "4.1"
+    verify: unit
+    status: planned
+    text: >-
+      Position size. riskAmount = balance x RiskPercent/100; volume =
+      riskAmount / (stopPips x pipValuePerUnit), rounded DOWN to the symbol's
+      volume step. If the result is below the symbol's minimum volume the
+      trade is skipped. Volume is never rounded up.
+
+  - id: RSK-002
+    wp: WP04
+    spec: "4.3"
+    verify: unit
+    status: planned
+    text: >-
+      Sanity caps. A trade is skipped (reason logged, alert raised) if its
+      computed risk exceeds 0.55% of balance, its volume exceeds
+      MaxVolumeUnits, or its stop or target is on the wrong side of entry.
+
+  - id: RSK-003
+    wp: WP04
+    spec: "4.1"
+    verify: unit
+    status: planned
+    text: >-
+      Margin check. A trade is skipped if estimated free margin after the
+      trade would be below 50% of equity. The margin estimate comes from the
+      broker port.
+
+  - id: RSK-004
+    wp: WP04
+    spec: "4.2"
+    verify: unit
+    status: planned
+    text: >-
+      Open risk cap. The sum of risk at stop of every bot position and
+      pending order on the account, plus the new trade, must not exceed
+      MaxOpenRiskPercent (1.5%) of InitialCapital.
+
+  - id: RSK-005
+    wp: WP04
+    spec: "4.2"
+    verify: unit
+    status: planned
+    text: >-
+      Currency exposure cap. Buying a pair is long its base and short its
+      quote currency. For each currency, the number of bot positions and
+      pending orders on the same side, including the new trade, must not
+      exceed MaxPositionsPerCurrency (2).
+
+  - id: RSK-006
+    wp: WP04
+    spec: "4.2, 15.4"
+    verify: unit
+    status: planned
+    text: >-
+      Daily risk budget. Let M be the balance at 00:00 CE(S)T of the current
+      day and W the worst-case equity if every open bot position and pending
+      order, including the new trade, were closed at its stop. A new trade is
+      allowed only if M - W <= DailyLossLimitPercent (1.5%) of InitialCapital.
+      When the budget is exhausted, pending entry orders are cancelled and no
+      entries are allowed until the next CE(S)T day.
+
+  - id: RSK-007
+    wp: WP04
+    spec: "4.2"
+    verify: unit
+    status: planned
+    text: >-
+      Stateless day start. The balance at 00:00 CE(S)T is reconstructed as
+      current balance minus the net result (profit, commission, swap) of all
+      account trades closed since that moment, from broker history. No stored
+      value is used.
+
+  - id: RSK-008
+    wp: WP04
+    spec: "4.2"
+    verify: unit
+    status: planned
+    text: >-
+      Kill switch. Peak = highest end-of-trade balance since RiskEpochDate,
+      from history, and not less than the balance at RiskEpochDate. If
+      (Peak - equity) / Peak >= MaxDrawdownPercent (8%) the bot enters Halted.
+      Recomputing after a restart yields the same decision.
+
+  - id: RSK-009
+    wp: WP04
+    spec: "4.2, 15.4"
+    verify: unit
+    status: planned
+    text: >-
+      FTMO emergency guard. If equity <= M - (FtmoDailyLossPercent -
+      FtmoGuardBufferPercent)% of InitialCapital, or equity <= InitialCapital x
+      (1 - (FtmoMaxLossPercent - FtmoGuardBufferPercent)/100), the decision is
+      CloseAllAndHalt. With defaults: M - 4,000 and 91,000 on 100,000.
+
+  - id: RSK-010
+    wp: WP04
+    spec: "4.3"
+    verify: unit
+    status: planned
+    text: >-
+      Circuit breakers. Entries per symbol per CE(S)T day <= 2 and per account
+      per day <= 6, counted from broker history and open orders. Order
+      requests per instance <= 20 per hour and <= MaxRequestsPerDay (100) per
+      day; unhandled errors <= 5 per hour. Exceeding a request or error limit
+      halts the instance.
+
+  - id: RSK-011
+    wp: WP04
+    spec: "4.2, 8.1"
+    verify: unit
+    status: planned
+    text: >-
+      Every risk decision is a pure function of an explicit input snapshot
+      (account, positions, pending orders, history, symbol data, time,
+      parameters). The risk module holds no mutable state between calls,
+      except the in-memory request and error counters of RSK-010.
+
+  - id: RSK-012
+    wp: WP04
+    spec: "4.2"
+    verify: unit
+    status: planned
+    text: >-
+      CE(S)T day boundary. Central European time is UTC+1, or UTC+2 from
+      01:00 UTC on the last Sunday of March until 01:00 UTC on the last Sunday
+      of October. The conversion is implemented in the core without using
+      operating-system time-zone data, and is correct on the changeover days.
+
+  # ---------------------------------------------------------------- NEWS
+  - id: NWS-001
+    wp: WP05
+    spec: "6.1"
+    verify: unit
+    status: planned
+    text: >-
+      News windows. For a symbol, relevant currencies are its base and quote.
+      A window spans NewsBeforeMin (30) minutes before to NewsAfterMin (30)
+      minutes after each high-impact event of a relevant currency. Overlapping
+      windows merge.
+
+  - id: NWS-002
+    wp: WP05
+    spec: "6.2"
+    verify: unit
+    status: planned
+    text: >-
+      Merge rule. An event is high impact if either feed rates it high. Events
+      from the two feeds with the same currency and times within 5 minutes are
+      treated as one event.
+
+  - id: NWS-003
+    wp: WP05
+    spec: "6.2"
+    verify: unit
+    status: planned
+    text: >-
+      Forex Factory parser. Parses the weekly JSON export (title, country as
+      currency code, date as ISO 8601 with offset, impact) into events in UTC.
+      Unknown impact values are kept as non-high. A document that is not valid
+      JSON, is an HTML error page, or contains no events fails validation.
+
+  - id: NWS-004
+    wp: WP05
+    spec: "6.2"
+    verify: unit
+    status: planned
+    text: >-
+      ShowMyTrades parser. Parses the calendar API response (Unix time in
+      UTC, currency, impact, title) into events in UTC, with the same
+      validation rules as NWS-003.
+
+  - id: NWS-005
+    wp: WP05
+    spec: "6.2"
+    verify: unit
+    status: planned
+    text: >-
+      A download is accepted only if it parses, contains at least one event
+      and covers the current time (Forex Factory: the current week). A
+      rejected download never replaces previously accepted data.
+
+  - id: NWS-006
+    wp: WP05
+    spec: "6.2"
+    verify: unit
+    status: planned
+    text: >-
+      Refresh policy. Each source is fetched at start and every
+      NewsRefreshHours (4), and never more often than once per 60 minutes.
+      The time of the last attempt is persisted through the key-value port so
+      that restarts cannot cause extra fetches.
+
+  - id: NWS-007
+    wp: WP05
+    spec: "6.2"
+    verify: unit
+    status: planned
+    text: >-
+      Cache. The last accepted data of each source is stored with its fetch
+      time through the key-value port and reloaded at start. Cached data older
+      than NewsMaxCacheHours (48) without a successful refresh is not trusted.
+
+  - id: NWS-008
+    wp: WP05
+    spec: "6.3"
+    verify: unit
+    status: planned
+    text: >-
+      Fail-safe. If no source has trusted data covering the current time, the
+      calendar status is Unavailable; with NewsFailMode=Block no entries are
+      allowed and one alert is raised per outage.
+
+  - id: NWS-009
+    wp: WP05
+    spec: "6.1"
+    verify: unit
+    status: planned
+    text: >-
+      A signal is skipped if the current time is inside a news window of its
+      symbol, or if any of its three FVG bars overlaps one.
+
+  - id: NWS-010
+    wp: WP05
+    spec: "6.2, 6.4"
+    verify: unit
+    status: planned
+    text: >-
+      Backtest provider. In backtests events come only from the embedded
+      history provider; no network call is made. The embedded data format is
+      one event per line: UTC time, currency, impact, title.
+
+  - id: NWS-011
+    wp: WP05
+    spec: "6.2"
+    verify: unit
+    status: planned
+    text: >-
+      ExtraBlackouts. The parameter accepts a semicolon-separated list of
+      "yyyy-MM-dd HH:mm CUR" entries in UTC, each treated as a high-impact
+      event. A malformed entry stops the bot at start with a clear message.
+
+  - id: NWS-012
+    wp: WP05
+    spec: "6.2"
+    verify: unit
+    status: planned
+    text: >-
+      Events without a clock time (all-day, tentative, holidays) create no
+      window and are listed in the log.
+
+  # ---------------------------------------------------------------- EXECUTION
+  - id: EXE-001
+    wp: WP06
+    spec: "3.6, 8.1"
+    verify: scenario
+    status: planned
+    text: >-
+      Freshness. A signal may be executed only if its confirmation bar closed
+      at most one M15 bar ago and it was produced in live mode. Signals
+      produced during replay are never executed.
+
+  - id: EXE-002
+    wp: WP06
+    spec: "5.1"
+    verify: scenario
+    status: planned
+    text: >-
+      Pre-trade filters. An order is placed only if: time is within
+      SessionStartUtc..SessionEndUtc; on Fridays before FridayNoEntryUtc;
+      spread <= MaxSpreadPips; the market is open; no bot position or pending
+      order exists on the symbol; bot state is Running.
+
+  - id: EXE-003
+    wp: WP06
+    spec: "3.6"
+    verify: scenario
+    status: planned
+    text: >-
+      Stop bounds. A signal is skipped if its stop distance is below
+      MinStopPips (12) or above MaxStopAtr (2.0) x ATR(H4).
+
+  - id: EXE-004
+    wp: WP06
+    spec: "3.6"
+    verify: scenario
+    status: planned
+    text: >-
+      Cost check. A signal is skipped if (spread + round-trip commission
+      expressed in pips) exceeds CostToRiskMax (10%) of the stop distance.
+
+  - id: EXE-005
+    wp: WP06
+    spec: "3.4, 3.6"
+    verify: scenario
+    status: planned
+    text: >-
+      A signal is skipped if its FVG height is below MinFvgSpreadMult (3) x
+      the current spread.
+
+  - id: EXE-006
+    wp: WP06
+    spec: "3.6"
+    verify: scenario
+    status: planned
+    text: >-
+      Room check. A buy signal is skipped if the proximal line of any
+      non-terminal supply zone lies between entry and entry + MinRoomR (1.5) x
+      stop distance. Sell mirrors this.
+
+  - id: EXE-007
+    wp: WP06
+    spec: "3.5"
+    verify: scenario
+    status: planned
+    text: >-
+      For sell orders the current spread is added to the stop distance before
+      sizing and placement.
+
+  - id: EXE-008
+    wp: WP06
+    spec: "5.2"
+    verify: scenario
+    status: planned
+    text: >-
+      Order format. Entries are limit orders with stop loss, take profit and
+      expiry attached at placement. Label = "ZFVG|v1|<symbol>|<zoneId>".
+      Comment encodes entry, stop, target, risk amount and an 8-character
+      parameter hash in a compact parseable form of at most 100 characters.
+
+  - id: EXE-009
+    wp: WP06
+    spec: "5.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Idempotent placement. Before sending, the broker is queried for any
+      order or position with the zone's label; if one exists nothing is sent.
+      A clear rejection is never retried. An unclear outcome (timeout,
+      disconnect, technical error) is never resent blindly: at the next bar
+      the broker is queried again and the order is resent only if nothing
+      exists, the signal is still fresh and price has not traded through the
+      entry.
+
+  - id: EXE-010
+    wp: WP06
+    spec: "5.3"
+    verify: scenario
+    status: planned
+    text: >-
+      After a successful placement the order is read back and its stop,
+      target and expiry are compared with the request; a mismatch cancels the
+      order and raises an alert.
+
+  - id: EXE-011
+    wp: WP06
+    spec: "5.4"
+    verify: scenario
+    status: planned
+    text: >-
+      Post-fill protection. Every bot position must have a stop loss. A
+      position found without one gets it set from its comment data; after two
+      failed attempts the position is closed and an alert is raised.
+
+  - id: EXE-012
+    wp: WP06
+    spec: "5.4"
+    verify: scenario
+    status: planned
+    text: >-
+      A partial fill is managed as a normal position. The unfilled remainder
+      is left to expire.
+
+  - id: EXE-013
+    wp: WP06
+    spec: "5.5"
+    verify: scenario
+    status: planned
+    text: >-
+      Friday close. At or after FridayCloseUtc on a Friday all bot positions
+      on the symbol are closed and pending entry orders cancelled.
+
+  - id: EXE-014
+    wp: WP06
+    spec: "3.6"
+    verify: scenario
+    status: planned
+    text: >-
+      Every skipped signal is recorded with exactly one reason code from a
+      closed enumeration, plus the measured values behind the decision.
+
+  - id: EXE-015
+    wp: WP06
+    spec: "6.1"
+    verify: scenario
+    status: planned
+    text: >-
+      Order expiry is the earlier of the normal expiry (EntryExpiryBars after
+      placement) and the start of the next news window for the symbol. If
+      fewer than 15 minutes remain the signal is skipped.
+
+  # ---------------------------------------------------------------- RECOVERY
+  - id: REC-001
+    wp: WP07
+    spec: "8.5"
+    verify: scenario
+    status: planned
+    text: >-
+      Bot states are Recovering, Running, Blocked and Halted with the
+      transitions of spec 8.5. New orders are possible only in Running.
+
+  - id: REC-002
+    wp: WP07
+    spec: "8.1, 8.4"
+    verify: scenario
+    status: planned
+    text: >-
+      The same recovery procedure runs at start and after every reconnect, and
+      it is safe to run it repeatedly.
+
+  - id: REC-003
+    wp: WP07
+    spec: "8.3, 8.4"
+    verify: scenario
+    status: planned
+    text: >-
+      Recovery waits for connection and sufficient bar history, detects gaps
+      in each bar series, and stays in Recovering with an alert if data cannot
+      be completed.
+
+  - id: REC-004
+    wp: WP07
+    spec: "8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Recovery rebuilds the signal layer by replaying stored bars with trading
+      disabled. Signals produced during replay are recorded as not executable.
+
+  - id: REC-005
+    wp: WP07
+    spec: "8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Bot positions found at the broker are adopted by label: matched to
+      their zone, plan read from the comment, stop loss and take profit
+      verified and repaired per EXE-011.
+
+  - id: REC-006
+    wp: WP07
+    spec: "8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      A pending bot order found at the broker is kept only if it has a stop,
+      a target and an expiry and its zone is known and not Invalid; otherwise
+      it is cancelled.
+
+  - id: REC-007
+    wp: WP07
+    spec: "8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      A labelled position whose zone is unknown is kept with its existing
+      stop and target, counted in all risk totals, included in Friday close,
+      and reported.
+
+  - id: REC-008
+    wp: WP07
+    spec: "8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Trades that opened or closed while the bot was away are added to the
+      journal from broker history, exactly once.
+
+  - id: REC-009
+    wp: WP07
+    spec: "8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Catch-up duties. If recovery finishes after Friday close with bot
+      positions open they are closed immediately; if a risk limit is breached
+      pending orders are cancelled.
+
+  - id: REC-010
+    wp: WP07
+    spec: "8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Each recovery produces a report (downtime, positions adopted, orders
+      kept and cancelled, strangers, active zones, state entered) that is
+      journaled and sent as an alert.
+
+  - id: REC-011
+    wp: WP07
+    spec: "8.5"
+    verify: scenario
+    status: planned
+    text: >-
+      The bot never stops its own process. Every event handler catches
+      exceptions, journals them and increments the error counter of RSK-010.
+
+  - id: REC-012
+    wp: WP07
+    spec: "8.4"
+    verify: scenario
+    status: planned
+    text: >-
+      All time used for decisions comes from the broker port's server time or
+      from bar times. The machine clock is never read.
+
+  - id: REC-013
+    wp: WP07
+    spec: "5.3, 12.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Fault scenarios 1 to 11, 13 and 14 of spec 12.3 pass as automated
+      FakeBroker scenarios with zero duplicate orders and zero positions left
+      without a stop loss.
+
+  # ---------------------------------------------------------------- OPERATIONS
+  - id: OPS-001
+    wp: WP09
+    spec: "11"
+    verify: unit
+    status: planned
+    text: >-
+      Signal journal. Every signal, taken or skipped, is journaled with the
+      fields listed in spec section 11.
+
+  - id: OPS-002
+    wp: WP09
+    spec: "11"
+    verify: unit
+    status: planned
+    text: >-
+      Trade journal. Every closed trade is journaled with the fields listed
+      in spec section 11, including result in R computed from the planned risk
+      in the order comment.
+
+  - id: OPS-003
+    wp: WP09
+    spec: "11, 15.4"
+    verify: unit
+    status: planned
+    text: >-
+      Daily summary once per CE(S)T day with trades, net R, balance, equity,
+      drawdown, distance to both FTMO floors, progress to target, skips by
+      reason, calendar status, uptime and restarts.
+
+  - id: OPS-004
+    wp: WP09
+    spec: "11"
+    verify: unit
+    status: planned
+    text: >-
+      Telegram alerts are best-effort: sending never blocks or throws into
+      trading logic; failures are retried later from a bounded queue; the bot
+      token and chat id come only from parameters.
+
+  - id: OPS-005
+    wp: WP09
+    spec: "11"
+    verify: unit
+    status: planned
+    text: >-
+      Heartbeat. While the bot process is healthy it calls HeartbeatUrl every
+      five minutes, in every state. A failed call is logged and never affects
+      trading.
+
+  - id: OPS-006
+    wp: WP09
+    spec: "11, 15.2"
+    verify: unit
+    status: planned
+    text: >-
+      Inactivity warning. An alert is raised when 21 days have passed since
+      the account's last opened trade, in every state.
+
+  - id: OPS-007
+    wp: WP09
+    spec: "10.2"
+    verify: unit
+    status: planned
+    text: >-
+      Secrets never appear in logs, journal entries, alerts, exception
+      messages or the repository. Journal and log writers mask the Telegram
+      token and heartbeat URL.
+
+  # ---------------------------------------------------------------- PLATFORM
+  - id: PLT-001
+    wp: WP01
+    spec: "9.1"
+    verify: build
+    status: planned
+    text: >-
+      ZoneFvg.Core references no cTrader assembly and performs no IO, network,
+      clock, random or operating-system time-zone access. CI enforces this
+      with tools/check_architecture.py.
+
+  - id: PLT-002
+    wp: WP08
+    spec: "9.1"
+    verify: manual
+    status: planned
+    text: >-
+      ZoneFvg.Bot contains adapters only: it translates cTrader events and
+      objects to core ports and back. It contains no trading rule, filter,
+      risk calculation or state machine logic.
+
+  - id: PLT-003
+    wp: WP08
+    spec: "10.3"
+    verify: build
+    status: planned
+    text: >-
+      The cBot is declared with AccessRights.None and TimeZone UTC.
+
+  - id: PLT-004
+    wp: WP01
+    spec: "10.3"
+    verify: build
+    status: planned
+    text: >-
+      ZoneFvg.Core and ZoneFvg.Bot target net6.0 with C# language version 10.
+
+  - id: PLT-005
+    wp: WP08
+    spec: "9.4"
+    verify: manual
+    status: planned
+    text: >-
+      Chart drawing is optional, controlled by DrawObjects, and every chart
+      call is guarded so that a missing chart cannot throw.
+
+  - id: PLT-006
+    wp: WP08
+    spec: "7"
+    verify: manual
+    status: planned
+    text: >-
+      The cBot exposes every parameter of spec section 7 with the documented
+      default, validates all values at start, and refuses to start with a
+      clear message on an invalid combination.
+
+  - id: PLT-007
+    wp: WP08
+    spec: "10.3"
+    verify: build
+    status: planned
+    text: >-
+      CI builds the .algo file and publishes it as a build artifact.
+
+  - id: PLT-008
+    wp: WP11
+    spec: "10.2"
+    verify: manual
+    status: planned
+    text: >-
+      Deployment files run one cTrader CLI container per symbol with an
+      automatic restart policy, a mounted volume for storage and logs, a
+      pinned image version, and no secret inside the image or the repository.
+
+  - id: PLT-009
+    wp: WP08
+    spec: "9.4"
+    verify: manual
+    status: planned
+    text: >-
+      No required behaviour depends on the cBot's stop handler running.
+
+  # ---------------------------------------------------------------- SIMULATION
+  - id: SIM-001
+    wp: WP10
+    spec: "12.1"
+    verify: unit
+    status: planned
+    text: >-
+      Trade log format. Backtests export one row per closed trade: symbol,
+      zone id, open and close time (UTC), side, volume, entry, stop, target,
+      exit price, exit reason, result in money and in R, commission, swap.
+
+  - id: SIM-002
+    wp: WP10
+    spec: "12.1"
+    verify: unit
+    status: planned
+    text: >-
+      Portfolio combiner. Merges per-symbol trade logs by time and reports
+      combined equity curve, maximum drawdown and how often each account-level
+      cap would have applied.
+
+  - id: SIM-003
+    wp: WP10
+    spec: "12.1"
+    verify: unit
+    status: planned
+    text: >-
+      Monte Carlo. Reshuffles trade order with a seeded generator and reports
+      the distribution of maximum drawdown and of 30-trade average R,
+      including the 1st and 5th percentiles used by spec 13.3.
+
+  - id: SIM-004
+    wp: WP10
+    spec: "12.1, 15.2, 15.5"
+    verify: unit
+    status: planned
+    text: >-
+      FTMO challenge simulator. Replays sampled trade sequences through the
+      2-Step rules (profit target, daily loss from the 00:00 CE(S)T balance,
+      static maximum loss, four trading days) at a given risk per trade and
+      reports pass probability, breach probability and time to pass for the
+      Challenge and Verification phases.
+
+  - id: SIM-005
+    wp: WP10
+    spec: "13.1"
+    verify: unit
+    status: planned
+    text: >-
+      Acceptance report. Produces every measure of spec 13.1 from trade logs
+      and states pass or fail against each threshold.

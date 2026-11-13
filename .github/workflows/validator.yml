@@ -1,0 +1,87 @@
+name: validator
+
+# Independent AI review of every pull request.
+# The validator's instructions and the gate script are taken from the BASE
+# branch, so a pull request cannot rewrite the rules it is judged by.
+# Needs the repository secret ANTHROPIC_API_KEY.
+# Optional repository variable VALIDATOR_MODEL overrides the model.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: validator-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validator:
+    name: validator
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Take validator rules from the base branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          mkdir -p .validator
+          git show "origin/$BASE_REF:prompts/validator.md" > .validator/instructions.md
+          git show "origin/$BASE_REF:tools/enforce_verdict.py" > "$RUNNER_TEMP/enforce_verdict.py"
+          rm -f validator-report.json validator-report.md
+
+      - name: Run the validator
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are the validator for this repository.
+            Your instructions are in the file .validator/instructions.md. Read it now and follow it exactly.
+
+            Pull request: #${{ github.event.pull_request.number }}
+            Title: ${{ github.event.pull_request.title }}
+            Base: origin/${{ github.base_ref }}
+            Head: the checked-out commit.
+
+            Write validator-report.json and validator-report.md in the repository root.
+            Do not modify any other file. Do not post comments yourself.
+          claude_args: |
+            --max-turns 60
+            --model ${{ vars.VALIDATOR_MODEL || 'claude-opus-5-5' }}
+            --allowedTools "Read,Grep,Glob,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(python3 tools/check_traceability.py:*),Bash(python3 tools/check_architecture.py:*),Bash(python3 tools/check_secrets.py:*)"
+
+      - name: Post the report on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -s validator-report.md ]; then
+            gh pr comment "$PR" --body-file validator-report.md
+          else
+            gh pr comment "$PR" --body "Validator produced no report. Treat this as a FAIL and check the workflow log."
+          fi
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validator-report
+          path: |
+            validator-report.json
+            validator-report.md
+          if-no-files-found: ignore
+
+      - name: Enforce the verdict
+        run: python3 "$RUNNER_TEMP/enforce_verdict.py" validator-report.json

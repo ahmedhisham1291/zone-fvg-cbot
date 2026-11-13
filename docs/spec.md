@@ -1,0 +1,910 @@
+# Zone + FVG cBot: Technical Specification
+
+Version 0.8 (implementation baseline) · 13 November 2026
+
+## 0. What changed in v0.2
+
+A review of v0.1 found these gaps. Each is fixed in the section shown.
+
+| Gap in v0.1 | Fix in v0.2 | Section |
+|---|---|---|
+| Bot state lived in memory; restart behaviour was only sketched | Two-layer design: signals are recomputed from price history, trades are read back from the broker. Full recovery procedure | 3.3, 8 |
+| "Retry once" on a failed order could create duplicates | Idempotent order placement: always check the broker first, never resend blindly | 5.3 |
+| Kill switch needed a remembered equity peak | All risk limits are recalculated from account history at any time | 4.2 |
+| No behaviour defined for internet or power loss | Outage scenarios, safe mode, reconnect handling | 8 |
+| No news filter | Calendar-based news filter, including for backtests | 6 |
+| cTrader cloud recommended for live | Cloud sends no HTTP requests and wipes stored files on restart, so it cannot run the news feed or alerts. A VPS running cTrader CLI is now the primary host | 10 |
+| Nothing watches the bot when the server itself is down | External heartbeat monitor and phone alerts | 11 |
+| Trading costs not checked per trade | Cost-to-risk cap and spread-aware FVG size | 3.6 |
+| No protection against a runaway bug | Circuit breakers and sanity caps | 4.3 |
+| Only strategy tests were planned | Code tests, fault-injection tests and a soak test | 12 |
+| No plan for detecting a fading edge in live trading | Live edge monitoring with automatic risk reduction | 13.3 |
+
+**Decisions recorded so far (v0.3 and v0.4)**
+
+| Topic | Decision | Section |
+|---|---|---|
+| Pairs | EURUSD, GBPUSD, USDJPY, AUDUSD | 2 |
+| Timeframes | D1 trend, H4 zones, M15 entries | 2, 3 |
+| Stop placement | Beyond the whole zone | 3.5 |
+| Account limits | 1.5% daily loss stop, 8% drawdown kill switch | 4.2 |
+| Account | FTMO 2-Step Challenge, Swing type, cTrader, 100,000 USD simulated capital. Already bought, no trade placed yet | 15 |
+| Hosting | Run on your laptop for a few days first (demo account), then move to a rented VPS | 10.2, 10.5 |
+| Alerts | Telegram | 11 |
+| News calendar | Two free feeds combined (Forex Factory weekly export and ShowMyTrades); Forex Factory history for backtests | 6.2, 6.4, 6.5 |
+
+## 1. Purpose and scope
+
+A cTrader cBot that trades forex by waiting for price to return to a higher-timeframe supply or demand zone, then entering on a lower-timeframe fair value gap (FVG) in the direction of the higher-timeframe trend.
+
+**In scope (v1)**
+
+- Fully mechanical detection of zones and FVGs.
+- One position per symbol, fixed 0.5% account risk per trade.
+- Broker-side stop loss, take profit and order expiry on every order.
+- News filter for high-impact events.
+- Unattended recovery after power loss, reboot, crash or network loss.
+- Backtestable on tick data with no look-ahead.
+
+**Out of scope (v1)**
+
+- Partial closes, trailing stops, scaling in.
+- Machine learning or adaptive parameters.
+- Trading the news itself.
+
+**Reliability goals (each is tested in section 12)**
+
+1. No position ever exists without a broker-side stop loss.
+2. No zone is ever traded twice, and no order is ever duplicated.
+3. After any outage the bot recognises its own open trades and pending orders without manual help.
+4. No trade is opened from a signal older than one bar.
+5. When the bot is unsure (missing data, no calendar, repeated errors) it stops opening trades. Open trades stay protected by their broker-side stops.
+
+**What a spec can and cannot do**
+
+Reliability can be engineered and tested, and this version does that. Profitability cannot be specified; it can only be measured. The 2% monthly figure (a net +4R per month at 0.5% risk) remains an outcome to test. What the spec adds is everything that protects an edge if one exists: realistic costs, honest validation, strict risk limits and early detection when results fade. This is a technical design, not financial advice.
+
+## 2. Settings and assumptions
+
+| Item | Setting | Status and reason |
+|---|---|---|
+| Symbols | EURUSD, GBPUSD, USDJPY, AUDUSD | Decided. Liquid majors, low spread |
+| Bias timeframe | D1 | Decided. Trend filter |
+| Zone timeframe | H4 | Decided. Higher-timeframe zones |
+| Entry timeframe | M15 (the chart the bot runs on) | Decided. Lower-timeframe FVG |
+| Trading window | 07:00 to 17:00 UTC | Assumed. London and New York sessions |
+| Account | FTMO 2-Step Challenge, Swing type, cTrader, 100,000 USD simulated capital, used only by this bot | Decided and already bought (section 15). Manual trades on the same symbols would confuse recovery |
+| Language | C# in cTrader Algo | Widest documentation and examples |
+| Hosting | Stage 1: your laptop on a demo account for a few days. Stage 2: rented Linux VPS, cTrader CLI in Docker | Decided. See section 10 |
+| News source | Two free feeds combined: Forex Factory weekly export and ShowMyTrades calendar API | Decided. See section 6 |
+| Alerts | Telegram | Decided. See section 11 |
+
+## 3. Strategy rules
+
+All rules are evaluated on **closed bars only**. Long rules are shown; short rules are the mirror image. ATR means ATR(14) on the timeframe named.
+
+**Indicator definitions (v0.8).** Every indicator depends only on a fixed window of recent bars, so a restarted bot reproduces the same values exactly.
+
+- ATR(14) is the plain average of the true range of the last 14 closed bars.
+- EMA(n) is calculated over the last 4 x n closed bars, seeded with the simple average of the first n bars of that window.
+- When bars of several timeframes close at the same moment they are processed in the order D1, H4, M15.
+
+### 3.1 Trend bias (D1)
+
+- Long bias: last closed D1 close is above the D1 EMA(50).
+- Short bias: last closed D1 close is below it.
+- Only demand zones are traded in a long bias, only supply zones in a short bias.
+- Both zone types are always detected and stored, because opposing zones are needed for the room check in section 3.6.
+
+### 3.2 Demand zone detection (H4)
+
+Checked at each H4 bar close.
+
+1. **Impulse leg.** The last 1 to 3 bars are all bullish and their net move (close of last minus open of first) is at least `ImpulseAtrMult` (2.0) x ATR(H4).
+2. **Break of structure.** The leg's final close is above the most recent confirmed swing high that formed before the leg began. A swing high is a bar whose high is above the highs of `SwingStrength` (3) bars on each side. Only swings within the last 100 H4 bars are considered; with none, there is no break of structure and no zone.
+3. **Base.** The 1 to 3 bars immediately before the leg, collected backward while each bar's range is at most 1.0 x ATR(H4). At least one bar is always taken.
+4. **Zone edges.**
+   - Distal (far) line = lowest low of the base bars and the first impulse bar.
+   - Proximal (near) line = highest candle body top of the base bars.
+5. **Width check.** Zone height must be between 0.2 and 1.5 x ATR(H4); otherwise discard.
+6. **Overlap.** A new zone replaces any older, still-untouched demand zone that it overlaps by more than 50% of the older zone's height. (Changed in v0.8: "keep the older one" made the result depend on arbitrarily old history, which would break exact rebuilding after a restart.)
+7. **Activation.** The zone becomes active at the open of the next H4 bar.
+8. **Zone id.** Built from type and the base's first bar time, for example `D-20261112-1600`. The same history always produces the same id, which is what lets a restarted bot match its trades to zones.
+
+### 3.3 Two layers: signals and execution
+
+This split is the basis of restart safety.
+
+**Signal layer.** Depends only on closed price bars. Given the same history it always produces the same result, so it can be rebuilt at any time by replaying bars.
+
+| Zone state | Meaning | Transition |
+|---|---|---|
+| Active | Fresh, never touched | First M15 bar with low at or below proximal: Touched |
+| Touched | Confirmation window open | Valid FVG appears: Signalled. Window ends: Used |
+| Signalled | A signal was produced | Immediately Used |
+| Used | No further signals | Removed after expiry |
+| Invalid | Broken | Any M15 close below distal |
+
+- A zone expires after `MaxZoneAgeBars` (120 H4 bars, about 20 trading days).
+- Each zone produces at most one signal. Whether that signal became a trade does not change the zone's state.
+
+**Execution layer.** Decides whether a signal becomes an order (filters, news, risk limits), and tracks orders and positions. Its source of truth is always the broker's list of orders, positions and history, never the bot's memory.
+
+| Setup state | Meaning |
+|---|---|
+| Skipped | Signal blocked; reason logged |
+| Placed | Limit order working at the broker |
+| Filled | Position open |
+| Closed | Position closed; result journaled |
+
+### 3.4 Entry trigger: bullish FVG (M15)
+
+Naming the three most recently closed M15 bars c3, c2, c1 (c1 is the newest):
+
+- **FVG exists** when Low(c1) > High(c3). The gap runs from High(c3) up to Low(c1).
+- c2 must be bullish (close above open).
+- Gap height is at least `MinFvgAtr` (0.25) x ATR(M15). The gap must also be at least 3 x the current spread; because spread is not bar data, that check is applied by the execution layer (section 3.6).
+- The FVG completes within `ConfirmWindowBars` (16 bars, 4 hours) of the touch.
+- The gap's lower edge is no higher than proximal + 0.5 x ATR(H4), so the entry stays close to the zone.
+- Only the first valid FVG after the touch is used.
+
+### 3.5 Order levels
+
+- **Entry:** buy limit at the gap midpoint (`EntryLevelPct` = 50).
+- **Stop:** the lower of the zone's distal line and the lowest low since the touch, minus a buffer of 0.1 x ATR(M15). For sells, add the current spread, because sell stops trigger on the ask price.
+- **Target:** entry + `RewardRisk` (2.0) x stop distance.
+- **Order expiry:** `EntryExpiryBars` (8 bars, 2 hours), shortened if a news window starts sooner (section 6).
+
+### 3.6 Signal is skipped when
+
+- It is not live: its confirmation bar closed more than one bar ago (for example, it was found during a restart replay).
+- Stop distance is under 12 pips or over 2.0 x ATR(H4).
+- **Cost check fails:** spread plus round-trip commission, in pips, is more than `CostToRiskMax` (10%) of the stop distance.
+- An active supply zone sits between entry and 1.5R above entry.
+- The news filter blocks it (section 6).
+- Any filter in section 5 or any limit in section 4 blocks it.
+
+Every skip is logged with its reason.
+
+## 4. Risk and position sizing
+
+### 4.1 Size per trade
+
+```
+riskAmount  = Account.Balance x 0.5%
+volumeUnits = riskAmount / (stopPips x Symbol.PipValue)
+volume      = round DOWN to the symbol's volume step
+```
+
+- If the result is below the symbol's minimum volume, skip the trade. Never round up.
+- Example: balance 10,000 USD, stop 20 pips on EURUSD. Risk is 50 USD; pip value per unit is 0.0001 USD; volume = 50 / (20 x 0.0001) = 25,000 units (0.25 lot).
+- cTrader's `Symbol.VolumeForProportionalRisk` is logged beside the formula for comparison, because forum users have reported it disagreeing with manual calculation.
+- **Margin check:** skip if free margin after the trade would fall below 50% of equity.
+
+**At 100,000 USD (FTMO simulated capital)**
+
+| Item | Amount |
+|---|---|
+| Risk per trade (0.5%) | 500 USD |
+| Total open risk cap (1.5%) | 1,500 USD |
+| Daily risk budget (1.5%) | 1,500 USD |
+| Drawdown kill switch (8%) | 8,000 USD |
+| 2% monthly target | 2,000 USD, a net +4R |
+| FTMO daily floor (2-Step) | Balance at 00:00 CE(S)T minus 5,000 USD |
+| FTMO overall floor (2-Step) | 90,000 USD |
+
+| Stop distance on EURUSD | Position size | Margin at 1:30 (Swing) |
+|---|---|---|
+| 12 pips (smallest allowed) | 416,000 units (4.16 lots) | About 15% of the account |
+| 20 pips | 250,000 units (2.5 lots) | About 10% |
+| 50 pips | 100,000 units (1 lot) | About 4% |
+
+- **Leverage.** The Swing account type has 1:30 leverage. The smallest allowed stop was raised from 8 to 12 pips so that three simultaneous trades still fit inside the margin check. This also narrows the range of position sizes, which suits FTMO's rule on consistent sizing.
+- **Fills.** These sizes are normal for major pairs, but partial fills on limit orders and slippage on stops become more likely than with small sizes. Both are logged per trade and stress-tested in section 12.1.
+- **Backtests** use a 100,000 USD starting balance so sizes and commissions are realistic.
+
+**Minimum practical account.** With a 1,000-unit minimum and a 30-pip stop, the smallest possible risk is about 3 USD, which is 0.5% of 600 USD. Below roughly that balance many trades will be skipped. This does not apply at 100,000 USD.
+
+**What sizing cannot prevent.** A price gap through the stop (weekend, major news) can lose more than 0.5%. The news filter and Friday rules reduce this; they do not remove it.
+
+### 4.2 Account-level limits (all recalculated from broker data, nothing remembered)
+
+| Limit | Default | How it is calculated | Effect |
+|---|---|---|---|
+| Total open risk | 1.5% | Stop distance x volume of every bot position and pending order | At most three trades at risk |
+| Same-direction exposure per currency | 2 | Buying EURUSD counts as long EUR and short USD. For each currency, at most two bot positions or orders on the same side | Limits correlated exposure, for example long EURUSD, GBPUSD and AUDUSD together |
+| Daily risk budget | 1.5% of initial capital (1,500 USD) | Measured the way FTMO measures its daily limit: from the balance at 00:00 CE(S)T. A new trade is allowed only if equity would still be within 1,500 USD of that balance even if every open stop, including the new one, were hit | No new entries until the next CE(S)T day; pending orders cancelled |
+| Drawdown kill switch | 8% | Highest closing balance since `RiskEpochDate` (from history) minus current equity | Halt (section 8.5). Resumes only when you set a new `RiskEpochDate` |
+| FTMO emergency guard | Equity within 1,000 USD of either FTMO floor | Daily: equity at or below the 00:00 CE(S)T balance minus 4,000 USD. Overall: equity at or below 91,000 USD | Close all positions, cancel orders, Halt. The only case where the bot closes trades for risk reasons |
+
+Because these are computed from the account's own records, a restart cannot reset them. The balance at 00:00 CE(S)T is rebuilt from the current balance and the trades closed since then.
+
+With the daily risk budget, a normal worst day loses about 1,500 USD against FTMO's 5,000 USD allowance. The emergency guard exists for abnormal events such as a gap through several stops; breaching an FTMO floor ends the account, so closing early is the lesser loss.
+
+### 4.3 Circuit breakers and sanity caps
+
+Protection against code errors rather than market risk.
+
+| Check | Default | Action |
+|---|---|---|
+| Entries per symbol per day | 2 | Skip further signals |
+| Entries per account per day | 6 | Skip further signals |
+| Order requests per instance per hour | 20 | Halt |
+| Order requests per instance per day | 100 | Halt. Four instances stay far below FTMO's 2,000-a-day limit |
+| Unhandled errors per hour | 5 | Halt |
+| Calculated risk above 0.55% of balance | n/a | Skip and alert |
+| Volume above `MaxVolumeUnits` | Per symbol | Skip and alert |
+| Stop or target on the wrong side of entry | n/a | Skip and alert |
+
+## 5. Orders and execution
+
+### 5.1 Filters checked before placing an order
+
+- Time is inside 07:00 to 17:00 UTC, and before `FridayNoEntryUtc` (12:00) on Fridays.
+- Current spread is at most `MaxSpreadPips` (1.5).
+- The symbol's market is open.
+- No existing bot position or pending order on the symbol.
+- Not inside a news window; calendar data is valid (section 6).
+- Bot state is Running (not Recovering or Halted).
+
+### 5.2 Order format
+
+- Limit order with stop loss, take profit and expiry attached at placement. These live on the broker's server and keep working when the bot is offline.
+- **Label:** `ZFVG|v1|<symbol>|<zoneId>`. Identifies the bot, its version, and the zone.
+- **Comment:** planned entry, stop, target, risk amount and a short hash of the parameters. This is the trade's memory; it is stored at the broker and comes back in positions and history.
+
+### 5.3 Idempotent placement
+
+1. Immediately before sending, query the broker for any order or position with this zone's label. If one exists, do nothing.
+2. Send the order with a synchronous call and read the result.
+3. On success, verify the order now appears with the expected stop, target and expiry.
+4. On failure with a clear rejection (bad volume, market closed, no money): log, mark Skipped, do not retry.
+5. On an unclear outcome (timeout, disconnected, technical error): **do not resend.** At the next bar close, repeat step 1. Resend only if nothing exists at the broker, the signal is at most one bar old and price has not traded through the entry.
+
+### 5.4 After a fill
+
+- Confirm the position has a stop loss and take profit. If the stop is missing, set it from the comment data. If that fails twice, close the position and alert.
+- Partial fills are kept as a normal position; the unfilled remainder dies at order expiry.
+
+### 5.5 Open position management (v1 baseline)
+
+- No break-even move and no trailing stop. The trade ends at stop, target or Friday close.
+- Friday 20:00 UTC: close positions and cancel pending orders.
+
+## 6. News filter
+
+### 6.1 Rule
+
+For each symbol, the relevant currencies are its base and quote (EURUSD: EUR and USD).
+
+- **News window:** from `NewsBeforeMin` (30) minutes before to `NewsAfterMin` (30) minutes after every high-impact event for a relevant currency.
+- **No new orders** inside a window.
+- **FVG made by news is not a signal:** if any of the three FVG bars overlaps a window, the signal is skipped.
+- **Pending orders never sit through news:** when an order is placed, its expiry is set to the earlier of the normal expiry and the next window's start. If that leaves under 15 minutes, the signal is skipped. Because expiry is enforced by the broker, this works even if the bot is offline.
+- **Open positions** are left alone in the baseline; their stops are at the broker. Closing before news is a variant to test (section 12.4).
+
+### 6.2 Calendar data
+
+cTrader has no confirmed built-in calendar feed for bots, so the calendar comes from outside through a small provider interface with three sources.
+
+| Source | Used when | Notes |
+|---|---|---|
+| Two live feeds over HTTP | Live and demo | Event time, currency and impact from each feed, combined as described below |
+| Embedded history | Backtests | High-impact events for the four pairs' currencies over the test period, compiled into the bot. cTrader's HTTP calls during a backtest return today's data, not historical data, so the live feed must be off in backtests |
+| Manual list | Any time | `ExtraBlackouts` parameter for unscheduled events and holidays |
+
+**Live feed handling**
+
+- Fetch at start and every `NewsRefreshHours` (4). Never more than once an hour, including across restarts, so a restart loop cannot trigger the provider's rate limit.
+- Validate every download: it must parse, contain events, and cover the current week. A failed or invalid download never replaces good data.
+- Keep the last good copy in local storage.
+- All times converted to UTC on load.
+- HTTP calls must not delay bar processing; they run on a timer between bars.
+
+**Live sources**
+
+| | Forex Factory weekly export | ShowMyTrades calendar API |
+|---|---|---|
+| Cost and key | Free, no key | Free, no key |
+| Looks ahead | Current week only | Up to 30 days |
+| Impact rating | High, medium, low; the rating most retail traders follow | High, medium, low; assigned by the provider |
+| Times | Need converting to UTC | Already UTC |
+| Request limits | About two requests per five minutes; file refreshed hourly | 600 per minute; responses cached 15 minutes |
+| Terms | No official API or agreement | States that automated and commercial use is allowed |
+| Weakness | Unofficial; one week of data | Small provider; no promise of completeness or timing |
+
+**How the two are combined**
+
+- An event is treated as high impact if **either** feed rates it high.
+- If one feed is down, the other is used alone and an alert is sent.
+- Both downloads are cached. The cache is trusted for up to `NewsMaxCacheHours` (48) without a successful refresh.
+- Each feed's events are logged, so their differences can be reviewed weekly and a weak feed replaced.
+
+**Why two.** Neither free feed comes with a service guarantee, so each backs up the other. Forex Factory's ratings are also the ones in the backtest history (6.4); treating an event as high impact when either feed says so keeps the live filter at least as strict as the backtested one.
+
+### 6.3 Fail-safe
+
+If neither feed has refreshed within `NewsMaxCacheHours`, or the cached data does not cover the current time, `NewsFailMode` = Block applies: no new entries until a feed returns, and an alert is sent. Existing trades are unaffected.
+
+### 6.4 Backtest parity
+
+The same filter code runs in backtests using the embedded history. Results are reported with the filter on and off, so its effect is measured rather than assumed.
+
+**Building the history file (phase 4)**
+
+- **Main source:** a public archive of the Forex Factory calendar covering January 2007 to April 2025.
+- **Top-up:** April 2025 to November 2026 from a second source (section 6.5), then kept current from the live feeds' own logs.
+- **Keep only** high-impact events for USD, EUR, GBP, JPY and AUD.
+- **Checks before use:** confirm the archive's time zone and convert to UTC; spot-check at least 30 known releases (payrolls, CPI, central bank decisions) against the official schedules; check daylight-saving weeks specifically.
+- The archive was collected from a public website for research use. It is used here for personal backtesting only and is not redistributed.
+
+### 6.5 Other options considered
+
+| Option | Cost | Why not chosen |
+|---|---|---|
+| financecalendar.com | Free key: 100 responses a month. Paid from 9.99 USD a year | Free allowance is too small for refreshing several times a day; history is limited. A reasonable cheap third feed if one of the two proves weak |
+| biquote.io | Free, no key | About 90 days of data each way; limits and terms not stated |
+| JBlanked News API | Free key: one request per five minutes. Paid tier reported at 47 USD a month | Usable as a replacement feed; details could not be verified |
+| Financial Modeling Prep | Free plan of 250 calls a day; paid plans from roughly 20 to 30 USD a month | Has an impact field and about ten years of history, so it is the first candidate for the history top-up. Whether the free plan includes the calendar needs a test call |
+| EODHD | About 20 to 60 USD a month | Paid, with no clear advantage for this use |
+| Trading Economics | Calendar access reported as enterprise-only, or from about 149 USD a month | Far more than this bot needs |
+| Finnhub | Calendar only on a 3,500 USD a month plan | Not realistic |
+| FXStreet, Benzinga | Licensed, price on request | Aimed at brokers and publishers |
+
+If you later want a single paid provider with an account and support, Financial Modeling Prep is the one to test first.
+
+## 7. Parameters
+
+Only the four marked **Optimise** are searched. New in v0.2 are marked (new).
+
+| Parameter | Default | Role | Test range |
+|---|---|---|---|
+| BiasTimeFrame | D1 | Trend filter timeframe | Fixed |
+| ZoneTimeFrame | H4 | Zone timeframe | Fixed |
+| BiasEmaPeriod | 50 | Trend EMA | **Optimise** 50, 100, 200 |
+| AtrPeriod | 14 | All ATR values | Fixed |
+| SwingStrength | 3 | Bars each side of a swing | Fixed |
+| ImpulseAtrMult | 2.0 | Minimum impulse size | **Optimise** 1.5 to 3.0, step 0.5 |
+| MaxImpulseBars | 3 | Bars in an impulse leg | Fixed |
+| MaxBaseBars | 3 | Bars in a base | Fixed |
+| RequireBos | true | Impulse must break structure | Test on and off |
+| MinZoneAtr / MaxZoneAtr | 0.2 / 1.5 | Zone height limits | Fixed |
+| MaxZoneAgeBars | 120 | Zone expiry | Fixed |
+| ConfirmWindowBars | 16 | Bars allowed for the FVG | Fixed |
+| MinFvgAtr | 0.25 | Minimum gap height | **Optimise** 0.15 to 0.45, step 0.10 |
+| MinFvgSpreadMult (new) | 3 | Gap height versus spread | Fixed |
+| EntryLevelPct | 50 | Entry depth into the gap | Test 0, 50, 100 |
+| EntryExpiryBars | 8 | Limit order life | Fixed |
+| StopBufferAtr | 0.1 | Stop buffer | Fixed |
+| MinStopPips | 12 (was 8) | Smallest allowed stop | Fixed |
+| MaxStopAtr | 2.0 | Largest allowed stop (x ATR H4) | Fixed |
+| RewardRisk | 2.0 | Target in R | **Optimise** 1.5 to 3.0, step 0.5 |
+| MinRoomR | 1.5 | Clear space to opposing zone | Fixed |
+| CostToRiskMax (new) | 0.10 | Costs as a share of stop distance | Fixed |
+| RiskPercent | 0.5 | Risk per trade | Fixed |
+| MaxOpenRiskPercent | 1.5 | Total open risk | Fixed |
+| MaxPositionsPerCurrency | 2 | Correlation cap | Fixed |
+| DailyLossLimitPercent | 1.5 | Daily stop | Fixed |
+| MaxDrawdownPercent | 8 | Kill switch | Fixed |
+| InitialCapital (new in 0.6) | 100,000 | Base for FTMO percentages | Fixed |
+| DayResetZone (new in 0.6) | Europe/Prague | Day boundary at 00:00 CE(S)T, as FTMO uses | Fixed |
+| FtmoDailyLossPercent / FtmoMaxLossPercent (new in 0.6) | 5 / 10 | FTMO's own limits for the 2-Step | Per product |
+| FtmoGuardBufferPercent (new in 0.6) | 1 | Distance from an FTMO floor at which the emergency guard acts | Fixed |
+| MaxRequestsPerDay (new in 0.6) | 100 | Order requests per instance per day | Fixed |
+| RiskEpochDate (new) | First live day | Start date for drawdown measurement | Set manually |
+| MaxEntriesPerSymbolPerDay (new) | 2 | Circuit breaker | Fixed |
+| MaxEntriesPerDay (new) | 6 | Circuit breaker | Fixed |
+| MaxVolumeUnits (new) | 500,000 (5 lots) | Size sanity cap | Fixed |
+| SessionStartUtc / SessionEndUtc | 07:00 / 17:00 | Trading window | Fixed |
+| FridayNoEntryUtc (new) | 12:00 | Last entry time on Friday | Fixed |
+| FridayCloseUtc | 20:00 | Weekend flat time | Fixed |
+| MaxSpreadPips | 1.5 | Spread filter | Per symbol |
+| NewsEnabled (new) | true | News filter on or off | Test on and off |
+| NewsBeforeMin / NewsAfterMin (new) | 30 / 30 | Window around events | Fixed |
+| NewsFailMode (new) | Block | Behaviour without calendar | Fixed |
+| NewsSources (new in 0.3) | Both | Forex Factory, ShowMyTrades, or both | n/a |
+| NewsMaxCacheHours (new in 0.3) | 48 | Longest time without a successful refresh | Fixed |
+| NewsRefreshHours (new) | 4 | Feed refresh interval | n/a |
+| ExtraBlackouts (new) | empty | Manual blackout list | n/a |
+| HeartbeatUrl (new) | empty | External monitor address | n/a |
+| TelegramBotToken / TelegramChatId (new in 0.3) | empty | Telegram alerts. Kept in the parameter file, never in code | n/a |
+
+## 8. Reliability and recovery
+
+### 8.1 Principles
+
+1. **The broker holds the truth.** Orders, positions and history at the broker are the only record of what the bot did. Local memory and local files are a convenience and are never required.
+2. **Protection lives at the broker.** Stop loss, take profit and order expiry are attached when the order is created, so they work with the bot offline.
+3. **Start, restart and reconnect are one procedure.** The bot always assumes it may have been away.
+4. **Never act on the past.** Signals found while catching up are recorded and discarded.
+5. **Fail closed.** Doubt means no new trades.
+
+### 8.2 What happens during an outage
+
+| Item | While the bot is offline |
+|---|---|
+| Open position | Stays open; closes at its stop or target at the broker |
+| Pending limit order | Stays at the broker; may fill (with stop and target attached) or expire on schedule |
+| News protection for pending orders | Still works, because expiry was set before the window |
+| New signals | Missed. They are not taken late |
+| Friday close | **Not performed.** A position can stay open over the weekend with its stop and target. This is the main residual risk; see 8.6 |
+| Risk limits | Not enforced while offline, but no new trades can open either |
+
+### 8.3 Recovery procedure
+
+Runs at every start and after every reconnect. The bot is in state **Recovering** and cannot trade until it finishes.
+
+1. **Wait for connection and data.** Confirm the server is connected and the latest closed M15 bar is recent. Load at least 300 D1 bars, 500 H4 bars and 3,000 M15 bars, loading more history if needed. If data cannot be loaded, stay in Recovering and alert.
+2. **Rebuild the signal layer.** Replay the stored bars through the same detection code with trading switched off. This restores every zone and its state exactly as if the bot had never stopped.
+3. **Read the broker.** List positions, pending orders and recent history carrying the bot's label for this symbol.
+4. **Adopt positions.** For each position: match it to its zone by id, read its plan from the comment, and check it has a stop loss and take profit. Missing stop: set it from the comment. Cannot set: close the position and alert.
+5. **Check pending orders.** Keep an order only if it has a stop, a target and an expiry and its zone is still valid. Otherwise cancel it.
+6. **Handle strangers.** A labelled position whose zone cannot be found (for example after a parameter change) is kept with its existing stop and target, included in risk totals and Friday close, and reported.
+7. **Backfill the journal** with trades that opened or closed while the bot was away.
+8. **Recalculate limits** from history (daily loss, drawdown, open risk, daily entry counts).
+9. **Catch up on duties.** If it is past Friday close, close positions now. If a limit is breached, cancel pending orders.
+10. **Report and resume.** Write a recovery report (positions adopted, orders kept or cancelled, zones active, downtime length), send it as an alert, and switch to Running.
+
+### 8.4 Connection handling
+
+- Subscribe to the server's connected and disconnected events. On disconnect: mark the state, stop sending requests. On reconnect: run the recovery procedure.
+- Under cTrader CLI a user reported that reconnection restarts the bot's start routine instead of raising the connected event. Running the same recovery from both places covers either behaviour.
+- Do not rely on a connection flag before trading. Send the request, read the result, and follow section 5.3.
+- After reconnect, check the bar series for gaps and reload history before resuming.
+- Use server time only, never the machine's clock.
+
+### 8.5 Bot states
+
+| State | New orders | Open trades | Leaves the state when |
+|---|---|---|---|
+| Recovering | No | Protected at broker | Recovery completes |
+| Running | Yes | Managed | n/a |
+| Blocked | No | Managed | Cause clears (calendar back, daily limit resets, data restored) |
+| Halted | No; pending orders cancelled | Managed; Friday close still runs | Kill switch or emergency guard: new `RiskEpochDate` after review. Error storm: next CE(S)T day or manual restart |
+
+The bot never stops its own process when halted. It keeps running in a non-trading state, which avoids restart loops and keeps Friday close and alerts working.
+
+Every event handler is wrapped so that one error is logged and counted but cannot crash the bot.
+
+### 8.6 Known residual risks
+
+| Risk | Mitigation | What remains |
+|---|---|---|
+| Offline across Friday close | No entries after Friday 12:00 UTC; heartbeat alert so you can close from the phone app | Weekend gap on an open trade |
+| Price gaps through the stop | News filter, Friday rules | Loss above 0.5% on rare events |
+| Unscheduled news | `ExtraBlackouts`; stops at broker | Cannot be predicted |
+| Calendar provider wrong or late | Validation, cache, fail-closed | A missed or mistimed event |
+| Broker-side outage | None possible from the bot | Depends on broker |
+| Platform bugs | Defensive checks, pinned CLI version, demo testing before each upgrade | Small |
+
+## 9. Architecture
+
+### 9.1 Modules
+
+| Module | Responsibility |
+|---|---|
+| MarketData | D1, H4 and M15 series, ATRs, EMA, gap checks |
+| BiasFilter | Long, short or neutral from D1 |
+| SwingDetector | Confirmed swing highs and lows on H4 |
+| ZoneDetector | Section 3.2; creates zones with deterministic ids |
+| ZoneBook | Signal-layer state (section 3.3) |
+| FvgDetector | Section 3.4 |
+| SignalEngine | Produces signals; identical in live, replay and backtest |
+| NewsProvider | Live feed, embedded history, manual list; validation and cache |
+| RiskManager | Sizing, limits and circuit breakers, all from broker data |
+| OrderManager | Idempotent placement, verification, cancellation |
+| TradeManager | Post-fill checks, Friday close |
+| Recovery | Section 8.3 |
+| Health | Bot state, error counting, heartbeat, alerts |
+| Journal | Logs, recovery reports, chart drawings on desktop |
+
+The signal-side modules (detectors, ZoneBook, SignalEngine, sizing maths) are plain C# with no cTrader calls, so they can be unit-tested outside the platform.
+
+### 9.2 Data structures
+
+- **Zone:** id, type, proximal, distal, created time, ATR at creation, touch time, lowest low since touch, state.
+- **Fvg:** type, upper, lower, time, height.
+- **Signal:** zone id, FVG, entry, stop, target, stop pips, bar time.
+- **Setup:** signal, volume, order id, state, skip reason.
+- **NewsEvent:** time (UTC), currency, impact, title.
+
+### 9.3 Event flow
+
+| Event | Work done |
+|---|---|
+| Start | Validate parameters; run recovery (8.3) |
+| Server disconnected | Mark state; stop requests |
+| Server connected | Run recovery (8.3) |
+| D1 bar closed | Recompute bias |
+| H4 bar closed | Update swings; detect zones; expire zones |
+| M15 bar closed | Update zone states; detect FVG; produce signal; filters; place order; resolve unclear orders (5.3); check limits |
+| Timer, every minute | Heartbeat; calendar refresh when due; Friday close; news-window state |
+| Position or order event | Verify stops (5.4); update setup; journal |
+| Error or exception | Log, count, alert; halt at threshold |
+
+### 9.4 Rules the code must respect
+
+- **No look-ahead.** For D1 and H4 series read from the M15 chart, the newest bar is still forming. Use only closed bars.
+- **Deterministic.** Same data and parameters always give the same signals.
+- **Replay equals live.** Rebuilding from history must give the same zone states as running continuously (tested in 12.2).
+- **Stateless risk.** No limit depends on a stored value.
+- **No reliance on the stop handler.** Users report it not firing in some environments.
+- **Chart calls are optional.** Drawings run only on desktop; headless runs skip them.
+
+## 10. Platform and hosting
+
+### 10.1 Why not cTrader cloud
+
+| Need | cTrader cloud | VPS with cTrader CLI |
+|---|---|---|
+| HTTP for news feed, heartbeat, alerts | No HTTP requests are sent | Available |
+| Stored files and local storage | Deleted when the instance restarts | Kept on a mounted volume |
+| Demo instances | 1, stopped after 7 days | No limit |
+| Survives your home power or internet failing | Yes | Yes, if the VPS is in a data centre |
+| Cost | Free | VPS fee |
+
+The cloud remains a fallback. One of the news feeds offers a WebSocket route that works there, but Telegram alerts and the heartbeat would not.
+
+### 10.2 Stage 2: VPS setup (for live trading)
+
+- **Host:** a small Linux VPS in a commercial data centre, located outside the United States (FTMO does not accept access from a US location). Your home or office power and internet then have no effect on the bot. If you prefer your own machine, add a UPS, set the BIOS to power on when electricity returns, and consider a mobile-data backup link.
+- **Runtime:** the official cTrader CLI Docker image. cTrader CLI runs cBots without the desktop application.
+- **One container per symbol** (four containers), each started with `ctrader-cli run` for its symbol on M15, with a parameter file.
+- **Automatic restart:** Docker's restart policy restarts each container after a crash or reboot, and Docker itself starts at boot. No login is needed.
+- **Persistence:** a mounted volume for the bot's local storage and logs.
+- **Credentials:** the cTrader ID password sits in a file readable only by the service user. Secure the VPS (key-only SSH, firewall, automatic security updates).
+- **Version control:** pin the CLI image version. Upgrade only after the fault-injection tests pass on demo with the new version.
+- **Deployments:** deploy a new bot version only when flat, or after confirming on demo that the new version adopts the old version's trades.
+
+cTrader's documentation does not describe what the CLI does after a crash, reboot or disconnect, so the restart behaviour must be proven on a demo account (section 12.3).
+
+### 10.3 Development
+
+- cTrader desktop (Windows or Mac) for coding, visual checks and backtests.
+- C#, access rights `None`, no external DLLs, robot time zone UTC.
+- Compiled for the .NET version the CLI requires.
+- Confirm in phase 3 that HTTP calls and local storage behave under the CLI image as they do on desktop.
+
+### 10.4 Broker conditions to record
+
+Commission per lot, typical spread per symbol, minimum volume and step, minimum stop distance, swap rates, depth of tick history, and whether the account is hedging or netting.
+
+### 10.5 Stage 1: your laptop (demo account, a few days)
+
+**Purpose.** A first end-to-end check of detection, orders, news feeds, Telegram alerts and recovery, before paying for a server.
+
+**Setup**
+
+- An FTMO Free Trial account, which has the same trading conditions as the Challenge and costs nothing.
+- Run the four instances from cTrader desktop on Windows. Starting each as an external process keeps it running if the cTrader window is closed.
+- Laptop settings: never sleep or hibernate, on battery or on power; closing the lid does nothing; keep it plugged in; pause automatic update restarts for the test period.
+
+**What this stage can prove**
+
+- Fault tests 1 and 3 to 14 from section 12.3, using Wi-Fi off, sleep and manual restarts. Test 10 needs the stage to include a Friday evening.
+- Recovery after real outages. The battery carries the laptop through a power cut, but the router usually goes down, which exercises the reconnect path.
+
+**What it cannot prove**
+
+- Unattended restart after a full power loss or reboot (test 2), because a laptop needs someone to log in and start cTrader.
+- Round-the-clock uptime over weeks.
+
+**Move to the VPS when** every applicable fault test has passed and there have been no positions without a stop loss, no duplicate orders and no recovery that needed manual help. All 14 tests are then repeated on the VPS.
+
+## 11. Logging, monitoring and alerts
+
+**Per signal (taken or skipped):** time, symbol, bias, zone id and edges, FVG edges, entry, stop, target, stop pips, volume, spread, cost-to-risk, news status, skip reason.
+
+**Per trade:** requested and filled price, slippage, exit reason, result in R and in money, commission, swap, duration, maximum adverse and favourable move in R.
+
+**Daily summary:** trades, net R, balance, equity, drawdown, distance to FTMO's daily and overall floors, progress to the profit target, skips by reason, calendar status, uptime, restarts.
+
+**Inactivity warning:** an alert after 21 days without a trade, including while halted, because FTMO is reported to close accounts after 30 days without one.
+
+**Recovery report:** after every start or reconnect (section 8.3, step 10).
+
+**Heartbeat (dead-man's switch).** Every five minutes each instance calls an external heartbeat-monitoring address. If the calls stop (power, internet, crash, frozen process), the monitoring service alerts your phone. This is the only way to learn about an outage from outside the server.
+
+**Phone alerts by Telegram.** You create a Telegram bot once and give its token and your chat id to the cBot as parameters. The cBot sends each alert with one HTTP call.
+
+- Alerts sent: bot started or recovered, state change, trade opened or closed, order rejected, stop loss missing or repaired, kill switch, daily limit, a news feed down, calendar unavailable, circuit breaker, error storm.
+- A daily summary message.
+- Alerts are best-effort. A failed send is retried later and never delays or blocks trading logic.
+- The heartbeat monitor should also notify the same Telegram chat, so an outage of the bot itself still reaches you.
+
+**Log files:** written to the mounted volume with rotation, so they survive restarts and cannot fill the disk.
+
+## 12. Testing and validation
+
+### 12.1 Strategy backtest
+
+**Data and settings**
+
+- Tick data from the broker's server. Bar-data backtests misjudge stop, target and limit fills.
+- Longest history available, target 5 to 10 years, each symbol separately.
+- Real commission; starting balance equal to planned live capital.
+- News filter on, using embedded history; repeat with it off.
+
+**Data split**
+
+| Segment | Period | Use |
+|---|---|---|
+| Development | Start of data to November 2024 | Baseline, rule changes, optimisation |
+| Holdout | November 2024 to November 2026 | Run once, at the end, with final settings |
+
+**Sequence**
+
+1. Baseline run with default parameters on all four symbols, no optimisation.
+2. If the baseline is unprofitable across symbols, revisit the rules. Do not optimise a losing baseline into a winner.
+3. Coarse optimisation of the four **Optimise** parameters. Prefer broad plateaus of good results.
+4. Re-run chosen settings as a single backtest; optimisation passes and single runs sometimes disagree.
+5. Sensitivity: move each key parameter 20% either way.
+6. Stress costs: repeat with spread and commission increased by 50% and with 0.5 pip extra slippage on stops.
+7. Combine the four symbols' trade lists by time for portfolio drawdown and exposure caps.
+8. Monte Carlo: reshuffle the trade order 1,000 times to estimate the range of drawdowns and of 30-trade results (used in 13.3).
+9. Challenge simulation: replay the backtest's trades through FTMO's exact rules several thousand times to estimate the chance of passing each phase and the time it takes, at 0.5%, 0.75% and 1.0% risk per trade (section 15.5).
+10. Benchmark: a simple D1 trend-following bot on the same data and costs.
+11. Holdout run, once.
+
+### 12.2 Code tests
+
+| Test | Pass condition |
+|---|---|
+| Unit tests on zone, FVG and sizing logic | Hand-built bar sequences give the expected zones, signals and volumes |
+| Visual check | 50 or more drawn zones and FVGs match the written definitions |
+| Determinism | Two identical backtests produce identical trade lists |
+| Replay equals live | Backtests started on different dates show identical zone states from the point where their histories overlap |
+| No look-ahead | Signals never use a bar that had not closed at signal time |
+| News parity | Embedded calendar blocks the same events in backtest that the live feed would block |
+
+### 12.3 Fault-injection tests (demo account, on the real VPS)
+
+| # | Fault | Expected result |
+|---|---|---|
+| 1 | Kill the container while a position is open | Restarts alone; position adopted; no new order |
+| 2 | Reboot the VPS while a limit order is pending | Order still at broker; kept if valid |
+| 3 | Order fills while the bot is stopped | Position adopted; stop and target confirmed |
+| 4 | Trade hits target while the bot is stopped | Found in history; journal backfilled; zone not traded again |
+| 5 | Network cut for 1, 10 and 60 minutes | Recovery runs; signals from the gap discarded |
+| 6 | Network cut at the moment an order is sent | No duplicate order after reconnect |
+| 7 | Remove the stop loss by hand | Stop restored within one event; alert sent |
+| 8 | Start a second instance on the same symbol | No second order for the same symbol |
+| 9 | Calendar feed returns an error or garbage | Cache used; if stale, entries blocked and alert sent |
+| 10 | Stop the bot across Friday close with a position open | On restart the position is closed at once; alert sent |
+| 11 | Change a parameter while a trade is open | Trade kept as a stranger with its stop and target |
+| 12 | Stop all heartbeats | Monitoring service alerts the phone |
+| 13 | Force repeated exceptions | Bot halts; does not crash or loop |
+| 14 | Restart ten times in ten minutes | Calendar fetched at most once; no orders duplicated |
+
+**Soak test.** Four weeks of continuous demo running on the VPS with at least ten forced restarts at random times.
+
+### 12.4 Strategy variants
+
+Ideas that may strengthen results are tested one at a time against the baseline, on development data only. A variant is adopted only if it improves the development result, holds up under the sensitivity and cost-stress tests, and adds no more than one parameter.
+
+Candidates, in order:
+
+1. Break-even at +1R.
+2. Close open positions before high-impact news.
+3. Liquidity sweep: the touch must first take out a prior M15 swing low.
+4. Trend from H4 market structure instead of the D1 EMA.
+5. Discount filter: demand zones only in the lower half of the recent D1 range.
+6. Volatility filter: skip when H4 ATR is unusually low or high.
+7. London-only or New York-only entries.
+8. Time stop after 96 bars.
+
+The number of variants tried is recorded, because every extra attempt raises the chance of a result that is only luck.
+
+## 13. Acceptance criteria and build phases
+
+### 13.1 Performance thresholds (proposed)
+
+| Measure | Development | Holdout |
+|---|---|---|
+| Trades, all symbols | 300 or more | 60 or more |
+| Profit factor after costs | 1.30 or higher | 1.15 or higher |
+| Average result per trade | +0.15R or higher | At least half the development figure |
+| Maximum drawdown at 0.5% risk | 6% or less (FTMO's floor is 10%) | 6% or less |
+| Challenge simulation: chance of passing the Challenge phase | 70% or higher | n/a |
+| Challenge simulation: chance of breaching an FTMO floor | 10% or lower | n/a |
+| Profitable symbols | 3 of 4 | 3 of 4 |
+| Share of profit from one symbol | 60% or less | n/a |
+| Profit factor under cost stress | Above 1.10 | n/a |
+| Versus benchmark | Better return-to-drawdown ratio | Same |
+
+If the holdout fails, the strategy is rejected or redesigned; the holdout is not reused for tuning.
+
+### 13.2 Reliability thresholds
+
+| Measure | Required |
+|---|---|
+| Code tests (12.2) | All pass |
+| Fault-injection tests (12.3) | All 14 pass |
+| Soak test: positions without a stop loss | 0 |
+| Soak test: duplicate orders or zones traded twice | 0 |
+| Soak test: restarts needing manual help | 0 |
+| Soak test: unexplained differences between journal and broker history | 0 |
+
+### 13.3 Live edge monitoring
+
+Calculated from account history after every closed trade.
+
+| Condition (last 30 trades versus the backtest's Monte Carlo range) | Action |
+|---|---|
+| Average result below the 5th percentile | Cut risk to 0.25%; alert |
+| Average result below the 1st percentile | Block new entries; review |
+| Average slippage above 0.5 pip over 20 trades | Alert; review broker conditions |
+
+Every quarter, re-run the backtest including the latest data and compare live results with it.
+
+### 13.4 Phases
+
+1. **Agree the spec.** Resolve section 14.
+2. **Signal layer.** Detection code as a tested library, with chart drawings. Code tests in 12.2.
+3. **Execution, recovery and safety.** Sections 4, 5, 8 and 11. Confirm platform behaviour under the CLI.
+4. **News module** and the historical event file.
+5. **Baseline backtest.** Go / no-go 1.
+6. **Robustness, benchmark and variants.**
+7. **Holdout.** Go / no-go 2.
+8. **Laptop stage on an FTMO Free Trial (10.5), then VPS deployment (10.2).** Fault-injection tests at each stage. Go / no-go 3.
+9. **Soak and forward test on Free Trial accounts.** At least four weeks and 30 trades, with results and slippage close to the backtest.
+10. **Start the purchased FTMO Challenge** only after go / no-go 1 to 3 have passed (see 15.7 for keeping it valid until then). Run the Challenge and Verification at the risk level chosen from the challenge simulation (0.5% unless the simulation supports another).
+11. **FTMO Account.** Same bot and settings; live edge monitoring (13.3) active.
+
+## 14. Open questions
+
+1. On what date did you buy the Challenge? It decides which option in section 15.7 is open to you.
+2. Will this account be used only by the bot?
+
+**Resolved:** account (FTMO 2-Step, Swing, cTrader, 100,000 USD, bought and not started), pairs (four majors), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
+
+## 15. FTMO account
+
+Rules below were checked on 13 November 2026 against FTMO's own pages and recent third-party summaries. FTMO changes its terms from time to time, so confirm each one in your FTMO client area before buying.
+
+### 15.1 What the account is
+
+- FTMO accounts use **simulated capital** at every stage. The 100,000 USD is not your money. The cash you can lose is the challenge fee.
+- 2-Step path: FTMO Challenge, then Verification, then the FTMO Account, where you are paid a share of the simulated profit (reported as 80%, rising to 90%).
+- The 2-Step fee is reported as refunded with the first reward.
+
+### 15.2 Rules that matter for this bot
+
+| Rule | 2-Step | 1-Step |
+|---|---|---|
+| Profit target | 10%, then 5% | 10% |
+| Maximum daily loss | 5% of initial capital | 3% |
+| Maximum loss | 10%, fixed | 10%, trailing at end of day |
+| Minimum trading days | 4 per phase | None stated |
+| Consistency rule | None | Best day at most 50% of profit |
+| Swing account type | Available | Not available |
+| Time limit | None | None |
+
+**How FTMO measures the limits (2-Step, 100,000 USD)**
+
+- **Daily:** equity, including open trades, commissions and swaps, must stay above the balance at 00:00 CE(S)T minus 5,000 USD.
+- **Overall:** equity must never fall below 90,000 USD.
+
+**Standard or Swing (the difference applies once funded)**
+
+| | Standard | Swing |
+|---|---|---|
+| Forex leverage | 1:100 | 1:30 |
+| Restricted news | No order may execute from 2 minutes before to 2 minutes after, on the affected symbols. This includes stop loss, take profit and pending orders | No restriction |
+| Weekend or a market break over 2 hours | All positions must be closed beforehand | No restriction |
+| Changing later | Cannot be changed to Swing | Can be changed to Standard on an account with no trades |
+
+During the Challenge and Verification neither type has news or weekend restrictions.
+
+**Other rules**
+
+- Bots are allowed, with no approval step. The strategy must be your own; widely shared third-party bots risk refusal.
+- Server limits: 200 orders at a time, 2,000 positions a day, and more than 2,000 server requests a day counts as forbidden hyperactivity.
+- At most 50 lots per forex order.
+- No opening trades in the two hours before a market closure of two hours or more when major events are scheduled.
+- Position sizes and risk per trade should stay consistent.
+- The account is for your personal use only. A VPS is allowed, but not from a United States location.
+- Reported: an account with no trade for 30 days can be closed.
+
+### 15.3 Configuration: 2-Step, Swing, cTrader (bought, not started)
+
+This is the account you hold, and it is the right fit for this bot:
+
+1. **2-Step** has the wider daily limit, a fixed overall floor and no best-day rule.
+2. **Swing, because of how the bot protects trades.** Every trade has its stop and target at the broker. On a funded Standard account, a stop or target filling inside a restricted news window is a breach, and the bot cannot prevent a broker-side stop from filling. Avoiding it would mean closing every position before each restricted release, and an outage at the wrong moment could still cause a breach.
+3. **Swing, because of weekends.** Standard requires being flat before the weekend. If the server is offline at Friday close, that is a rule breach on Standard and only a market risk on Swing.
+4. **It must be chosen at purchase.** A Standard account cannot become Swing later.
+
+**The cost of Swing** is 1:30 leverage. The bot is adjusted for it: smallest stop 12 pips and a 5-lot size cap (section 4.1).
+
+The bot still closes positions on Friday evening and avoids entries around news. On Swing these are trading choices, not rules whose failure ends the account.
+
+### 15.4 The bot's limits inside FTMO's
+
+| | FTMO limit | Bot limit | Room left |
+|---|---|---|---|
+| Daily | Equity above the 00:00 CE(S)T balance minus 5,000 | Daily risk budget of 1,500, measured the same way | 3,500 |
+| Overall | Equity above 90,000 | Kill switch 8% below the highest closing balance: 92,000 at the start | 2,000 at the start, more as the balance grows |
+| Last resort | n/a | Emergency guard closes everything 1,000 before either FTMO floor | n/a |
+
+### 15.5 What the targets mean
+
+| Phase | Target | At 0.5% risk | At the hoped-for +4R a month |
+|---|---|---|---|
+| Challenge | +10,000 USD | +20R net | About 5 months |
+| Verification | +5,000 USD | +10R net | About 2.5 months |
+
+- There is no time limit, so a slow pass is allowed. The +4R a month is a hope, not a measurement.
+- Raising risk shortens the wait and raises the chance of hitting a floor. The challenge simulation (12.1, step 9) puts numbers on that trade-off before any fee is paid.
+- If risk per trade changes, the open-risk cap and daily risk budget scale with it and must still sit well inside FTMO's 5,000 USD.
+
+### 15.6 Staging with FTMO
+
+1. **Backtests** on FTMO's own cTrader price history and commission (reported as about 5 USD per lot; confirm on the trial account).
+2. **Laptop stage and soak test** on FTMO Free Trial accounts, which are free, repeatable and have the Challenge's trading conditions. Each trial is reported to last 14 days, to end early if no trade is placed in its first 7 days, and to be limited to one at a time, so the four-week soak test spans several trials in a row.
+3. **Challenge and Verification** on the VPS.
+4. **FTMO Account.**
+
+**To confirm on the first Free Trial**
+
+- That a Free Trial can be opened on cTrader. One source says trials are issued on MetaTrader 5. If so, the laptop stage needs another cTrader demo account, and FTMO-specific checks wait for the Challenge account.
+- cBots run on an FTMO cTrader account from cTrader desktop and from cTrader CLI.
+- Symbol names, minimum volume and step, minimum stop distance, typical spreads, commission.
+- How much tick history FTMO's cTrader provides for backtests.
+- Leverage shown on the account.
+
+FTMO accounts are simulated accounts, so cTrader cloud's demo limits (one instance, seven days) may apply to them. This is one more reason to use the VPS.
+
+### 15.7 Your purchased Challenge: do not place a trade yet
+
+The bot is not built or tested, and the first trade on the Challenge account has consequences. From FTMO's Challenge terms (dated 12 October 2026, as quoted in search results; read the full terms in your client area and confirm with FTMO support):
+
+| Event | What the terms say |
+|---|---|
+| First trade | Activates the Challenge phase |
+| Right to withdraw from the purchase | 14 calendar days, and only before the first trade |
+| No activation within 30 calendar days of the account being made available | Access is suspended |
+| After suspension | Renewal can be requested within 6 months; after that the agreement ends with no refund |
+| After activation | Prolonged inactivity can end the Challenge. Third-party summaries put this at 30 days without a trade, with a freeze available on request |
+
+**Realistic timing.** Building the bot, backtesting, and a four-week soak test will take roughly two to three months before the Challenge should start.
+
+**Options**
+
+1. **Within 14 days of purchase and no trade placed:** withdraw from the purchase and buy again when the bot has passed its tests. This removes all deadlines.
+2. **Past 14 days:** leave the account untouched, let access suspend at 30 days, and request renewal when the bot is ready. The latest date is 6 months after suspension; put it in your calendar with a margin.
+3. **Not advised:** activating now, either by hand or with an untested bot. Manual trades would also break the assumption that the account is used only by the bot.
+
+Before choosing option 2, ask FTMO support to confirm in writing that a never-activated Challenge can be renewed and whether renewal carries any cost or condition.
+
+## References
+
+- cTrader Algo: requirements for cBots in the cloud — https://help.ctrader.com/ctrader-algo/documentation/cbots/cloud-requirements/
+- cTrader Algo: cloud features and limits — https://help.ctrader.com/ctrader-algo/documentation/cloud-features/
+- cTrader CLI: cBot operations and Docker — https://help.ctrader.com/ctrader-cli/cbots/
+- cTrader CLI: run a cBot around the clock — https://help.ctrader.com/ctrader-cli/use-cases/run-a-cbot-around-the-clock/
+- cTrader Algo: network access — https://help.ctrader.com/ctrader-algo/guides/network-access/
+- cTrader Algo: local storage — https://help.ctrader.com/ctrader-algo/guides/local-storage/
+- cTrader Algo: server connection events — https://help.ctrader.com/ctrader-algo/references/Application/IServer/
+- cTrader Algo: bar events — https://help.ctrader.com/ctrader-algo/how-tos/cbots/handle-bar-events/
+- cTrader Algo: multi-timeframe strategies — https://help.ctrader.com/ctrader-algo/how-tos/cbots/code-multitimeframe-strategies/
+- cTrader Algo: trading operations — https://help.ctrader.com/ctrader-algo/how-tos/cbots/cbot-trading-operations/
+- cTrader Algo: backtesting and optimisation — https://help.ctrader.com/ctrader-algo/backtesting-and-optimizing-cbots/
+- cTrader forum: CLI reconnect behaviour — https://community.ctrader.com/forum/ctrader-algo/41399/
+- cTrader forum: pending orders after a disconnect — https://communityuat.ctrader.com/forum/cbot-support/3843
+- cTrader forum: VolumeForProportionalRisk formula — https://community.ctrader.com/forum/ctrader-algo/40686
+- cTrader forum: economic calendar access for cBots — https://community.ctrader.com/forum/ctrader-support/23225/
+- Forex Factory forum: calendar export limits — https://www.forexfactory.com/thread/post/15166506
+- ShowMyTrades: calendar API reference — https://showmytrades.com/docs/api/economic-calendar
+- Forex Factory calendar archive 2007 to 2025 — https://huggingface.co/datasets/Tropstan/Forex_Factory_Calendar/blob/main/README.md
+- financecalendar.com: API and plans — https://www.financecalendar.com/api/
+- biquote.io: calendar API — https://biquote.io/guides/economic-calendar-api.html
+- Financial Modeling Prep: economic calendar — https://site.financialmodelingprep.com/developer/docs/economic-calendar-api
+- FXMacroData: calendar API price comparison (vendor-written) — https://fxmacrodata.com/articles/best-macroeconomic-data-apis-2026
+- cTrader CLI: overview and external process — https://help.ctrader.com/ctrader-algo/documentation/ctrader-cli/
+- FTMO: Swing account type — https://ftmo.com/faq/what-is-the-swing-account-type-and-how-does-it-work/
+- FTMO: holding positions overnight and over the weekend — https://ftmo.oanda.com/faq/do-i-have-to-close-my-positions-overnight-or-before-weekend
+- FTMO: instruments, strategies and server limits — https://ftmo.com/au/faq/which-instruments-can-i-trade-and-what-strategies-am-i-allowed-to-use/
+- FTMO: forbidden trading practices — https://ftmo.oanda.com/forbidden-trading-practices/
+- FTMO rules summary with sources (third party) — https://proea.app/en/blog/ftmo-rules
+- FTMO news rule explained (third party) — https://proea.app/en/blog/ftmo-news-trading
