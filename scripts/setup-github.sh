@@ -84,11 +84,13 @@ echo "$RULESET" | gh api --method POST "repos/$REPO/rulesets" --input - >/dev/nu
 cat <<'NEXT'
 
 Done. Still to do by hand:
-  1. Settings > Secrets and variables > Actions > New repository secret:
+  1. Optional, only if the validator workflow is switched on:
+     Settings > Secrets and variables > Actions > New repository secret:
        ANTHROPIC_API_KEY   (for the validator workflow)
      Optional variable: VALIDATOR_MODEL
   2. Settings > Actions > General > Workflow permissions: "Read repository
      contents" (the workflows ask for what they need).
-  3. Open one pull request and confirm all four checks appear, then confirm in
+  3. Open one pull request and confirm the checks appear (build-test,
+     repo-checks, protected-paths, and validator when it is on), then confirm in
      Settings > Rules that the ruleset shows as enforced.
 NEXT
