@@ -85,7 +85,7 @@ requirements:
     wp: WP02
     spec: "3.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Impulse leg. At each H4 close, the leg is the longest run of 1 to
       MaxImpulseBars (3) consecutive same-direction bars ending at the
@@ -98,7 +98,7 @@ requirements:
     wp: WP02
     spec: "3.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Break of structure. A bullish leg qualifies only if its final close is
       above the most recent confirmed swing high whose bar is before the leg's
@@ -120,7 +120,7 @@ requirements:
     wp: WP02
     spec: "3.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Zone edges. Demand: distal = lowest low of the base bars and the first
       leg bar; proximal = highest body top (max(open, close)) of the base bars.
@@ -133,7 +133,7 @@ requirements:
     wp: WP02
     spec: "3.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Width check. A zone is kept only if |proximal - distal| is between
       MinZoneAtr (0.2) and MaxZoneAtr (1.5) x ATR(H4), inclusive, using the
@@ -143,7 +143,7 @@ requirements:
     wp: WP02
     spec: "3.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Supersede rule. A newly created zone removes every older zone of the
       same type that is still Active (never touched) and whose price range
