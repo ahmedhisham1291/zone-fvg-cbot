@@ -143,6 +143,7 @@ public class SignalEnginePropertyTests
         int withZones = 0;
         int buys = 0;
         int sells = 0;
+        var lines = new List<string>();
         foreach (object[] row in Seeds)
         {
             int seed = (int)row[0];
@@ -153,12 +154,13 @@ public class SignalEnginePropertyTests
             buys += signals.Count(signal => signal.Side == Side.Buy);
             sells += signals.Count(signal => signal.Side == Side.Sell);
             _output.WriteLine(Summary(seed, steps));
+            lines.Add(Summary(seed, steps));
         }
 
         string totals = Text(withZones) + " of " + Text(histories) + " histories with zones, " + Text(buys) + " buy and " + Text(sells) + " sell signals";
         _output.WriteLine(totals);
         Assert.True(withZones == histories, totals);
-        Assert.True(buys >= 5 && sells >= 5, totals);
+        Assert.True(buys >= 100000 && sells >= 5, "TEMPORARY DIAGNOSTIC " + totals + " || " + string.Join(" || ", lines));
     }
 
     // ------------------------------------------------------------------ helpers
