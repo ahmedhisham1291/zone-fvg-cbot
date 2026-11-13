@@ -138,29 +138,28 @@ public class SignalEnginePropertyTests
     [Trait("Req", "SIG-021")]
     public void Histories_ProduceZonesAndSignalsOfBothSides()
     {
-        // Without zones and signals the property tests above would prove little.
-        int histories = 0;
-        int withZones = 0;
+        // Without zones and signals the property tests above would prove little. The histories are
+        // fixed by their seeds; when this was written every one showed 41 to 61 zones while ready
+        // and 1 to 8 signals, 45 buys and 34 sells in all. The limits below sit just under that.
         int buys = 0;
         int sells = 0;
-        var lines = new List<string>();
         foreach (object[] row in Seeds)
         {
             int seed = (int)row[0];
             IReadOnlyList<EngineStep> steps = EngineFeed.Run(new SignalEngine(Defaults), RandomWalkHistory.Generate(seed, TradingDays).Feed);
             IReadOnlyList<Signal> signals = EngineFeed.AllSignals(steps);
-            histories++;
-            withZones += steps.Any(step => step.Zones.Count > 0) ? 1 : 0;
+            int zones = steps.SelectMany(step => step.Zones).Select(zone => zone.Id).Distinct(StringComparer.Ordinal).Count();
+            string summary = Summary(seed, steps);
+            _output.WriteLine(summary);
+            Assert.True(zones >= 40, summary);
+            Assert.True(signals.Count >= 1, summary);
             buys += signals.Count(signal => signal.Side == Side.Buy);
             sells += signals.Count(signal => signal.Side == Side.Sell);
-            _output.WriteLine(Summary(seed, steps));
-            lines.Add(Summary(seed, steps));
         }
 
-        string totals = Text(withZones) + " of " + Text(histories) + " histories with zones, " + Text(buys) + " buy and " + Text(sells) + " sell signals";
+        string totals = Text(buys) + " buy and " + Text(sells) + " sell signals in all";
         _output.WriteLine(totals);
-        Assert.True(withZones == histories, totals);
-        Assert.True(buys >= 100000 && sells >= 5, "TEMPORARY DIAGNOSTIC " + totals + " || " + string.Join(" || ", lines));
+        Assert.True(buys >= 40 && sells >= 30, totals);
     }
 
     // ------------------------------------------------------------------ helpers
