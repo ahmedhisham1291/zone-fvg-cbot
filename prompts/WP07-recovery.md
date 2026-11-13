@@ -8,7 +8,13 @@ section 12.3, and the requirement texts below. Depends on WP06.
 ## Requirements to implement
 
 REC-001, REC-002, REC-003, REC-004, REC-005, REC-006, REC-007, REC-008,
-REC-009, REC-010, REC-011, REC-012, REC-013.
+REC-009, REC-010, REC-011, REC-012, REC-013, RSK-006, RSK-008, RSK-010.
+
+RSK-006, RSK-008 and RSK-010 were started in WP04, which built the decisions.
+WP07 completes them in `BotCore`: when the daily budget is exhausted, pending
+entry orders are cancelled and the bot stays Blocked until the next CE(S)T day
+(this cause clears only at the day change, not when risk falls); the kill
+switch and the request and error limits put the bot into Halted.
 
 ## Allowed paths
 
@@ -111,4 +117,8 @@ Real implementations of journal, alerts and heartbeat (WP09); cTrader (WP08).
 - [ ] Tests first, all green; coverage thresholds met.
 - [ ] `BotCore` surface matches `docs/architecture.md` exactly.
 - [ ] All `AGENTS.md` commands clean; outputs in the pull request.
-- [ ] The thirteen requirement statuses are `implemented`.
+- [ ] The sixteen requirement statuses are `implemented`.
+- [ ] Scenario tests: budget exhausted cancels pending entries and blocks
+      until the next CE(S)T day, also across a restart; kill switch at
+      exactly 8% halts; the 21st request in an hour and the 6th error in an
+      hour halt.

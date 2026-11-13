@@ -9,7 +9,15 @@ merged.
 ## Requirements to implement
 
 EXE-001, EXE-002, EXE-003, EXE-004, EXE-005, EXE-006, EXE-007, EXE-008,
-EXE-009, EXE-010, EXE-011, EXE-012, EXE-013, EXE-014, EXE-015.
+EXE-009, EXE-010, EXE-011, EXE-012, EXE-013, EXE-014, EXE-015, RSK-002,
+RSK-003.
+
+RSK-002 and RSK-003 were started in WP04, which built the decisions. WP06
+completes them: a refused trade is recorded with its reason (EXE-014) and an
+alert is raised for every RSK-002 refusal through the alert hook; the margin
+estimate passed to the risk engine comes from `IBroker.EstimateMargin`. WP06
+also checks the volume against the symbol's own maximum volume from the
+broker and skips a trade above it.
 
 ## Allowed paths
 
@@ -88,7 +96,10 @@ One test class per requirement; each named scenario is a separate test.
 - EXE-008: placed order carries stop, target, expiry, label and a comment that parses back to the plan.
 - EXE-009: existing order with the label means zero requests; clear rejection means one request and no retry; Unclear-but-accepted means exactly one order after `ResolvePending`; Unclear-not-accepted and still fresh means one resend; Unclear-not-accepted but price traded through means no resend.
 - EXE-010: stop dropped by the broker leads to cancel and alert.
-- EXE-011: position without stop gets it restored; two failures close the position.
+- EXE-011: position without stop gets it restored; two failures close the position; while a bot position has no stop, a valid new signal is skipped and no order is sent.
+- RSK-002: each refusal is recorded with its reason and raises exactly one alert.
+- RSK-003: the margin estimate used is the one returned by `FakeBroker.EstimateMargin`; free margin exactly 50% of equity placed, below skipped.
+- Symbol maximum volume: volume exactly at the broker maximum placed; above it skipped.
 - EXE-012: 40% partial fill is protected and managed; remainder expires.
 - EXE-013: Friday 20:00 UTC closes and cancels; Thursday does not; restart after the time still closes.
 - EXE-014: every skip in the scenarios above carries exactly one reason and its measured values.
@@ -107,4 +118,4 @@ Recovery after restart (WP07), journaling formats (WP09), cTrader (WP08).
 - [ ] `FakeBroker` has its own tests, including each scripted fault.
 - [ ] Tests first, all green; coverage thresholds met; `Execution/` at least 95% branches.
 - [ ] All `AGENTS.md` commands clean; outputs in the pull request.
-- [ ] The fifteen requirement statuses are `implemented`.
+- [ ] The seventeen requirement statuses are `implemented`.

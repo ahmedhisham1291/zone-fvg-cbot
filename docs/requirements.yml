@@ -162,7 +162,7 @@ requirements:
       base bar. The same history always yields the same id.
 
   - id: SIG-014
-    wp: WP02
+    wp: WP03
     spec: "3.3"
     verify: unit
     status: planned
@@ -177,7 +177,7 @@ requirements:
       have closed since activation. Invalid, Used and Expired are terminal.
 
   - id: SIG-015
-    wp: WP02
+    wp: WP03
     spec: "3.1"
     verify: unit
     status: planned
@@ -268,7 +268,7 @@ requirements:
       trade is skipped. Volume is never rounded up.
 
   - id: RSK-002
-    wp: WP04
+    wp: WP06
     spec: "4.3"
     verify: unit
     status: planned
@@ -278,7 +278,7 @@ requirements:
       MaxVolumeUnits, or its stop or target is on the wrong side of entry.
 
   - id: RSK-003
-    wp: WP04
+    wp: WP06
     spec: "4.1"
     verify: unit
     status: planned
@@ -304,12 +304,14 @@ requirements:
     status: implemented
     text: >-
       Currency exposure cap. Buying a pair is long its base and short its
-      quote currency. For each currency, the number of bot positions and
-      pending orders on the same side, including the new trade, must not
-      exceed MaxPositionsPerCurrency (2).
+      quote currency. For each of the two currencies of the new trade, on the
+      side the new trade takes in it, the number of bot positions and pending
+      orders on that side, including the new trade, must not exceed
+      MaxPositionsPerCurrency (2). Currencies the new trade does not touch are
+      not checked.
 
   - id: RSK-006
-    wp: WP04
+    wp: WP07
     spec: "4.2, 15.4"
     verify: unit
     status: planned
@@ -333,7 +335,7 @@ requirements:
       value is used.
 
   - id: RSK-008
-    wp: WP04
+    wp: WP07
     spec: "4.2"
     verify: unit
     status: planned
@@ -352,10 +354,12 @@ requirements:
       FTMO emergency guard. If equity <= M - (FtmoDailyLossPercent -
       FtmoGuardBufferPercent)% of InitialCapital, or equity <= InitialCapital x
       (1 - (FtmoMaxLossPercent - FtmoGuardBufferPercent)/100), the decision is
-      CloseAllAndHalt. With defaults: M - 4,000 and 91,000 on 100,000.
+      CloseAllAndHalt. With defaults: M - 4,000 and 91,000 on 100,000. If M
+      cannot be computed because broker data is missing or invalid, the guard
+      still applies the second condition from equity and InitialCapital alone.
 
   - id: RSK-010
-    wp: WP04
+    wp: WP07
     spec: "4.3"
     verify: unit
     status: planned
@@ -621,7 +625,8 @@ requirements:
     text: >-
       Post-fill protection. Every bot position must have a stop loss. A
       position found without one gets it set from its comment data; after two
-      failed attempts the position is closed and an alert is raised.
+      failed attempts the position is closed and an alert is raised. While any
+      bot position has no stop loss, no new entry order is placed.
 
   - id: EXE-012
     wp: WP06
