@@ -20,7 +20,7 @@ requirements:
     wp: WP01
     spec: "3, 9.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       The signal layer reads closed bars only. A bar is passed to the core
       exactly once, after it has closed. No API of the core accepts or exposes a
@@ -40,7 +40,7 @@ requirements:
     wp: WP01
     spec: "3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Windowed indicators. ATR(14) is the arithmetic mean of the true range of
       the last 14 closed bars (true range uses the previous close; 15 bars are
@@ -53,7 +53,7 @@ requirements:
     wp: WP01
     spec: "3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Bar intake. Bars of each timeframe must arrive in strictly increasing
       open-time order; a duplicate or out-of-order bar is rejected with an
@@ -64,7 +64,7 @@ requirements:
     wp: WP01
     spec: "3.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Bias. Long when the last closed D1 close is above the D1 EMA(BiasEmaPeriod),
       Short when below, Neutral when equal or when the EMA window is not yet
@@ -74,7 +74,7 @@ requirements:
     wp: WP01
     spec: "3.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Swings. A swing high is an H4 bar whose high is strictly greater than the
       highs of SwingStrength (3) bars on each side; it is confirmed only when
@@ -236,7 +236,7 @@ requirements:
     wp: WP01
     spec: "8.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Warm-up. The engine computes the minimum number of closed bars per
       timeframe it needs from its parameters and reports NotReady, emitting no
@@ -859,7 +859,7 @@ requirements:
     wp: WP01
     spec: "9.1"
     verify: build
-    status: planned
+    status: implemented
     text: >-
       ZoneFvg.Core references no cTrader assembly and performs no IO, network,
       clock, random or operating-system time-zone access. CI enforces this
@@ -887,7 +887,7 @@ requirements:
     wp: WP01
     spec: "10.3"
     verify: build
-    status: planned
+    status: implemented
     text: >-
       ZoneFvg.Core and ZoneFvg.Bot target net6.0 with C# language version 10.
 
