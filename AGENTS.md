@@ -125,7 +125,25 @@ Stop, write down the question, and wait for the human when:
 
 ## Review
 
-Every pull request is checked by CI, by the validator agent
-(`prompts/validator.md`) and finally by the human owner, who is the only one
-who merges. The validator did not write your code and will not take your word
-for anything: it reads the diff and re-runs the checks.
+Every pull request is checked by CI and by the validator agent
+(`prompts/validator.md`). The validator did not write your code and will not
+take your word for anything: it reads the diff and re-runs the checks.
+
+### Who merges (owner decision of 2026-11-13)
+
+Implementer and validator agents never merge.
+
+The orchestrating session may merge a work-package pull request for the owner
+only when all of these hold:
+
+- `ci` and `guard` are green on the head commit;
+- the validator verdict for that exact head commit is PASS;
+- the validator report has no open question for the owner, and "Decisions for
+  the human" has no item waiting for an answer;
+- the pull request changes no protected path.
+
+Everything else is merged by the human owner: any change to a protected path,
+any pull request with an open question or decision, and any pull request
+without a PASS verdict. The orchestrating session reports every merge it makes
+to the owner, with a plain-language summary of anything that touches orders,
+risk or money.

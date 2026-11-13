@@ -44,9 +44,12 @@ python3 tools/check_coverage.py TestResults --package ZoneFvg.Core --min-line 90
 - [ ] No secret, account number or credential is in the diff.
 - [ ] No new dependency (or it is allowed by the prompt and listed above).
 
-## For the owner before merging
+## Before merging
 
-- [ ] CI jobs `build-test`, `repo-checks`, `protected-paths` are green.
-- [ ] Validator verdict is PASS and I read its report.
-- [ ] I read "Decisions for the human".
-- [ ] I read the diff of anything that touches orders, risk or money.
+Who may merge is defined in `AGENTS.md`, section "Review".
+
+- [ ] CI jobs `build-test`, `repo-checks`, `protected-paths` are green on the head commit.
+- [ ] The validator verdict for the head commit is PASS and its report is posted as a comment.
+- [ ] The validator report has no open question for the owner, and "Decisions for the human" has nothing waiting for an answer. Otherwise the owner merges.
+- [ ] No protected path is changed. Otherwise the owner merges.
+- [ ] The owner has received a plain-language summary of anything that touches orders, risk or money.
