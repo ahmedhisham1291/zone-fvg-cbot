@@ -63,6 +63,10 @@ the requirements above.
 - No trading rule, threshold or state lives in this project. If you find
   yourself writing an `if` about prices, risk or time, it belongs in Core and
   this work package is the wrong place.
+- `RiskEpochDate` is entered as a date and means 00:00 Prague time (CE(S)T,
+  via the core's `CestClock`) on that date, converted to UTC.
+- `ClosedTradeInfo.NetProfit` is mapped to include commission and swap, as
+  the core expects (architecture section 10).
 
 ## Verification (this project has no unit tests)
 
