@@ -63,6 +63,11 @@ the requirements above.
   Commission is included using the symbol's round-trip commission.
 - Pending orders count toward open risk, the currency cap and entry counts.
 - An account with no history since `RiskEpochDate` has Peak = current balance.
+- Volume is rounded with `PriceMath.RoundDownToStep` (WP01). It treats a value
+  within one billionth of a step below a whole multiple as that multiple, so
+  floating-point noise cannot cost a whole step. The owner accepted this as
+  consistent with "never round up" (architecture section 10). Add no second
+  tolerance.
 
 ## Tests required
 
@@ -71,7 +76,10 @@ limit (allowed), and one just beyond (blocked).
 
 - RSK-001: the spec example (10,000 balance, 20 pips, EURUSD = 25,000 units);
   100,000 balance cases from spec 4.1; rounding down; below minimum skipped;
-  USDJPY-style pip value.
+  USDJPY-style pip value; a volume that is a whole number of steps only up to
+  floating-point noise (such as 0.3 / 0.1 steps) keeps the full multiple; a
+  volume one millionth of a step below a multiple rounds down to the multiple
+  below.
 - RSK-002: 0.56% risk skipped; volume above cap skipped; stop on wrong side.
 - RSK-003: free margin exactly 50% allowed; below blocked.
 - RSK-004: three trades at 0.5% allowed; a fourth blocked; pending orders count.

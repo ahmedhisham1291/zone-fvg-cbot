@@ -61,6 +61,8 @@ public enum ZoneState { Active, Touched, Signalled, Used, Invalid, Expired }
 public enum Bias { Neutral, Long, Short }
 
 /// A closed bar. OpenTimeUtc is the bar's open time in UTC.
+/// Validated on construction. Properties are get-only, so a Bar cannot be
+/// changed with a `with` expression (section 10).
 public sealed record Bar(DateTime OpenTimeUtc, double Open, double High, double Low, double Close);
 
 public sealed record Zone(
@@ -87,10 +89,12 @@ public sealed class SignalEngine
     public IReadOnlyDictionary<TimeFrame, int> WarmupBars { get; }
     public bool IsReady { get; }
     public Bias Bias { get; }
-    public IReadOnlyList<Zone> Zones { get; }          // non-terminal zones, ordered by id
+    public IReadOnlyList<Zone> Zones { get; }          // non-terminal zones, ordered by id; empty until IsReady
 
-    /// Feed one closed bar. Returns the signals confirmed by this bar (0 or 1 per zone).
-    /// replay = true marks returned signals as FromReplay.
+    /// Feed one closed bar. Returns the signals confirmed by this bar (0 or 1 per zone);
+    /// none until IsReady (SIG-020). replay = true marks returned signals as FromReplay.
+    /// Bars must arrive in increasing close-time order, D1 then H4 then M15 at equal
+    /// close times. Any other bar throws InvalidOperationException and changes nothing (SIG-004).
     public IReadOnlyList<Signal> OnBarClosed(TimeFrame timeFrame, Bar bar, bool replay);
 }
 ```
@@ -153,6 +157,10 @@ public sealed class BotCore
 - Prices and volumes are `double`.
 - `PriceMath` provides tolerant comparison, pip conversion and rounding down
   to a step. Raw equality on computed doubles is not allowed.
+- `PriceMath.RoundDownToStep` treats a value within one billionth of a step
+  below a whole multiple as that multiple, so floating-point noise cannot cost
+  a whole step. The result can exceed the input by at most one billionth of a
+  step (section 10).
 - All parsing and formatting uses `CultureInfo.InvariantCulture`.
 
 ## 6. Errors
@@ -184,3 +192,19 @@ no trading rule, no threshold and no state other than references.
 | FVG versus spread | Checked by execution layer (EXE-005) | Spread is not bar data |
 | Currency cap | Same-direction count per currency (RSK-005) | Original wording blocked all USD pairs |
 | CE(S)T | Explicit EU DST rule (RSK-012) | No OS time-zone dependency |
+
+## 10. Owner decisions recorded during implementation
+
+Decisions the spec does not settle, accepted by the owner. They bind later
+work packages. A validator treats them as part of the contract.
+
+| Date | Topic | Decision | Reason |
+|---|---|---|---|
+| 2026-11-13 | SIG-004 and SIG-020 | Completed and marked in WP03, not WP01. WP01 keeps the building blocks and their tagged tests | The behaviour needs the signal engine |
+| 2026-11-13 | Bar intake order (SIG-004) | The engine accepts bars only in strictly increasing (close time, rank) order, rank being D1, H4, M15, and throws otherwise. It does not sort | A wrong feed order fails loudly instead of silently changing zones and signals |
+| 2026-11-13 | Close time | Open time plus the nominal length of the timeframe: 15 minutes, 4 hours, 24 hours. To be confirmed against the platform's bars in WP08 | Defines "close at the same moment" without a clock |
+| 2026-11-13 | Warm-up gate (SIG-020) | While not ready the engine keeps its state up to date but exposes no zones and returns no signals. A zone confirmed during warm-up is consumed without a signal | Replay equals live (SIG-019) needs exact state from the first ready bar |
+| 2026-11-13 | Volume rounding (RSK-001) | `RoundDownToStep` snaps a value within one billionth of a step below a multiple to that multiple. Accepted as consistent with "never round up" in spec 4.1 | A strict floor can lose a whole step to floating-point noise (0.3 / 0.1) |
+| 2026-11-13 | `Bar` | Get-only properties; no `with` mutation | Validation on construction cannot be bypassed |
+| 2026-11-13 | Warm-up dictionary | `WarmupBars` enumerates D1, H4, M15 | No dependence on dictionary order |
+| 2026-11-13 | WP01 defaults | The ranges checked by `SignalParameters.Validate()` (including bar counts from 1 to 10,000) and the 16-bar margin of `BarStore` | Not trading rules; accepted as implemented in WP01 |
