@@ -30,7 +30,7 @@ requirements:
     wp: WP03
     spec: "9.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Determinism. Feeding the same bar sequence with the same parameters into
       a fresh SignalEngine always produces identical zones (ids, edges, states)
@@ -53,7 +53,7 @@ requirements:
     wp: WP03
     spec: "3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Bar intake. Bars of each timeframe must arrive in strictly increasing
       open-time order; a duplicate or out-of-order bar is rejected with an
@@ -165,7 +165,7 @@ requirements:
     wp: WP03
     spec: "3.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Zone lifecycle, evaluated at each M15 close using only M15 bars whose
       open time is at or after the activation time. Active -> Touched on the
@@ -180,7 +180,7 @@ requirements:
     wp: WP03
     spec: "3.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Supply and demand zones are both detected and tracked regardless of
       bias. Bias only decides whether a zone may produce a signal.
@@ -215,7 +215,7 @@ requirements:
     wp: WP03
     spec: "3.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       A zone produces at most one signal. A signal is emitted only if bias
       matches the zone type (Long/demand, Short/supply) at the confirmation
@@ -225,7 +225,7 @@ requirements:
     wp: WP03
     spec: "8.3, 9.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Replay equals live. For any time T, an engine that has processed the
       full history up to T and an engine started from any earlier point that
@@ -236,7 +236,7 @@ requirements:
     wp: WP03
     spec: "8.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Warm-up. The engine computes the minimum number of closed bars per
       timeframe it needs from its parameters and reports NotReady, emitting no
@@ -248,7 +248,7 @@ requirements:
     wp: WP03
     spec: "3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Mirror symmetry. Reflecting every price of a bar sequence around a
       constant (p -> K - p, swapping high and low) turns every demand zone
