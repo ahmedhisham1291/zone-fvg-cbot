@@ -7,7 +7,13 @@ section 3 (introduction, 3.1, 3.2 rule 2) and section 9.4.
 
 ## Requirements to implement
 
-SIG-001, SIG-003, SIG-004, SIG-005, SIG-006, SIG-020, PLT-001, PLT-004.
+SIG-001, SIG-003, SIG-005, SIG-006, PLT-001, PLT-004.
+
+WP01 also builds the parts of SIG-004 and SIG-020 that need no engine: the
+per-timeframe order check in `BarStore`, the same-instant helper
+`BarIntakeOrder` and the warm-up calculation. Tag those tests with SIG-004 and
+SIG-020, but leave both status lines at `planned`. Both requirements are
+completed and marked in WP03, where the engine exists.
 
 ## Allowed paths
 
@@ -89,5 +95,6 @@ Zones, FVGs, signals, anything outside the allowed paths.
 - [ ] Tests written before implementation, all green.
 - [ ] Every command in `AGENTS.md` runs clean; outputs in the pull request.
 - [ ] Coverage of `ZoneFvg.Core` at least 90% lines and 80% branches.
-- [ ] The eight requirement statuses are `implemented`.
+- [ ] The six requirement statuses are `implemented`. SIG-004 and SIG-020 stay
+      `planned` (see "Requirements to implement").
 - [ ] No file outside the allowed paths changed.

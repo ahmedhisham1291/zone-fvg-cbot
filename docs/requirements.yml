@@ -50,7 +50,7 @@ requirements:
       bars outside their window.
 
   - id: SIG-004
-    wp: WP01
+    wp: WP03
     spec: "3"
     verify: unit
     status: planned
@@ -233,7 +233,7 @@ requirements:
       (ids, edges, states, touch data) and emit identical signals after T.
 
   - id: SIG-020
-    wp: WP01
+    wp: WP03
     spec: "8.3"
     verify: unit
     status: planned
