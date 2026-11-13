@@ -170,7 +170,10 @@ public static class WarmupCalculator
     /// With the default parameters this is 201 D1, 248 H4 and 1968 M15 bars.
     /// </summary>
     /// <param name="parameters">The signal parameters. They are validated first.</param>
-    /// <returns>The requirement for D1, H4 and M15. Read it by key; do not rely on its enumeration order.</returns>
+    /// <returns>
+    /// The requirement for D1, H4 and M15 as a read-only dictionary. It always enumerates in the
+    /// order D1, H4, M15, so nothing can come to depend on an unspecified iteration order.
+    /// </returns>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters)
     {
@@ -181,7 +184,8 @@ public static class WarmupCalculator
         int h4 = parameters.MaxZoneAgeBars + SwingDetector.LookbackBars + (2 * parameters.SwingStrength) + parameters.MaxImpulseBars + parameters.MaxBaseBars + parameters.AtrPeriod + 2;
         int m15 = ((parameters.MaxZoneAgeBars + 1) * M15BarsPerH4Bar) + parameters.ConfirmWindowBars + parameters.AtrPeriod + 2;
 
-        var bars = new Dictionary<TimeFrame, int>
+        // Sorted by descending enum value, which is D1, H4, M15: a defined enumeration order.
+        var bars = new SortedDictionary<TimeFrame, int>(Comparer<TimeFrame>.Create((left, right) => ((int)right).CompareTo((int)left)))
         {
             [TimeFrame.D1] = d1,
             [TimeFrame.H4] = h4,
