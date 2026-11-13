@@ -53,7 +53,7 @@ requirements:
     wp: WP01
     spec: "3"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       Bar intake. Bars of each timeframe must arrive in strictly increasing
       open-time order; a duplicate or out-of-order bar is rejected with an
@@ -236,7 +236,7 @@ requirements:
     wp: WP01
     spec: "8.3"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       Warm-up. The engine computes the minimum number of closed bars per
       timeframe it needs from its parameters and reports NotReady, emitting no
