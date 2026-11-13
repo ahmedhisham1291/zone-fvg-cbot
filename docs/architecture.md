@@ -33,7 +33,8 @@ packages. Changing a contract here needs the human's approval.
 ```
 
 Dependency direction inside Core: `Domain` <- `Indicators` <- `Signals`;
-`Risk`, `News` depend on `Domain` only; `Execution` depends on `Signals`,
+`Risk`, `News` depend on `Domain` only, except that `Risk` reads the data
+records in `Execution/Ports` (section 10); `Execution` depends on `Signals`,
 `Risk`, `News`; `Recovery` depends on `Execution`; `App` depends on all.
 Nothing depends on `App`.
 
@@ -213,4 +214,14 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-14 | Base at a wide bar (SIG-009) | If the bar immediately before the leg is wider than 1.0 x ATR(H4), the base is that bar alone | "Collected backward while" stops at the first wide bar; one bar is always taken |
 | 2026-11-14 | Zone id (SIG-013) | The "first base bar" is the oldest base bar | First in time |
 | 2026-11-14 | Activation time (SIG-013) | The close time of the leg's last bar, its open time plus 4 hours. Equal to the next bar's open when bars are contiguous; earlier across a market gap | The next bar's open is not known at detection. No M15 bar exists inside a gap, so nothing else changes |
+| 2026-11-14 | Risk actions | RSK-002 and RSK-003 are completed in WP06; RSK-006, RSK-008 and RSK-010 in WP07. WP04 builds and tests the decisions | The actions need the broker port and the bot states |
+| 2026-11-14 | Stop in profit | A position whose stop is at or beyond entry in profit has zero risk | It cannot lose money at its stop |
+| 2026-11-14 | Daily budget (RSK-006) | Blocks only when strictly over the limit. Commission counts, so normally two full-size trades fit per day. Swap is not counted. Once exhausted, Blocked until the next CE(S)T day | Safer side; FTMO's daily limit also counts commission. The emergency guard watches equity |
+| 2026-11-14 | Volume caps | One `MaxVolumeUnits` for all symbols; the broker's symbol maximum is checked in WP06. A stop or target exactly at entry is on the wrong side | |
+| 2026-11-14 | Counting (RSK-010) | Partial closes count once; cancelled or expired orders are not counted; a request exactly one hour old has left the window; 20 requests and 5 errors per hour are parameters | |
+| 2026-11-14 | Broker data mapping | `ClosedTradeInfo` carries `PositionId` and `EntryTimeUtc`; `NetProfit` includes commission and swap. `Risk` reads these records from `Execution/Ports` | |
+| 2026-11-14 | RiskEpochDate | A date meaning 00:00 Prague time (CE(S)T) on that day | Same day boundary as FTMO |
+| 2026-11-14 | Currency cap (RSK-005) | Only the two currencies of the new trade are checked | The literal reading refused every trade when an unrelated currency was over the cap |
+| 2026-11-14 | Emergency guard on bad data (RSK-009) | If M cannot be computed, the static floor is still checked from equity alone | The guard must not go blind when history is broken |
+| 2026-11-14 | No stop, no new entry (EXE-011) | While any bot position has no stop loss, no new entry is placed | Fail closed |
 | 2026-11-14 | Terminal zones | Used, Invalid and Expired zones leave the book at once and are reported once. Their ids are remembered, so a repeated id is still discarded | `Zones` holds non-terminal zones only (section 3). A Used zone has no further effect on signals |
