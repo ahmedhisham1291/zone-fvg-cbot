@@ -3,16 +3,19 @@
 ## Read first
 
 `AGENTS.md`, `docs/architecture.md` (sections 2, 3, 6, 10), `docs/spec.md`
-section 3 (introduction) and sections 3.3 to 3.5, 8.3 and 9.4, and the
+section 3 (introduction) and sections 3.1, 3.3 to 3.5, 8.3 and 9.4, and the
 requirement texts below.
 
 ## Requirements to implement
 
-SIG-002, SIG-004, SIG-016, SIG-017, SIG-018, SIG-019, SIG-020, SIG-021.
+SIG-002, SIG-004, SIG-014, SIG-015, SIG-016, SIG-017, SIG-018, SIG-019,
+SIG-020, SIG-021.
 
 SIG-004 and SIG-020 were started in WP01, which built `BarStore`,
-`BarIntakeOrder` and `WarmupCalculator` with tagged tests. WP03 completes both
-in the engine and changes their status lines.
+`BarIntakeOrder` and `WarmupCalculator` with tagged tests. SIG-014 and SIG-015
+were started in WP02, which built the lifecycle in `ZoneBook`, `MarkSignalled`,
+`MarkUsed` and bias-free detection and tracking, with tagged tests. WP03
+completes all four in the engine and changes their status lines.
 
 ## Allowed paths
 
@@ -103,6 +106,17 @@ the `status:` lines of the requirements above. You may add members to
   on, `Zones` and the returned signals equal those of an engine fed a longer
   history that ends with the same bars. A zone whose FVG was confirmed during
   warm-up is never signalled afterwards.
+- SIG-014 (lifecycle through the engine): on the bar whose close confirms a
+  valid FVG, a Touched zone moves to Signalled and then Used, and `Zones` no
+  longer contains it after that bar. An FVG confirmed on the last bar of the
+  confirmation window is used, because the window-end runs after the FVG
+  search. A zone that reaches the end of the window without a valid FVG ends
+  Used and returns no signal.
+- SIG-015 (bias gates only the signal): run the same H4 and M15 history with
+  three D1 histories that give Long, Short and Neutral bias. At every bar the
+  zones (ids, edges, states) are identical in the three engines. Only the
+  returned signals differ: Buy signals from demand zones under Long, Sell
+  signals from supply zones under Short, none under Neutral.
 
 - SIG-016: a minimal three-bar FVG; gap exactly at `MinFvgAtr` (kept) and one
   tick under (rejected); c2 bearish (rejected); c3 before the touch bar
@@ -141,6 +155,6 @@ Spread, news, sessions, sizing, orders. The engine knows none of them.
 - [ ] `SignalEngine` public surface matches `docs/architecture.md` exactly.
 - [ ] The replay and determinism tests run in under 60 seconds in CI.
 - [ ] All `AGENTS.md` commands clean; outputs in the pull request.
-- [ ] The eight requirement statuses are `implemented`.
+- [ ] The ten requirement statuses are `implemented`.
 - [ ] Under "Decisions for the human": anything the property tests revealed
       that the spec does not settle.

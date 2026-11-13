@@ -9,8 +9,14 @@ they differ.
 
 ## Requirements to implement
 
-SIG-007, SIG-008, SIG-009, SIG-010, SIG-011, SIG-012, SIG-013, SIG-014,
-SIG-015.
+SIG-007, SIG-008, SIG-009, SIG-010, SIG-011, SIG-012, SIG-013.
+
+WP02 also builds the parts of SIG-014 and SIG-015 that need no FVG detector
+and no engine: every lifecycle transition in `ZoneBook`, the methods
+`MarkSignalled` and `MarkUsed`, and detection and tracking that take no bias.
+Tag those tests with SIG-014 and SIG-015, but leave both status lines at
+`planned`. Both requirements are completed and marked in WP03, where a valid
+FVG and the bias gate exist.
 
 ## Allowed paths
 
@@ -58,6 +64,19 @@ above.
   that case the later detection is discarded and a diagnostic is recorded.
 - Overlap for SIG-012 = length of the intersection of the two price ranges
   divided by the older zone's height; "more than 50%" is strict.
+- Base (SIG-009): if the bar immediately before the leg is itself wider than
+  1.0 x ATR(H4), the base is that bar alone. Collection does not continue past
+  a wide bar.
+- Zone id (SIG-013): the "first base bar" is the oldest base bar.
+- Activation (SIG-013): the activation time is the close time of the leg's
+  last bar, its open time plus 4 hours. With contiguous bars this is the open
+  time of the following H4 bar. Across a market gap the stored time is earlier
+  than the next bar's real open; no M15 bar exists in between, so the bars
+  considered and the age count are the same.
+- Terminal zones (Used, Invalid, Expired) leave the book at once: they are
+  reported once in the returned changes and are no longer in `Zones`. Their
+  ids are remembered, so a later detection with the same id is still
+  discarded.
 
 ## Tests required
 
@@ -93,4 +112,5 @@ FVG detection, signals, bias gating, anything about orders.
 - [ ] Tests first, all green; coverage thresholds met.
 - [ ] `ZoneDetector` has no mutable state.
 - [ ] All `AGENTS.md` commands clean; outputs in the pull request.
-- [ ] The nine requirement statuses are `implemented`.
+- [ ] The seven requirement statuses are `implemented`. SIG-014 and SIG-015
+      stay `planned` (see "Requirements to implement").
