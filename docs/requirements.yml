@@ -162,7 +162,7 @@ requirements:
       base bar. The same history always yields the same id.
 
   - id: SIG-014
-    wp: WP02
+    wp: WP03
     spec: "3.3"
     verify: unit
     status: planned
@@ -177,7 +177,7 @@ requirements:
       have closed since activation. Invalid, Used and Expired are terminal.
 
   - id: SIG-015
-    wp: WP02
+    wp: WP03
     spec: "3.1"
     verify: unit
     status: planned
