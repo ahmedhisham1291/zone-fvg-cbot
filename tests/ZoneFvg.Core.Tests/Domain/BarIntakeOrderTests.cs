@@ -8,9 +8,9 @@ public class BarIntakeOrderTests
     // Three bars that close at the same instant, 2026-01-06 00:00 UTC:
     // the D1 bar opened 24 hours earlier, the H4 bar 4 hours earlier, the M15 bar 15 minutes earlier.
     private static readonly DateTime CloseTime = new(2026, 1, 6, 0, 0, 0, DateTimeKind.Utc);
-    private static readonly Bar Daily = new(CloseTime.AddDays(-1.0), 1.1000, 1.1100, 1.0950, 1.1050);
-    private static readonly Bar FourHour = new(CloseTime.AddHours(-4.0), 1.1040, 1.1060, 1.1030, 1.1050);
-    private static readonly Bar QuarterHour = new(CloseTime.AddMinutes(-15.0), 1.1048, 1.1052, 1.1046, 1.1050);
+    private static readonly Bar Daily = BarBuilder.One(TimeFrame.D1, CloseTime.AddDays(-1.0), 1.1000, 1.1100, 1.0950, 1.1050);
+    private static readonly Bar FourHour = BarBuilder.One(TimeFrame.H4, CloseTime.AddHours(-4.0), 1.1040, 1.1060, 1.1030, 1.1050);
+    private static readonly Bar QuarterHour = BarBuilder.One(TimeFrame.M15, CloseTime.AddMinutes(-15.0), 1.1048, 1.1052, 1.1046, 1.1050);
 
     [Fact]
     [Trait("Req", "SIG-004")]

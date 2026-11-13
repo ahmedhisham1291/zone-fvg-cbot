@@ -157,6 +157,34 @@ public class WarmupCalculatorTests
 
     [Fact]
     [Trait("Req", "SIG-020")]
+    public void For_Result_EnumeratesInTheOrderD1H4M15()
+    {
+        // A defined order, the same as the processing order of SIG-004, so that code which walks
+        // the requirement can never depend on an unspecified dictionary order (AGENTS.md rule 7).
+        IReadOnlyDictionary<TimeFrame, int> warmup = WarmupCalculator.For(new SignalParameters());
+
+        Assert.Equal(new[] { TimeFrame.D1, TimeFrame.H4, TimeFrame.M15 }, warmup.Keys.ToArray());
+        Assert.Equal(new[] { 201, 248, 1968 }, warmup.Values.ToArray());
+        Assert.Equal(BarIntakeOrder.SameInstant.ToArray(), warmup.Keys.ToArray());
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-020")]
+    public void For_Result_CannotBeChangedByTheCaller()
+    {
+        IReadOnlyDictionary<TimeFrame, int> warmup = WarmupCalculator.For(new SignalParameters());
+        var writable = Assert.IsAssignableFrom<IDictionary<TimeFrame, int>>(warmup);
+
+        Assert.True(writable.IsReadOnly);
+        Assert.Throws<NotSupportedException>(() => writable.Add(TimeFrame.D1, 1));
+        Assert.Throws<NotSupportedException>(() => writable.Remove(TimeFrame.D1));
+        Assert.Throws<NotSupportedException>(() => writable[TimeFrame.D1] = 1);
+        Assert.False(warmup.ContainsKey((TimeFrame)99));
+        Assert.Equal(201, warmup[TimeFrame.D1]);
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-020")]
     public void M15BarsPerH4Bar_IsSixteen()
     {
         // One H4 bar spans 240 minutes = 16 bars of 15 minutes.

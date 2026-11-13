@@ -43,6 +43,12 @@ public sealed class BarBuilder
         };
     }
 
+    /// <summary>Builds a single bar of the timeframe from its open time and four prices.</summary>
+    public static Bar One(TimeFrame timeFrame, DateTime openTimeUtc, double open, double high, double low, double close)
+    {
+        return new BarBuilder(timeFrame).At(openTimeUtc).Ohlc(open, high, low, close).Build()[0];
+    }
+
     /// <summary>Sets the open time of the next bar. Finishes the bar being defined, if any.</summary>
     public BarBuilder At(DateTime openTimeUtc)
     {

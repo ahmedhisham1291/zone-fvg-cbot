@@ -156,6 +156,32 @@ public class EmaTests
 
     [Fact]
     [Trait("Req", "SIG-003")]
+    public void Value_PeriodFifty_ReadsExactlyTwoHundredCloses()
+    {
+        // Five closes of 1000 come first, then 200 closes of 1.25. EMA(50) reads 4 x 50 = 200 closes.
+        IReadOnlyList<Bar> bars = new BarBuilder(TimeFrame.D1)
+            .At(Start)
+            .Closes(1000.0, 1000.0, 1000.0, 1000.0, 1000.0)
+            .Repeat(200, (builder, _) => builder.Doji(1.25))
+            .Build();
+
+        // At index 204 the window is the 200 closes of 1.25: the seed is 1.25 and every step
+        // keeps it there, so the EMA is 1.25.
+        Assert.Equal(1.25, Expect.Value(Ema.Value(bars, 204, 50)), 1e-12);
+
+        // At index 203 the window starts one bar earlier and its first close is 1000:
+        // seed = (1000 + 49 x 1.25) / 50 = 1061.25 / 50 = 21.225.
+        // The remaining 150 closes are all 1.25, and each step multiplies the distance to 1.25
+        // by (1 - alpha) = 1 - 2/51 = 49/51, so EMA = 1.25 + (21.225 - 1.25) x (49/51)^150.
+        double expected = 1.25 + (19.975 * Math.Pow(49.0 / 51.0, 150.0));
+        Assert.Equal(expected, Expect.Value(Ema.Value(bars, 203, 50)), 1e-9);
+
+        // With only 199 bars at or before the end index the window is not full.
+        Assert.Null(Ema.Value(bars, 198, 50));
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-003")]
     public void WindowMultiple_IsFour()
     {
         int multiple = Ema.WindowMultiple;

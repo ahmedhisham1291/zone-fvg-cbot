@@ -65,6 +65,14 @@ public class BarBuilderTests
     }
 
     [Fact]
+    public void One_GivenTimeAndPrices_BuildsThatSingleBar()
+    {
+        Bar bar = BarBuilder.One(TimeFrame.H4, Start, 10.0, 12.0, 9.0, 11.0);
+
+        Assert.Equal(new Bar(Start, 10.0, 12.0, 9.0, 11.0), bar);
+    }
+
+    [Fact]
     public void At_InTheMiddle_JumpsToTheNewTime()
     {
         DateTime afterWeekend = Start.AddDays(7);

@@ -118,6 +118,28 @@ public class BiasCalculatorTests
 
     [Fact]
     [Trait("Req", "SIG-005")]
+    public void Compute_DefaultEmaPeriod_NeedsTwoHundredD1Bars()
+    {
+        int period = new SignalParameters().BiasEmaPeriod;
+
+        // 200 daily closes rising by 0.0001 per day from 1.1000. An EMA is a weighted average of
+        // the closes in its window; all of them are at or below the last close, so the EMA is
+        // below the last close: Long. Reflected prices fall every day: Short.
+        IReadOnlyList<Bar> rising = new BarBuilder(TimeFrame.D1)
+            .At(Start)
+            .Repeat(200, (builder, index) => builder.Doji(1.1000 + (0.0001 * index)))
+            .Build();
+
+        Assert.Equal(50, period);
+        Assert.Equal(Bias.Long, BiasCalculator.Compute(rising, period));
+        Assert.Equal(Bias.Short, BiasCalculator.Compute(rising.Mirror(3.0), period));
+
+        // 199 bars: the window of 4 x 50 = 200 bars is one bar short, so the bias is Neutral.
+        Assert.Equal(Bias.Neutral, BiasCalculator.Compute(rising.FirstBars(199), period));
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-005")]
     public void Compute_FromStoredBars_ChangesOnlyWhenAD1BarCloses()
     {
         var store = new BarStore(new SignalParameters { BiasEmaPeriod = Period });
@@ -147,7 +169,7 @@ public class BiasCalculatorTests
         // seed = (11 + 12 + 13) / 3 = 12; 15 -> 13.5; 14 -> 13.75; 16 -> 14.875; 18 -> 16.4375;
         // 17 -> 16.71875; 19 -> 17.859375; 21 -> 19.4296875; 20 -> 19.71484375; 5 -> 12.357421875.
         // The close (5) is below the EMA (12.357421875): Short.
-        store.Add(TimeFrame.D1, new Bar(Start.AddDays(12.0), 5.0, 5.0, 5.0, 5.0));
+        store.Add(TimeFrame.D1, BarBuilder.One(TimeFrame.D1, Start.AddDays(12.0), 5.0, 5.0, 5.0, 5.0));
 
         Assert.Equal(Bias.Short, BiasCalculator.Compute(store.Bars(TimeFrame.D1), Period));
     }

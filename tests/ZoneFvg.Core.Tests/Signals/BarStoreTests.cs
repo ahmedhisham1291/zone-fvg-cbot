@@ -38,8 +38,8 @@ public class BarStoreTests
     {
         // Strictly increasing is the only rule: a weekend gap is fine.
         var store = new BarStore(new SignalParameters());
-        Bar friday = new(Start.AddDays(4.0).AddHours(20.0), 1.1, 1.1, 1.1, 1.1);
-        Bar sunday = new(Start.AddDays(6.0).AddHours(21.0), 1.2, 1.2, 1.2, 1.2);
+        Bar friday = BarBuilder.One(TimeFrame.H4, Start.AddDays(4.0).AddHours(20.0), 1.1, 1.1, 1.1, 1.1);
+        Bar sunday = BarBuilder.One(TimeFrame.H4, Start.AddDays(6.0).AddHours(21.0), 1.2, 1.2, 1.2, 1.2);
 
         store.Add(TimeFrame.H4, friday);
         store.Add(TimeFrame.H4, sunday);
@@ -70,7 +70,7 @@ public class BarStoreTests
         var store = new BarStore(new SignalParameters());
         IReadOnlyList<Bar> bars = Series(TimeFrame.H4, 3);
         AddAll(store, TimeFrame.H4, bars);
-        var sameTimeOtherPrices = new Bar(bars[2].OpenTimeUtc, 7.0, 9.0, 6.0, 8.0);
+        Bar sameTimeOtherPrices = BarBuilder.One(TimeFrame.H4, bars[2].OpenTimeUtc, 7.0, 9.0, 6.0, 8.0);
 
         Assert.Throws<InvalidOperationException>(() => store.Add(TimeFrame.H4, sameTimeOtherPrices));
 
@@ -84,7 +84,7 @@ public class BarStoreTests
         var store = new BarStore(new SignalParameters());
         IReadOnlyList<Bar> bars = Series(TimeFrame.M15, 3);
         AddAll(store, TimeFrame.M15, bars);
-        var earlier = new Bar(bars[2].OpenTimeUtc.AddMinutes(-15.0), 7.0, 9.0, 6.0, 8.0);
+        Bar earlier = BarBuilder.One(TimeFrame.M15, bars[2].OpenTimeUtc.AddMinutes(-15.0), 7.0, 9.0, 6.0, 8.0);
 
         Assert.Throws<InvalidOperationException>(() => store.Add(TimeFrame.M15, earlier));
 
@@ -98,8 +98,8 @@ public class BarStoreTests
         var store = new BarStore(new SignalParameters());
         IReadOnlyList<Bar> bars = Series(TimeFrame.M15, 3);
         AddAll(store, TimeFrame.M15, bars);
-        var oneSecondEarlier = new Bar(bars[2].OpenTimeUtc.AddSeconds(-1.0), 7.0, 9.0, 6.0, 8.0);
-        var oneSecondLater = new Bar(bars[2].OpenTimeUtc.AddSeconds(1.0), 7.0, 9.0, 6.0, 8.0);
+        Bar oneSecondEarlier = BarBuilder.One(TimeFrame.M15, bars[2].OpenTimeUtc.AddSeconds(-1.0), 7.0, 9.0, 6.0, 8.0);
+        Bar oneSecondLater = BarBuilder.One(TimeFrame.M15, bars[2].OpenTimeUtc.AddSeconds(1.0), 7.0, 9.0, 6.0, 8.0);
 
         Assert.Throws<InvalidOperationException>(() => store.Add(TimeFrame.M15, oneSecondEarlier));
         AssertHolds(store, TimeFrame.M15, bars);
@@ -115,7 +115,7 @@ public class BarStoreTests
         var store = new BarStore(new SignalParameters());
         IReadOnlyList<Bar> bars = Series(TimeFrame.D1, 3);
         AddAll(store, TimeFrame.D1, bars);
-        var muchEarlier = new Bar(Start.AddDays(-30.0), 7.0, 9.0, 6.0, 8.0);
+        Bar muchEarlier = BarBuilder.One(TimeFrame.D1, Start.AddDays(-30.0), 7.0, 9.0, 6.0, 8.0);
 
         Assert.Throws<InvalidOperationException>(() => store.Add(TimeFrame.D1, muchEarlier));
 
@@ -147,7 +147,7 @@ public class BarStoreTests
     {
         // The D1, H4 and M15 bars that open at midnight share an open time; order is per timeframe.
         var store = new BarStore(new SignalParameters());
-        var bar = new Bar(Start, 1.1, 1.1, 1.1, 1.1);
+        Bar bar = BarBuilder.One(TimeFrame.M15, Start, 1.1, 1.1, 1.1, 1.1);
 
         store.Add(TimeFrame.D1, bar);
         store.Add(TimeFrame.H4, bar);
@@ -192,7 +192,7 @@ public class BarStoreTests
     public void Members_UnknownTimeFrame_Throw()
     {
         var store = new BarStore(new SignalParameters());
-        var bar = new Bar(Start, 1.1, 1.1, 1.1, 1.1);
+        Bar bar = BarBuilder.One(TimeFrame.M15, Start, 1.1, 1.1, 1.1, 1.1);
         const TimeFrame unknown = (TimeFrame)99;
 
         Assert.Throws<ArgumentOutOfRangeException>("timeFrame", () => store.Add(unknown, bar));
