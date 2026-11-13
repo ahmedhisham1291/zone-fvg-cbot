@@ -208,3 +208,9 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-13 | `Bar` | Get-only properties; no `with` mutation | Validation on construction cannot be bypassed |
 | 2026-11-13 | Warm-up dictionary | `WarmupBars` enumerates D1, H4, M15 | No dependence on dictionary order |
 | 2026-11-13 | WP01 defaults | The ranges checked by `SignalParameters.Validate()` (including bar counts from 1 to 10,000) and the 16-bar margin of `BarStore` | Not trading rules; accepted as implemented in WP01 |
+| 2026-11-14 | WP01 remaining decisions | Decisions 3, 4, 5, 7, 8, 10, 11, 14, 16 and 17 of pull request #6 are accepted as written there. No extra tagged tests for SIG-001 and SIG-005 in WP03 or WP08 | Recorded on pull request #6 |
+| 2026-11-14 | SIG-014 and SIG-015 | Completed and marked in WP03, not WP02. WP02 keeps the lifecycle in `ZoneBook`, the bias-free detection and their tagged tests | "A valid FVG appears" and the bias gate need the FVG detector and the engine |
+| 2026-11-14 | Base at a wide bar (SIG-009) | If the bar immediately before the leg is wider than 1.0 x ATR(H4), the base is that bar alone | "Collected backward while" stops at the first wide bar; one bar is always taken |
+| 2026-11-14 | Zone id (SIG-013) | The "first base bar" is the oldest base bar | First in time |
+| 2026-11-14 | Activation time (SIG-013) | The close time of the leg's last bar, its open time plus 4 hours. Equal to the next bar's open when bars are contiguous; earlier across a market gap | The next bar's open is not known at detection. No M15 bar exists inside a gap, so nothing else changes |
+| 2026-11-14 | Terminal zones | Used, Invalid and Expired zones leave the book at once and are reported once. Their ids are remembered, so a repeated id is still discarded | `Zones` holds non-terminal zones only (section 3). A Used zone has no further effect on signals |
