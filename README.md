@@ -24,7 +24,7 @@ validator agent, CI gates, and a human who is the only one allowed to merge.
 | `.claude/agents/validator.md` | The validator as a Claude Code subagent |
 | `.github/workflows/ci.yml` | Build, format, tests, coverage gate, `.algo` build, traceability, architecture and secret checks |
 | `.github/workflows/guard.yml` | Blocks changes to protected paths unless you add a label |
-| `.github/workflows/validator.yml` | Runs the validator agent on every pull request and fails the check on a FAIL verdict |
+| `.github/workflows/validator.yml` | Runs the validator agent inside GitHub. Switched off in this repository (owner decision of 2026-11-13) so that nothing uses API credit. The validator agent is run from the orchestrating session instead and posts its report as a comment |
 | `tools/*.py` | The check scripts used by CI |
 | `scripts/setup-github.sh` | One-time GitHub settings: labels, merge rules, required checks |
 
@@ -42,18 +42,21 @@ implementer agent ──> pull request
    .algo build      secret scan       your label            requirement
         └────────────────┴──────────────────┴───────────────────┘
                          ▼
-                 you read and merge
+            merge, by the rule in AGENTS.md "Review"
 ```
 
-Nothing merges on an AI's say-so. A validator PASS only means it found no
-reason to block.
+A validator PASS only means it found no reason to block. Who may merge, and
+when the owner must do it personally, is defined in `AGENTS.md`, section
+"Review". In this repository the `validator` box is filled by a validator
+agent run from the orchestrating session, not by the GitHub workflow.
 
 ## First-time setup
 
 1. Create an empty **private** repository on GitHub and push this folder to
    `main`.
-2. Add the repository secret `ANTHROPIC_API_KEY` (used by the validator
-   workflow). Each validator run costs API usage.
+2. Optional, and not used in this repository: to run the validator inside
+   GitHub, add the repository secret `ANTHROPIC_API_KEY` and switch the
+   `validator` workflow on under Actions. Each run costs API usage.
 3. Run `./scripts/setup-github.sh <owner>/<repo>` from a machine where the
    GitHub CLI is logged in. Read the script first.
 4. **Plan note:** on a private repository GitHub only *enforces* required
