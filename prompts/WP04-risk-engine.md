@@ -8,8 +8,15 @@ account. Read every requirement twice.
 
 ## Requirements to implement
 
-RSK-001, RSK-002, RSK-003, RSK-004, RSK-005, RSK-006, RSK-007, RSK-008,
-RSK-009, RSK-010, RSK-011, RSK-012.
+RSK-001, RSK-004, RSK-005, RSK-007, RSK-009, RSK-011, RSK-012.
+
+WP04 also builds the decision parts of RSK-002, RSK-003, RSK-006, RSK-008 and
+RSK-010: the sanity caps, the margin check on a given estimate, the daily
+budget, the kill switch and the counters, each returning a decision with a
+reason. Tag those tests with their ids, but leave the five status lines at
+`planned`. The actions they require (log and alert, the broker's margin
+estimate, cancelling orders, entering Blocked or Halted) are built in WP06 and
+WP07, which mark them.
 
 ## Allowed paths
 
@@ -68,6 +75,25 @@ the requirements above.
   floating-point noise cannot cost a whole step. The owner accepted this as
   consistent with "never round up" (architecture section 10). Add no second
   tolerance.
+- Owner decisions of 2026-11-14 (architecture section 10), binding:
+  - A position whose stop is at or beyond entry in profit has zero risk for
+    RSK-004.
+  - The daily budget (RSK-006) blocks a new trade only when M - W is strictly
+    greater than the limit. Commission counts, so with defaults normally two
+    full-size trades fit per day. Swap on open positions is not counted.
+  - One `MaxVolumeUnits` for all symbols. A stop or target exactly at entry
+    is on the wrong side (RSK-002).
+  - Entry counting (RSK-010): partial closes of one position count once;
+    cancelled or expired orders are not counted; a request exactly one hour
+    old has left the hourly window. `ClosedTradeInfo` carries `PositionId`
+    and `EntryTimeUtc`. Requests per hour (20) and errors per hour (5) are
+    parameters with the spec 4.3 defaults.
+  - `ClosedTradeInfo.NetProfit` already includes commission and swap.
+  - Currency cap (RSK-005): only the two currencies of the new trade are
+    checked, as the requirement text now says.
+  - Emergency guard (RSK-009): if M cannot be computed because broker data is
+    missing or invalid, the guard still returns CloseAllAndHalt when equity is
+    at or below the static floor. New trades stay refused in that case.
 
 ## Tests required
 
@@ -108,6 +134,8 @@ Calling the broker, placing or closing orders. This package only decides.
 
 - [ ] Tests first, all green; `Risk/` at 100% branch coverage.
 - [ ] All `AGENTS.md` commands clean; outputs in the pull request.
-- [ ] The twelve requirement statuses are `implemented`.
+- [ ] The seven requirement statuses are `implemented`. RSK-002, RSK-003,
+      RSK-006, RSK-008 and RSK-010 stay `planned` (see "Requirements to
+      implement").
 - [ ] Any rule whose wording allowed two readings is listed under "Decisions
       for the human" with both readings and the one you tested.
