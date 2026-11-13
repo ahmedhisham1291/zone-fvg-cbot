@@ -313,6 +313,10 @@ public class PositionSizerTests
         Assert.Equal(RiskReason.InvalidInput, sizer.Size(RiskData.Account(100000.0), plan, valid with { PipValuePerUnit = double.NaN }).Reason);
         Assert.Equal(RiskReason.InvalidInput, sizer.Size(RiskData.Account(100000.0), plan, valid with { VolumeMinUnits = 0.0 }).Reason);
         Assert.Equal(RiskReason.InvalidInput, sizer.Size(RiskData.Account(100000.0), plan, valid with { VolumeStepUnits = -1000.0 }).Reason);
+        Assert.Equal(RiskReason.InvalidInput, sizer.Size(RiskData.Account(100000.0), plan, valid with { BaseCurrency = "" }).Reason);
+        Assert.Equal(RiskReason.InvalidInput, sizer.Size(RiskData.Account(100000.0), plan, valid with { QuoteCurrency = "" }).Reason);
+        Assert.Equal(RiskReason.InvalidInput, sizer.Size(RiskData.Account(100000.0), plan, valid with { RoundTripCommissionPerUnit = -0.00001 }).Reason);
+        Assert.Equal(RiskReason.InvalidInput, sizer.Size(RiskData.Account(100000.0), plan with { Symbol = "" }, valid with { Name = "" }).Reason);
     }
 
     [Fact]
