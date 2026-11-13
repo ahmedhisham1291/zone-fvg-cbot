@@ -109,7 +109,7 @@ requirements:
     wp: WP02
     spec: "3.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Base. The base is the 1 to MaxBaseBars (3) bars immediately before the
       leg, collected backward while each bar's range (high - low) is at most
@@ -154,7 +154,7 @@ requirements:
     wp: WP02
     spec: "3.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Activation and identity. A zone becomes Active at the open time of the H4
       bar following the leg's last bar. Its id is "D-yyyyMMdd-HHmm" (demand) or
