@@ -26,6 +26,8 @@ public static class RiskData
 
     public static RiskParameters Parameters => new() { RiskEpochDate = Epoch };
 
+    public static RiskEngine Engine => new(Parameters);
+
     public static SymbolInfo EurUsd => Major("EURUSD", "EUR", "USD");
 
     public static SymbolInfo GbpUsd => Major("GBPUSD", "GBP", "USD");
@@ -74,6 +76,11 @@ public static class RiskData
     public static PendingOrderInfo Order(long id, string symbol, Side side, double volume, double entry, double? stop, DateTime createdTimeUtc, string label)
     {
         return new PendingOrderInfo(id, symbol, side, volume, entry, stop, null, label, "e=;s=;t=", createdTimeUtc);
+    }
+
+    public static PlannedTrade Trade(string symbol, Side side, double entry, double stop, double volume)
+    {
+        return new PlannedTrade(symbol, side, entry, stop, volume, 0.0);
     }
 
     public static ClosedTradeInfo Closed(long positionId, string symbol, DateTime entryTimeUtc, DateTime closeTimeUtc, double netProfit, double balanceAfterClose)
