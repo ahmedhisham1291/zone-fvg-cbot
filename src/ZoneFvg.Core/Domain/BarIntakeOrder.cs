@@ -37,6 +37,42 @@ public static class BarIntakeOrder
     }
 
     /// <summary>
+    /// Nominal length of one bar of the timeframe (SIG-004): 15 minutes for M15, 4 hours for H4,
+    /// 24 hours for D1 (docs/architecture.md section 10, "Close time").
+    /// </summary>
+    /// <param name="timeFrame">The timeframe.</param>
+    /// <returns>The length of one bar.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The timeframe is not a defined value.</exception>
+    public static TimeSpan Length(TimeFrame timeFrame)
+    {
+        switch (timeFrame)
+        {
+            case TimeFrame.M15:
+                return TimeSpan.FromMinutes(15.0);
+            case TimeFrame.H4:
+                return TimeSpan.FromHours(4.0);
+            case TimeFrame.D1:
+                return TimeSpan.FromHours(24.0);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(timeFrame), "Unknown timeframe.");
+        }
+    }
+
+    /// <summary>
+    /// Nominal close time of a bar (SIG-004): its open time plus <see cref="Length"/> of its
+    /// timeframe. Bars of different timeframes close at the same instant when these times are equal.
+    /// </summary>
+    /// <param name="timeFrame">The timeframe of the bar.</param>
+    /// <param name="bar">The bar.</param>
+    /// <returns>The close time in UTC.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The timeframe is not a defined value, or the close time is beyond the largest date.</exception>
+    public static DateTime CloseTimeUtc(TimeFrame timeFrame, Bar bar)
+    {
+        ArgumentNullException.ThrowIfNull(bar);
+        return bar.OpenTimeUtc + Length(timeFrame);
+    }
+
+    /// <summary>
     /// Puts bars that closed at the same instant into processing order D1, H4, M15 (SIG-004).
     /// The caller guarantees that the bars closed together; at most one bar per timeframe is allowed.
     /// </summary>
