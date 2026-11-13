@@ -65,11 +65,10 @@ public sealed class RiskEngine
     /// <param name="snapshot">The snapshot.</param>
     /// <returns>The total and the trades without a stop loss.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
-    /// <exception cref="InvalidOperationException">Symbol data for a bot trade is missing or invalid.</exception>
+    /// <exception cref="InvalidOperationException">Symbol data for a bot trade with a stop loss is missing or invalid.</exception>
     public OpenRiskReport OpenRiskAtStop(RiskSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        RequireSymbolData(snapshot);
         double sizingRisk = SizingRuleRisk(snapshot);
         double total = 0.0;
         var positionsWithoutStop = new List<long>();
@@ -187,7 +186,6 @@ public sealed class RiskEngine
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         RequireHistory(snapshot);
-        RequireSymbolData(snapshot);
         return new DailyBudgetStatus(DayStart(snapshot), WorstCaseEquity(snapshot), DailyLimit());
     }
 
@@ -212,8 +210,14 @@ public sealed class RiskEngine
 
     private static SymbolInfo Symbol(RiskSnapshot snapshot, string name)
     {
-        // Callers have checked the symbol data first; this only guards against misuse.
-        return snapshot.FindSymbol(name) ?? throw new InvalidOperationException("No symbol data for " + name + ".");
+        // Every use of symbol data goes through here, so missing or invalid data always stops the computation.
+        string? problem = SymbolProblem(snapshot, name);
+        if (problem != null)
+        {
+            throw new InvalidOperationException("Risk cannot be computed: " + problem + ".");
+        }
+
+        return snapshot.FindSymbol(name)!;
     }
 
     private static double RiskAtStop(Side side, double entry, double stop, double volume, SymbolInfo symbol)
@@ -313,15 +317,6 @@ public sealed class RiskEngine
     {
         DateTime dayStart = CestClock.StartOfCestDayUtc(snapshot.ServerTimeUtc);
         return _parameters.RiskEpochDate < dayStart ? _parameters.RiskEpochDate : dayStart;
-    }
-
-    private static void RequireSymbolData(RiskSnapshot snapshot)
-    {
-        string? problem = BotSymbolProblem(snapshot);
-        if (problem != null)
-        {
-            throw new InvalidOperationException("Risk cannot be computed: " + problem + ".");
-        }
     }
 
     private static string? BotSymbolProblem(RiskSnapshot snapshot)

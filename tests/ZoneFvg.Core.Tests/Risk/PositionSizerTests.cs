@@ -49,6 +49,9 @@ public class PositionSizerTests
         Assert.Equal(50.0, result.RiskMoney, Money);
         Assert.Equal(20.0, result.StopPips, 1e-9);
         Assert.False(result.AlertRequired);
+        Assert.Equal(string.Empty, result.Detail);
+        Assert.Equal(0.0, result.Measured);
+        Assert.Equal(0.0, result.Limit);
     }
 
     [Fact]
@@ -122,6 +125,7 @@ public class PositionSizerTests
         Assert.Equal(0.0, result.Measured, Units);
         Assert.Equal(1000.0, result.Limit);
         Assert.False(result.AlertRequired);
+        Assert.Equal("volume 0 below minimum 1000", result.Detail);
     }
 
     [Fact]

@@ -182,4 +182,18 @@ public class OpenRiskCapTests
 
         Assert.Throws<InvalidOperationException>(() => RiskData.Engine.OpenRiskAtStop(snapshot));
     }
+
+    [Fact]
+    [Trait("Req", "RSK-004")]
+    public void OpenRiskAtStop_BotTradeWithoutStopOnASymbolWithoutData_CountsTheSizingRuleRisk()
+    {
+        // Without a stop the risk does not depend on symbol data: 0.5% x 100,000 = 500, reported as a violation.
+        PositionInfo noStop = RiskData.Position(1, "EURUSD", Side.Buy, 250000.0, 1.1, null);
+        RiskSnapshot snapshot = RiskData.Snapshot(RiskData.Account(100000.0), new[] { noStop }, symbols: new[] { RiskData.UsdJpy });
+
+        OpenRiskReport report = RiskData.Engine.OpenRiskAtStop(snapshot);
+
+        Assert.Equal(500.0, report.RiskMoney, 1e-9);
+        Assert.True(report.HasViolation);
+    }
 }
