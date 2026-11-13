@@ -260,7 +260,7 @@ requirements:
     wp: WP04
     spec: "4.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Position size. riskAmount = balance x RiskPercent/100; volume =
       riskAmount / (stopPips x pipValuePerUnit), rounded DOWN to the symbol's
@@ -291,7 +291,7 @@ requirements:
     wp: WP04
     spec: "4.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Open risk cap. The sum of risk at stop of every bot position and
       pending order on the account, plus the new trade, must not exceed
@@ -301,7 +301,7 @@ requirements:
     wp: WP04
     spec: "4.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Currency exposure cap. Buying a pair is long its base and short its
       quote currency. For each currency, the number of bot positions and
@@ -325,7 +325,7 @@ requirements:
     wp: WP04
     spec: "4.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Stateless day start. The balance at 00:00 CE(S)T is reconstructed as
       current balance minus the net result (profit, commission, swap) of all
@@ -347,7 +347,7 @@ requirements:
     wp: WP04
     spec: "4.2, 15.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       FTMO emergency guard. If equity <= M - (FtmoDailyLossPercent -
       FtmoGuardBufferPercent)% of InitialCapital, or equity <= InitialCapital x
@@ -370,7 +370,7 @@ requirements:
     wp: WP04
     spec: "4.2, 8.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Every risk decision is a pure function of an explicit input snapshot
       (account, positions, pending orders, history, symbol data, time,
@@ -381,7 +381,7 @@ requirements:
     wp: WP04
     spec: "4.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       CE(S)T day boundary. Central European time is UTC+1, or UTC+2 from
       01:00 UTC on the last Sunday of March until 01:00 UTC on the last Sunday
