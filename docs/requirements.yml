@@ -408,7 +408,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Merge rule. An event is high impact if either feed rates it high. Events
       from the two feeds with the same currency and times within 5 minutes are
