@@ -6,7 +6,8 @@ namespace ZoneFvg.Core.Tests;
 
 /// <summary>
 /// NWS-002: an event is high impact if either feed rates it high; events of the two feeds with
-/// the same currency and times at most 5 minutes apart are one event, at the earlier time. The
+/// the same currency and times at most 5 minutes apart are one event, at the earlier time, for
+/// logging and impact; every event keeps its own window (owner decision of 2026-11-14). The
 /// second feed's events are given directly as a list (owner decision of 2026-11-14: Forex
 /// Factory alone in production; the calendar stays open for a second source).
 /// </summary>
@@ -179,10 +180,11 @@ public class NewsMergeTests
 
     [Fact]
     [Trait("Req", "NWS-002")]
-    public void Calendar_TwoSources_HighFromEitherOpensOneWindowAtTheEarlierTime()
+    public void Calendar_TwoSources_HighFromEitherKeepsEveryEventsOwnWindow()
     {
-        // First feed: USD medium at 13:30. Second feed: USD high at 13:34. Merged: high at 13:30,
-        // so the window is 13:00-14:00 (not 13:04-14:04).
+        // First feed: USD medium at 13:30. Second feed: USD high at 13:34. One logged event, high,
+        // at 13:30. Both events open their own window (owner decision of 2026-11-14): 13:00-14:00
+        // and 13:04-14:04, merged into 13:00-14:04, so merging never shortens the blocked time.
         var calendar = new NewsCalendar(
             new IReadOnlyList<NewsEvent>[] { new[] { First("USD", T, NewsImpact.Medium) }, new[] { Second("USD", T.AddMinutes(4)) } },
             Array.Empty<NewsEvent>(),
@@ -192,8 +194,79 @@ public class NewsMergeTests
         NewsWindow window = Assert.Single(calendar.WindowsFor("EURUSD"));
 
         Assert.Equal(Utc(2026, 11, 10, 13, 0), window.StartUtc);
-        Assert.Equal(Utc(2026, 11, 10, 14, 0), window.EndUtc);
+        Assert.Equal(Utc(2026, 11, 10, 14, 4), window.EndUtc);
+        NewsEvent logged = Assert.Single(calendar.Events);
+        Assert.Equal(T, logged.TimeUtc);
+        Assert.Equal(NewsImpact.High, logged.Impact);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-002")]
+    public void Calendar_ChainedMatches_EveryEventKeepsItsWindow()
+    {
+        // 13:30 (first, medium) - 13:33 (second, high) - 13:36 (first, low): one logged event at
+        // 13:30, but the group is high, so all three open windows: 13:00 to 14:06.
+        var calendar = new NewsCalendar(
+            new IReadOnlyList<NewsEvent>[]
+            {
+                new[] { First("USD", T, NewsImpact.Medium), First("USD", T.AddMinutes(6), NewsImpact.Low) },
+                new[] { Second("USD", T.AddMinutes(3)) },
+            },
+            Array.Empty<NewsEvent>(),
+            30,
+            30);
+
+        NewsWindow window = Assert.Single(calendar.WindowsFor("EURUSD"));
+
+        Assert.Equal(Utc(2026, 11, 10, 13, 0), window.StartUtc);
+        Assert.Equal(Utc(2026, 11, 10, 14, 6), window.EndUtc);
+        Assert.True(calendar.IsInWindow("EURUSD", Utc(2026, 11, 10, 14, 6)));
+        Assert.False(calendar.IsInWindow("EURUSD", Utc(2026, 11, 10, 14, 6, 1)));
         Assert.Single(calendar.Events);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-002")]
+    public void Calendar_MatchedEventsNeitherHigh_OpenNoWindow()
+    {
+        var calendar = new NewsCalendar(
+            new IReadOnlyList<NewsEvent>[] { new[] { First("USD", T, NewsImpact.Medium) }, new[] { Second("USD", T.AddMinutes(2), NewsImpact.Low) } },
+            Array.Empty<NewsEvent>(),
+            30,
+            30);
+
+        Assert.Empty(calendar.WindowsFor("EURUSD"));
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-002")]
+    public void WindowEvents_RaiseEveryMemberOfAHighGroupToHighAtItsOwnTime()
+    {
+        IReadOnlyList<NewsEvent> events = NewsMerge.WindowEvents(
+            new IReadOnlyList<NewsEvent>[]
+            {
+                new[] { First("USD", T, NewsImpact.Medium), First("EUR", T, NewsImpact.Low) },
+                new[] { Second("USD", T.AddMinutes(5)), Second("JPY", null) },
+            });
+
+        Assert.Equal(
+            new[]
+            {
+                Second("JPY", null),
+                First("EUR", T, NewsImpact.Low),
+                First("USD", T, NewsImpact.High),
+                Second("USD", T.AddMinutes(5)),
+            },
+            events);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-002")]
+    public void WindowEvents_NullSources_Throw()
+    {
+        Assert.Throws<ArgumentNullException>(() => NewsMerge.WindowEvents(null!));
+        Assert.Throws<ArgumentNullException>(() => NewsMerge.WindowEvents(new IReadOnlyList<NewsEvent>[] { null! }));
+        Assert.Throws<ArgumentNullException>(() => NewsMerge.WindowEvents(new IReadOnlyList<NewsEvent>[] { new NewsEvent[] { null! } }));
     }
 
     [Fact]

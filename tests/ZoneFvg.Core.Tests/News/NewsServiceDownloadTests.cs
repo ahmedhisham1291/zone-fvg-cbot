@@ -8,9 +8,11 @@ namespace ZoneFvg.Core.Tests;
 
 /// <summary>
 /// NWS-005: a download is accepted only if it parses, contains events and covers the current
-/// time; a rejected download never replaces accepted data. NWS-006: each source is fetched at
-/// start and every NewsRefreshHours, never more often than once per 60 minutes, also across
-/// restarts with the same store. T0 is the sample's Wednesday, 2026-11-11 12:00 UTC.
+/// time; a document with a malformed event is rejected as a whole and raises an alert; a rejected
+/// download never replaces accepted data. NWS-006: each source is fetched at start and every
+/// NewsRefreshHours, never more often than once per 60 minutes, also across restarts with the
+/// same store; without accepted data covering now it is fetched again after 60 minutes. T0 is
+/// the sample's Wednesday, 2026-11-11 12:00 UTC.
 /// </summary>
 public class NewsServiceDownloadTests
 {
@@ -69,6 +71,63 @@ public class NewsServiceDownloadTests
         Assert.Equal(NewsStatus.Available, update.Status);
         Assert.Equal(before, service.CalendarAt(T0.AddHours(4)).WindowsFor("EURUSD"));
         Assert.Equal(cached, store.Values["news.ForexFactory.data"]);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-005")]
+    public void Refresh_DocumentWithAMalformedEvent_RejectedAsAWholeWithAnAlert()
+    {
+        var store = new MemoryStore();
+        var http = new FakeTransport(Ok(Sample));
+        NewsService service = LiveService(store, http);
+        service.Refresh(T0);
+        string cached = store.Values["news.ForexFactory.data"];
+        http.Respond = _ => Ok(Sample.Replace("\"2026-11-12T02:00:00-05:00\"", "\"2026-11-12 02:00\"", StringComparison.Ordinal));
+
+        NewsUpdate update = service.Refresh(T0.AddHours(4));
+
+        NewsFeedReport report = Assert.Single(update.Reports);
+        Assert.Equal(NewsFeedOutcome.DownloadMalformed, report.Outcome);
+        Assert.StartsWith("Download rejected: Event ", report.Detail, StringComparison.Ordinal);
+        Assert.Contains("is malformed: the date \"2026-11-12 02:00\"", report.Detail, StringComparison.Ordinal);
+        Assert.True(update.MalformedDownloadAlert);
+        Assert.False(update.AlertRaised);
+        Assert.Equal(NewsStatus.Available, update.Status);
+        Assert.Equal(106, update.Calendar.Events.Count);
+        Assert.Equal(cached, store.Values["news.ForexFactory.data"]);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-005")]
+    public void Refresh_MalformedEventWithoutEarlierData_AlertAndUnavailable()
+    {
+        NewsUpdate update = LiveService(new MemoryStore(), new FakeTransport(Ok("[{\"title\":\"X\",\"country\":\"USD\",\"date\":\"2026-11-11T08:30:00-05:00\"}]"))).Refresh(T0);
+
+        Assert.True(update.MalformedDownloadAlert);
+        Assert.True(update.AlertRaised);
+        Assert.Equal(NewsStatus.Unavailable, update.Status);
+    }
+
+    [Theory]
+    [Trait("Req", "NWS-005")]
+    [InlineData("<html>Request Denied</html>")]
+    [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("[{\"title\":")]
+    public void Refresh_OtherRejections_NoMalformedEventAlert(string body)
+    {
+        NewsUpdate update = LiveService(new MemoryStore(), new FakeTransport(Ok(body))).Refresh(T0);
+
+        Assert.False(update.MalformedDownloadAlert);
+        Assert.Contains(update.Reports, r => r.Outcome == NewsFeedOutcome.DownloadRejected);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-005")]
+    public void Refresh_GoodOrFailedDownload_NoMalformedEventAlert()
+    {
+        Assert.False(LiveService(new MemoryStore(), new FakeTransport(Ok(Sample))).Refresh(T0).MalformedDownloadAlert);
+        Assert.False(LiveService(new MemoryStore(), new FakeTransport(Failed())).Refresh(T0).MalformedDownloadAlert);
     }
 
     [Fact]
@@ -190,16 +249,92 @@ public class NewsServiceDownloadTests
 
     [Fact]
     [Trait("Req", "NWS-006")]
-    public void Refresh_FailedAttempts_AlsoCountForTheInterval()
+    public void Refresh_FailedFetchWithoutData_RetriedAfter60Minutes()
     {
+        // Owner decision of 2026-11-14: without accepted data covering now, retry after 60 minutes.
         var http = new FakeTransport(Failed());
         NewsService service = LiveService(new MemoryStore(), http);
 
         service.Refresh(T0);
         service.Refresh(T0.AddMinutes(30));
-        service.Refresh(T0.AddHours(4).AddSeconds(-1));
-
+        service.Refresh(T0.AddMinutes(59).AddSeconds(59));
         Assert.Equal(1, http.Calls);
+        service.Refresh(T0.AddMinutes(60));
+        Assert.Equal(2, http.Calls);
+        service.Refresh(T0.AddMinutes(119));
+        Assert.Equal(2, http.Calls);
+        service.Refresh(T0.AddMinutes(120));
+        Assert.Equal(3, http.Calls);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-006")]
+    public void Refresh_RejectedFetchWithoutData_RetriedAfter60MinutesAndRecovers()
+    {
+        var http = new FakeTransport(Ok("<html>Request Denied</html>"));
+        NewsService service = LiveService(new MemoryStore(), http);
+        Assert.Equal(NewsStatus.Unavailable, service.Refresh(T0).Status);
+        http.Respond = _ => Ok(Sample);
+
+        Assert.Equal(NewsStatus.Unavailable, service.Refresh(T0.AddMinutes(59)).Status);
+        NewsUpdate update = service.Refresh(T0.AddMinutes(60));
+
+        Assert.Equal(2, http.Calls);
+        Assert.Equal(NewsStatus.Available, update.Status);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-006")]
+    public void Refresh_FailedFetchWhileGoodDataCovers_WaitsNewsRefreshHours()
+    {
+        var http = new FakeTransport(Ok(Sample));
+        NewsService service = LiveService(new MemoryStore(), http);
+        service.Refresh(T0);
+        http.Respond = _ => Failed();
+
+        service.Refresh(T0.AddHours(4));
+        service.Refresh(T0.AddHours(5));
+        service.Refresh(T0.AddHours(8).AddSeconds(-1));
+        Assert.Equal(2, http.Calls);
+        service.Refresh(T0.AddHours(8));
+        Assert.Equal(3, http.Calls);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-006")]
+    public void Refresh_WeekRollOver_FetchedAsSoonAs60MinutesHavePassed()
+    {
+        // Fetched Sunday 2026-11-15 23:30 UTC; the data covers the week ending Monday 00:00.
+        var http = new FakeTransport(Ok(Sample));
+        NewsService service = LiveService(new MemoryStore(), http);
+        service.Refresh(Utc(2026, 11, 15, 23, 30));
+
+        service.Refresh(Utc(2026, 11, 16, 0, 0));
+        service.Refresh(Utc(2026, 11, 16, 0, 29));
+        Assert.Equal(1, http.Calls);
+        service.Refresh(Utc(2026, 11, 16, 0, 30));
+        Assert.Equal(2, http.Calls);
+        service.Refresh(Utc(2026, 11, 16, 1, 29));
+        Assert.Equal(2, http.Calls);
+        service.Refresh(Utc(2026, 11, 16, 1, 30));
+        Assert.Equal(3, http.Calls);
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-006")]
+    public void Refresh_StaleCachedDataAfterRestart_RetriedAfter60Minutes()
+    {
+        // Cached data 49 hours old is not trusted, so the source is retried hourly.
+        var store = new MemoryStore();
+        LiveService(store, new FakeTransport(Ok(Sample))).Refresh(T0);
+        var http = new FakeTransport(Failed());
+        NewsService restarted = LiveService(store, http);
+
+        restarted.Refresh(T0.AddHours(49));
+        restarted.Refresh(T0.AddHours(49).AddMinutes(59));
+        Assert.Equal(1, http.Calls);
+        restarted.Refresh(T0.AddHours(50));
+        Assert.Equal(2, http.Calls);
     }
 
     [Theory]

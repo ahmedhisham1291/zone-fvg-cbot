@@ -76,6 +76,7 @@ public class EmbeddedHistoryProviderTests
         Assert.False(result.IsValid);
         Assert.Equal("Embedded history line 2 is malformed: \"" + line + "\". Expected \"yyyy-MM-dd HH:mm,CUR,Impact,Title\".", result.Reason);
         Assert.Empty(result.Events);
+        Assert.True(result.HasMalformedEvent);
     }
 
     [Theory]

@@ -23,6 +23,7 @@ public class ForexFactoryParserTests
         NewsParseResult result = ParseSample();
 
         Assert.True(result.IsValid, result.Reason);
+        Assert.False(result.HasMalformedEvent);
         Assert.Equal(106, result.Events.Count);
         Assert.Equal("106 events", result.Reason);
         Assert.Equal(5, result.Events.Count(e => e.Impact == NewsImpact.High));
@@ -192,6 +193,7 @@ public class ForexFactoryParserTests
         NewsParseResult result = new ForexFactoryParser().Parse(truncated, SampleWednesday);
 
         Assert.False(result.IsValid);
+        Assert.False(result.HasMalformedEvent);
         Assert.StartsWith("The document is not valid JSON", result.Reason, StringComparison.Ordinal);
     }
 
@@ -250,6 +252,7 @@ public class ForexFactoryParserTests
         Assert.False(result.IsValid);
         Assert.Equal(reason, result.Reason);
         Assert.Empty(result.Events);
+        Assert.Equal(reason.StartsWith("Event ", StringComparison.Ordinal), result.HasMalformedEvent);
     }
 
     [Theory]
@@ -270,6 +273,7 @@ public class ForexFactoryParserTests
         NewsParseResult result = new ForexFactoryParser().Parse(document, SampleWednesday);
 
         Assert.False(result.IsValid);
+        Assert.True(result.HasMalformedEvent);
         Assert.StartsWith("Event 1 is malformed: the date \"" + date + "\" is not ISO 8601 with an offset", result.Reason, StringComparison.Ordinal);
     }
 

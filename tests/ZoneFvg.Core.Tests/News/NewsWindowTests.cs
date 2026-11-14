@@ -6,7 +6,8 @@ namespace ZoneFvg.Core.Tests;
 
 /// <summary>
 /// NWS-001: a window runs from NewsBeforeMin (30) minutes before to NewsAfterMin (30) minutes
-/// after each high-impact event of the symbol's base or quote currency, both ends included.
+/// after each high-impact event of the symbol's base or quote currency, or of "All", both ends
+/// included.
 /// Overlapping windows merge. Reference event: USD high impact at 2026-11-10 13:30 UTC, so the
 /// window is 13:00:00 to 14:00:00.
 /// </summary>
@@ -91,6 +92,49 @@ public class NewsWindowTests
     public void WindowsFor_NonHighImpact_NoWindow(NewsImpact impact)
     {
         Assert.Empty(Calendar(Event("USD", CpiTime, impact)).WindowsFor("EURUSD"));
+    }
+
+    [Theory]
+    [Trait("Req", "NWS-001")]
+    [InlineData("EURUSD")]
+    [InlineData("GBPUSD")]
+    [InlineData("USDJPY")]
+    [InlineData("AUDUSD")]
+    [InlineData("EURGBP")]
+    [InlineData("NZDCHF")]
+    public void IsInWindow_HighEventForAll_IsRelevantToEverySymbol(string symbol)
+    {
+        // Owner decision of 2026-11-14: country "All" applies to every symbol. Case is ignored.
+        Assert.True(Calendar(Event("All", CpiTime)).IsInWindow(symbol, CpiTime));
+        Assert.True(Calendar(Event("ALL", CpiTime)).IsInWindow(symbol, CpiTime));
+        Assert.Single(Calendar(Event("All", CpiTime)).WindowsFor(symbol));
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-001")]
+    public void IsInWindow_LowEventForAll_NoWindow()
+    {
+        Assert.Empty(Calendar(Event("All", CpiTime, NewsImpact.Low)).WindowsFor("EURUSD"));
+    }
+
+    [Fact]
+    [Trait("Req", "NWS-001")]
+    public void WindowsFor_RealSampleWithItsAllEventsMadeHigh_OpensWindowsForEverySymbol()
+    {
+        // The sample's two "All" events (G7 Meetings, 04:45 at -05:00 = 09:45 UTC on 11-09 and
+        // 11-10) are Low. Raised to High here, they open 09:15-10:15 windows for any pair.
+        IReadOnlyList<NewsEvent> events = new ForexFactoryParser().Parse(Sample, SampleWednesday).Events
+            .Select(e => e.Currency == "All" ? new NewsEvent(e.TimeUtc, e.Currency, NewsImpact.High, e.Title, e.Source) : e)
+            .ToArray();
+        var calendar = new NewsCalendar(new[] { events }, Array.Empty<NewsEvent>(), 30, 30);
+
+        Assert.Equal(
+            new[]
+            {
+                new NewsWindow(Utc(2026, 11, 9, 9, 15), Utc(2026, 11, 9, 10, 15)),
+                new NewsWindow(Utc(2026, 11, 10, 9, 15), Utc(2026, 11, 10, 10, 15)),
+            },
+            calendar.WindowsFor("AUDJPY"));
     }
 
     [Fact]
