@@ -431,10 +431,11 @@ requirements:
     verify: unit
     status: planned
     text: >-
-      ShowMyTrades parser. Parses the calendar API response (Unix time in
-      UTC, currency, impact, title) into events in UTC, with the same
-      validation rules as NWS-003.
-
+      Single source. NewsSources accepts only ForexFactory (the default). Any
+      other value stops the bot at start with a clear message, the same way a
+      malformed ExtraBlackouts entry does. The ShowMyTrades parser is deferred
+      by the owner's decision of 2026-11-14 and is added only with a real
+      sample of the feed.
   - id: NWS-005
     wp: WP05
     spec: "6.2"

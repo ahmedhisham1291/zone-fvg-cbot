@@ -224,4 +224,7 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-14 | Currency cap (RSK-005) | Only the two currencies of the new trade are checked | The literal reading refused every trade when an unrelated currency was over the cap |
 | 2026-11-14 | Emergency guard on bad data (RSK-009) | If M cannot be computed, the static floor is still checked from equity alone | The guard must not go blind when history is broken |
 | 2026-11-14 | No stop, no new entry (EXE-011) | While any bot position has no stop loss, no new entry is placed | Fail closed |
+| 2026-11-14 | News source | Forex Factory alone; `NewsSources` accepts only ForexFactory. ShowMyTrades deferred until a real sample exists | Owner decision |
+| 2026-11-14 | ATR in SIG-016 and SIG-017 | The latest ATR(M15) and ATR(H4) at the confirmation close | Owner decision on pull request #14 |
+| 2026-11-14 | Stop distance (SIG-017) | No separate field on `Signal`; the distance is abs(Entry - Stop) | Owner decision on pull request #14 |
 | 2026-11-14 | Terminal zones | Used, Invalid and Expired zones leave the book at once and are reported once. Their ids are remembered, so a repeated id is still discarded | `Zones` holds non-terminal zones only (section 3). A Used zone has no further effect on signals |

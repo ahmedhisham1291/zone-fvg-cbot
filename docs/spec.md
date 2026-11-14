@@ -76,7 +76,7 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 | Account | FTMO 2-Step Challenge, Swing type, cTrader, 100,000 USD simulated capital, used only by this bot | Decided and already bought (section 15). Manual trades on the same symbols would confuse recovery |
 | Language | C# in cTrader Algo | Widest documentation and examples |
 | Hosting | Stage 1: your laptop on a demo account for a few days. Stage 2: rented Linux VPS, cTrader CLI in Docker | Decided. See section 10 |
-| News source | Two free feeds combined: Forex Factory weekly export and ShowMyTrades calendar API | Decided. See section 6 |
+| News source | Forex Factory weekly export alone (owner decision 2026-11-14). ShowMyTrades is deferred: the design keeps room for a second feed, added later only with a real sample | Decided. See section 6 |
 | Alerts | Telegram | Decided. See section 11 |
 
 ## 3. Strategy rules
@@ -313,7 +313,9 @@ cTrader has no confirmed built-in calendar feed for bots, so the calendar comes 
 | Terms | No official API or agreement | States that automated and commercial use is allowed |
 | Weakness | Unofficial; one week of data | Small provider; no promise of completeness or timing |
 
-**How the two are combined**
+**Owner decision 2026-11-14:** run on Forex Factory alone. The ShowMyTrades column above is kept for reference; it is not built until the owner supplies a real sample. With one feed, "one feed down" means no feed, so the fail-safe (6.3) blocks entries.
+
+**How the two are combined** (when a second feed is added)
 
 - An event is treated as high impact if **either** feed rates it high.
 - If one feed is down, the other is used alone and an alert is sent.
@@ -402,7 +404,7 @@ Only the four marked **Optimise** are searched. New in v0.2 are marked (new).
 | NewsEnabled (new) | true | News filter on or off | Test on and off |
 | NewsBeforeMin / NewsAfterMin (new) | 30 / 30 | Window around events | Fixed |
 | NewsFailMode (new) | Block | Behaviour without calendar | Fixed |
-| NewsSources (new in 0.3) | Both | Forex Factory, ShowMyTrades, or both | n/a |
+| NewsSources (new in 0.3) | ForexFactory | ForexFactory only until a second feed is added (owner decision 2026-11-14) | n/a |
 | NewsMaxCacheHours (new in 0.3) | 48 | Longest time without a successful refresh | Fixed |
 | NewsRefreshHours (new) | 4 | Feed refresh interval | n/a |
 | ExtraBlackouts (new) | empty | Manual blackout list | n/a |
