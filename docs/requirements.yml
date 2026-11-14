@@ -208,8 +208,10 @@ requirements:
       Signal levels (buy). Entry = low(c1) - EntryLevelPct/100 x gap height.
       Stop = min(zone distal, lowest low since the touch bar inclusive)
       - StopBufferAtr x ATR(M15). Target = entry + RewardRisk x (entry - stop).
-      Sell mirrors this. The signal carries zone id, levels, stop distance in
-      price, the three FVG bar times and the confirmation bar close time.
+      Sell mirrors this. The signal carries zone id, levels, the three FVG bar
+      times, the confirmation bar close time and the ATR(H4) used (added in
+      WP06). The stop distance is abs(entry - stop); there is no separate
+      field.
 
   - id: SIG-018
     wp: WP03
@@ -368,7 +370,8 @@ requirements:
       per day <= 6, counted from broker history and open orders. Order
       requests per instance <= 20 per hour and <= MaxRequestsPerDay (100) per
       day; unhandled errors <= 5 per hour. Exceeding a request or error limit
-      halts the instance.
+      halts the instance. A request that would exceed a request limit is
+      never sent: the check runs before the request.
 
   - id: RSK-011
     wp: WP04
@@ -401,8 +404,9 @@ requirements:
     text: >-
       News windows. For a symbol, relevant currencies are its base and quote.
       A window spans NewsBeforeMin (30) minutes before to NewsAfterMin (30)
-      minutes after each high-impact event of a relevant currency. Overlapping
-      windows merge.
+      minutes after each high-impact event of a relevant currency. An event
+      whose currency is "All" is relevant to every symbol. Overlapping windows
+      merge.
 
   - id: NWS-002
     wp: WP05
@@ -412,7 +416,9 @@ requirements:
     text: >-
       Merge rule. An event is high impact if either feed rates it high. Events
       from the two feeds with the same currency and times within 5 minutes are
-      treated as one event.
+      treated as one event for logging and impact, but every event keeps its
+      own window: merging never shortens the time in which entries are
+      blocked.
 
   - id: NWS-003
     wp: WP05
@@ -431,10 +437,11 @@ requirements:
     verify: unit
     status: planned
     text: >-
-      ShowMyTrades parser. Parses the calendar API response (Unix time in
-      UTC, currency, impact, title) into events in UTC, with the same
-      validation rules as NWS-003.
-
+      Single source. NewsSources accepts only ForexFactory (the default). Any
+      other value stops the bot at start with a clear message, the same way a
+      malformed ExtraBlackouts entry does. The ShowMyTrades parser is deferred
+      by the owner's decision of 2026-11-14 and is added only with a real
+      sample of the feed.
   - id: NWS-005
     wp: WP05
     spec: "6.2"
@@ -443,7 +450,8 @@ requirements:
     text: >-
       A download is accepted only if it parses, contains at least one event
       and covers the current time (Forex Factory: the current week). A
-      rejected download never replaces previously accepted data.
+      document with any malformed event is rejected as a whole and raises an
+      alert. A rejected download never replaces previously accepted data.
 
   - id: NWS-006
     wp: WP05
@@ -453,6 +461,9 @@ requirements:
     text: >-
       Refresh policy. Each source is fetched at start and every
       NewsRefreshHours (4), and never more often than once per 60 minutes.
+      While a source has no accepted data covering the current time (after a
+      failed or rejected fetch, or when the week has rolled over), it is
+      fetched again as soon as 60 minutes have passed since the last attempt.
       The time of the last attempt is persisted through the key-value port so
       that restarts cannot cause extra fetches.
 
@@ -543,7 +554,8 @@ requirements:
     status: planned
     text: >-
       Stop bounds. A signal is skipped if its stop distance is below
-      MinStopPips (12) or above MaxStopAtr (2.0) x ATR(H4).
+      MinStopPips (12) or above MaxStopAtr (2.0) x ATR(H4), where ATR(H4) is
+      the value carried by the signal.
 
   - id: EXE-004
     wp: WP06
