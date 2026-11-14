@@ -76,7 +76,8 @@ public sealed record Fvg(Side Side, double Upper, double Lower,
 
 public sealed record Signal(
     string ZoneId, Side Side, double Entry, double Stop, double Target,
-    Fvg Fvg, DateTime ConfirmationCloseUtc, bool FromReplay);
+    Fvg Fvg, DateTime ConfirmationCloseUtc, bool FromReplay, double AtrH4);
+    // AtrH4 (added in WP06): the ATR(H4) used for this signal, for EXE-003.
 ```
 
 ```csharp
@@ -224,4 +225,13 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-14 | Currency cap (RSK-005) | Only the two currencies of the new trade are checked | The literal reading refused every trade when an unrelated currency was over the cap |
 | 2026-11-14 | Emergency guard on bad data (RSK-009) | If M cannot be computed, the static floor is still checked from equity alone | The guard must not go blind when history is broken |
 | 2026-11-14 | No stop, no new entry (EXE-011) | While any bot position has no stop loss, no new entry is placed | Fail closed |
+| 2026-11-14 | News source | Forex Factory alone; `NewsSources` accepts only ForexFactory. ShowMyTrades deferred until a real sample exists | Owner decision |
+| 2026-11-14 | ATR in SIG-016 and SIG-017 | The latest ATR(M15) and ATR(H4) at the confirmation close | Owner decision on pull request #14 |
+| 2026-11-14 | Stop distance (SIG-017) | No separate field on `Signal`; the distance is abs(Entry - Stop) | Owner decision on pull request #14 |
+| 2026-11-14 | News details (WP05) | "All" events apply to every symbol; matched events keep their own windows; a malformed event rejects the whole download with an alert; without covering data the feed is retried after 60 minutes (also at the week roll-over); the 13 smaller choices listed in pull request #16 are accepted | Owner decision; fail closed without long outages |
+| 2026-11-14 | Break of structure (SIG-008) | The reference is the most recent confirmed swing whose bar is before the leg, even when the leg's own bars confirm it. If the leg does not close beyond it, no zone | Fewer, cleaner zones. Review of main, question 1 |
+| 2026-11-14 | ATR(H4) for EXE-003 | `Signal` gains `double AtrH4`, the value the engine used, so replay and live use the same number. Added in WP06 | Review of main, question 3 |
+| 2026-11-14 | Request limit (RSK-010) | The limit is checked before a request is sent; the request that would exceed it is never sent, and the instance halts | Review of main, question 4 |
+| 2026-11-14 | Live bar order (WP08) | The adapter feeds bars by (nominal close time, D1/H4/M15 rank), never by arrival group. At the weekend Friday's last M15 bar comes before the Friday H4 and D1 bars that close at the same nominal time order | Review of main, question 5 |
+| 2026-11-14 | Bad broker data | When the risk snapshot cannot be built or history is incomplete, WP07 still runs `EmergencyGuardFromEquity` and treats the other risk calls as "no new entries" (they throw; catch and fail closed) | Review of main, findings |
 | 2026-11-14 | Terminal zones | Used, Invalid and Expired zones leave the book at once and are reported once. Their ids are remembered, so a repeated id is still discarded | `Zones` holds non-terminal zones only (section 3). A Used zone has no further effect on signals |

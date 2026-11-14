@@ -26,12 +26,16 @@ lines of the requirements above.
 2. **Ports** `IKeyValueStore` and `IHttpTransport` exactly as in
    `docs/architecture.md`. `HttpResult` has `bool Ok`, `int Status`,
    `string Body`. The transport never throws.
-3. **`ForexFactoryParser`** (NWS-003) and **`ShowMyTradesParser`** (NWS-004).
+3. **`ForexFactoryParser`** (NWS-003). There is no `ShowMyTradesParser`: the
+   owner decided on 2026-11-14 to run on Forex Factory alone. NWS-004 is the
+   `NewsSources` check instead. Keep the calendar open for a second source
+   behind the same parse-result interface, and test the merge rule (NWS-002)
+   with a second list of `NewsEvent`s given directly in the test.
    Use `System.Text.Json` only. No third-party packages. Each returns a parse
    result: events plus a validation outcome with a reason.
-   - Before writing the parsers, the owner will place one real sample of each
-     feed in `tests/ZoneFvg.Core.Tests/TestData/News/`. If the samples are
-     missing, stop and ask; do not invent the format from memory.
+   - The owner's real Forex Factory sample is
+     `tests/ZoneFvg.Core.Tests/TestData/News/forexfactory-thisweek.json`. Do
+     not invent any feed format from memory.
 4. **`EmbeddedHistoryProvider`** (NWS-010): reads the one-event-per-line
    format from a string supplied by the caller (the adapter embeds the file).
 5. **`ExtraBlackoutsParser`** (NWS-011).
@@ -52,8 +56,6 @@ lines of the requirements above.
   after removing any broker suffix following the sixth character.
 - An event belongs to the "current week" check using Monday 00:00 UTC to the
   next Monday.
-- "Covers the current time" for ShowMyTrades: the response's window start is
-  at or before now and its end is after now.
 - Merging uses the earlier of the two event times.
 - Keys in the store are prefixed `news.` and values are JSON.
 
