@@ -194,7 +194,7 @@ public sealed class SignalEngine
         }
 
         _book.MarkSignalled(zone.Id);
-        return FvgDetector.BuildSignal(zone, fvg, atrM15, _parameters, replay);
+        return FvgDetector.BuildSignal(zone, fvg, atrM15, atrH4, _parameters, replay);
     }
 
     private bool BiasAllows(ZoneType type)
