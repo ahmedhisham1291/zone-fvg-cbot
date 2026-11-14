@@ -227,4 +227,5 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-14 | News source | Forex Factory alone; `NewsSources` accepts only ForexFactory. ShowMyTrades deferred until a real sample exists | Owner decision |
 | 2026-11-14 | ATR in SIG-016 and SIG-017 | The latest ATR(M15) and ATR(H4) at the confirmation close | Owner decision on pull request #14 |
 | 2026-11-14 | Stop distance (SIG-017) | No separate field on `Signal`; the distance is abs(Entry - Stop) | Owner decision on pull request #14 |
+| 2026-11-14 | News details (WP05) | "All" events apply to every symbol; matched events keep their own windows; a malformed event rejects the whole download with an alert; without covering data the feed is retried after 60 minutes (also at the week roll-over); the 13 smaller choices listed in pull request #16 are accepted | Owner decision; fail closed without long outages |
 | 2026-11-14 | Terminal zones | Used, Invalid and Expired zones leave the book at once and are reported once. Their ids are remembered, so a repeated id is still discarded | `Zones` holds non-terminal zones only (section 3). A Used zone has no further effect on signals |

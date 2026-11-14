@@ -401,8 +401,9 @@ requirements:
     text: >-
       News windows. For a symbol, relevant currencies are its base and quote.
       A window spans NewsBeforeMin (30) minutes before to NewsAfterMin (30)
-      minutes after each high-impact event of a relevant currency. Overlapping
-      windows merge.
+      minutes after each high-impact event of a relevant currency. An event
+      whose currency is "All" is relevant to every symbol. Overlapping windows
+      merge.
 
   - id: NWS-002
     wp: WP05
@@ -412,7 +413,9 @@ requirements:
     text: >-
       Merge rule. An event is high impact if either feed rates it high. Events
       from the two feeds with the same currency and times within 5 minutes are
-      treated as one event.
+      treated as one event for logging and impact, but every event keeps its
+      own window: merging never shortens the time in which entries are
+      blocked.
 
   - id: NWS-003
     wp: WP05
@@ -444,7 +447,8 @@ requirements:
     text: >-
       A download is accepted only if it parses, contains at least one event
       and covers the current time (Forex Factory: the current week). A
-      rejected download never replaces previously accepted data.
+      document with any malformed event is rejected as a whole and raises an
+      alert. A rejected download never replaces previously accepted data.
 
   - id: NWS-006
     wp: WP05
@@ -454,6 +458,9 @@ requirements:
     text: >-
       Refresh policy. Each source is fetched at start and every
       NewsRefreshHours (4), and never more often than once per 60 minutes.
+      While a source has no accepted data covering the current time (after a
+      failed or rejected fetch, or when the week has rolled over), it is
+      fetched again as soon as 60 minutes have passed since the last attempt.
       The time of the last attempt is persisted through the key-value port so
       that restarts cannot cause extra fetches.
 
