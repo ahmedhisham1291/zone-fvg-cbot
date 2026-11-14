@@ -21,6 +21,9 @@ public enum NewsFeedOutcome
     /// <summary>The download failed or was rejected; earlier data is kept (NWS-005).</summary>
     DownloadRejected,
 
+    /// <summary>The download was rejected as a whole because an event is malformed; earlier data is kept and an alert is due (NWS-005).</summary>
+    DownloadMalformed,
+
     /// <summary>At start, the stored time of the last attempt is later than server time. The source is not fetched until the interval has passed from that time (NWS-006).</summary>
     AttemptTimeInFuture,
 
@@ -60,6 +63,14 @@ public sealed class NewsUpdate
 {
     internal NewsUpdate(NewsStatus status, bool alertRaised, bool recovered, IReadOnlyList<NewsFeedReport> reports, NewsCalendar calendar, bool calendarChanged)
     {
+        bool malformed = false;
+        foreach (NewsFeedReport report in reports)
+        {
+            malformed |= report.Outcome == NewsFeedOutcome.DownloadMalformed;
+        }
+
+        MalformedDownloadAlert = malformed;
+
         Status = status;
         AlertRaised = alertRaised;
         Recovered = recovered;
@@ -73,6 +84,12 @@ public sealed class NewsUpdate
 
     /// <summary>True exactly once per outage: on the first refresh that finds the calendar unavailable (NWS-008).</summary>
     public bool AlertRaised { get; }
+
+    /// <summary>
+    /// True when a download in this refresh was rejected because an event is malformed. The
+    /// caller sends an alert with the report's detail (NWS-005).
+    /// </summary>
+    public bool MalformedDownloadAlert { get; }
 
     /// <summary>True on the first refresh that finds the calendar available again after an alerted outage (NWS-008).</summary>
     public bool Recovered { get; }

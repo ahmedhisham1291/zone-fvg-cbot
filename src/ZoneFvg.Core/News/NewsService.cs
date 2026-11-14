@@ -15,10 +15,12 @@ namespace ZoneFvg.Core.News;
 /// touches the transport or the store (NWS-010).
 /// </summary>
 /// <remarks>
-/// Refresh rule (NWS-006): the first <see cref="Refresh"/> of an instance is the start. At start
-/// a source is fetched when its last attempt, read from the store, is at least
-/// <see cref="NewsParameters.MinFetchIntervalMinutes"/> old or unknown; afterwards when it is at
-/// least <see cref="NewsParameters.NewsRefreshHours"/> old. The attempt time is stored before the
+/// Refresh rule (NWS-006): the first <see cref="Refresh"/> of an instance is the start. A source
+/// is fetched when its last attempt, read from the store, is unknown or at least
+/// <see cref="NewsParameters.MinFetchIntervalMinutes"/> old at start or while the source has no
+/// trusted data covering the current time (failed or rejected fetch, data too old, or the week
+/// has rolled over); otherwise when it is at least <see cref="NewsParameters.NewsRefreshHours"/>
+/// old. The attempt time is stored before the
 /// request is sent, so a crash or restart during the request still counts it.
 /// </remarks>
 public sealed class NewsService
@@ -320,7 +322,10 @@ public sealed class NewsService
                     return !isStart ? null : new NewsFeedReport(feed.Source, NewsFeedOutcome.AttemptTimeInFuture, "Last attempt stored as " + Time(lastAttempt) + ", after server time " + Time(nowUtc) + ".", Array.Empty<NewsEvent>());
                 }
 
-                TimeSpan interval = isStart ? TimeSpan.FromMinutes(NewsParameters.MinFetchIntervalMinutes) : TimeSpan.FromHours(_parameters.NewsRefreshHours);
+                // At start, and while the source has no trusted data covering now, the 60-minute
+                // minimum applies; otherwise the refresh interval (NWS-006).
+                bool hourly = isStart || !IsTrusted(_data[index], nowUtc);
+                TimeSpan interval = hourly ? TimeSpan.FromMinutes(NewsParameters.MinFetchIntervalMinutes) : TimeSpan.FromHours(_parameters.NewsRefreshHours);
                 if (nowUtc - lastAttempt < interval)
                 {
                     return null;
@@ -351,7 +356,8 @@ public sealed class NewsService
         if (!parsed.IsValid || !parsed.Covers(nowUtc))
         {
             string reason = parsed.IsValid ? "the document does not cover the current time." : parsed.Reason;
-            return new NewsFeedReport(feed.Source, NewsFeedOutcome.DownloadRejected, "Download rejected: " + reason + " Earlier data kept.", Array.Empty<NewsEvent>());
+            NewsFeedOutcome outcome = parsed.HasMalformedEvent ? NewsFeedOutcome.DownloadMalformed : NewsFeedOutcome.DownloadRejected;
+            return new NewsFeedReport(feed.Source, outcome, "Download rejected: " + reason + " Earlier data kept.", Array.Empty<NewsEvent>());
         }
 
         var data = new CachedFeedData(parsed.Events, nowUtc, parsed.CoverageStartUtc, parsed.CoverageEndUtc);

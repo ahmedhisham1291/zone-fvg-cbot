@@ -334,6 +334,7 @@ public class NewsWindowTests
         Assert.Throws<ArgumentNullException>(() => new NewsCalendar(sources, null!, 30, 30));
         Assert.Throws<ArgumentNullException>(() => new NewsCalendar(new IReadOnlyList<NewsEvent>[] { null! }, none, 30, 30));
         Assert.Throws<ArgumentNullException>(() => new NewsCalendar(new IReadOnlyList<NewsEvent>[] { new NewsEvent[] { null! } }, none, 30, 30));
+        Assert.Throws<ArgumentNullException>(() => new NewsCalendar(sources, new NewsEvent[] { null! }, 30, 30));
         Assert.Throws<ArgumentOutOfRangeException>(() => new NewsCalendar(sources, none, -1, 30));
         Assert.Throws<ArgumentOutOfRangeException>(() => new NewsCalendar(sources, none, 30, -1));
     }

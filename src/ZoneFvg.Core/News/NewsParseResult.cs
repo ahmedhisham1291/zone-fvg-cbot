@@ -9,9 +9,10 @@ namespace ZoneFvg.Core.News;
 /// </summary>
 public sealed class NewsParseResult
 {
-    private NewsParseResult(bool isValid, string reason, IReadOnlyList<NewsEvent> events, DateTime coverageStartUtc, DateTime coverageEndUtc)
+    private NewsParseResult(bool isValid, string reason, IReadOnlyList<NewsEvent> events, DateTime coverageStartUtc, DateTime coverageEndUtc, bool hasMalformedEvent)
     {
         IsValid = isValid;
+        HasMalformedEvent = hasMalformedEvent;
         Reason = reason;
         Events = events;
         CoverageStartUtc = coverageStartUtc;
@@ -20,6 +21,12 @@ public sealed class NewsParseResult
 
     /// <summary>True when the document passed validation (NWS-003, NWS-005).</summary>
     public bool IsValid { get; }
+
+    /// <summary>
+    /// True when the document was rejected because one of its events is malformed. Such a
+    /// download raises an alert (NWS-005, owner decision of 2026-11-14).
+    /// </summary>
+    public bool HasMalformedEvent { get; }
 
     /// <summary>Why the document was rejected, in plain words; a short summary when it was accepted.</summary>
     public string Reason { get; }
@@ -62,7 +69,7 @@ public sealed class NewsParseResult
             throw new ArgumentException("The coverage must end after it starts.", nameof(coverageEndUtc));
         }
 
-        return new NewsParseResult(true, summary ?? string.Empty, copy, coverageStartUtc, coverageEndUtc);
+        return new NewsParseResult(true, summary ?? string.Empty, copy, coverageStartUtc, coverageEndUtc, false);
     }
 
     /// <summary>Creates a rejected result with its reason (NWS-003, NWS-005, NWS-010).</summary>
@@ -70,7 +77,18 @@ public sealed class NewsParseResult
     /// <returns>The result.</returns>
     public static NewsParseResult Rejected(string reason)
     {
-        return new NewsParseResult(false, reason ?? string.Empty, Array.Empty<NewsEvent>(), default, default);
+        return new NewsParseResult(false, reason ?? string.Empty, Array.Empty<NewsEvent>(), default, default, false);
+    }
+
+    /// <summary>
+    /// Creates a rejected result for a document with a malformed event: the whole document is
+    /// rejected and the rejection raises an alert (NWS-005).
+    /// </summary>
+    /// <param name="reason">Which event is malformed and why.</param>
+    /// <returns>The result, with <see cref="HasMalformedEvent"/> true.</returns>
+    public static NewsParseResult RejectedMalformedEvent(string reason)
+    {
+        return new NewsParseResult(false, reason ?? string.Empty, Array.Empty<NewsEvent>(), default, default, true);
     }
 
     /// <summary>True when the result is valid and its coverage contains the instant: start at or before it, end after it (NWS-005, NWS-008).</summary>

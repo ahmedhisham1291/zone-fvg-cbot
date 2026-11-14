@@ -49,7 +49,7 @@ public static class EmbeddedHistoryProvider
             NewsEvent? newsEvent = ParseLine(line);
             if (newsEvent == null)
             {
-                return NewsParseResult.Rejected("Embedded history line " + (i + 1).ToString(CultureInfo.InvariantCulture)
+                return NewsParseResult.RejectedMalformedEvent("Embedded history line " + (i + 1).ToString(CultureInfo.InvariantCulture)
                     + " is malformed: \"" + line + "\". Expected \"yyyy-MM-dd HH:mm,CUR,Impact,Title\".");
             }
 

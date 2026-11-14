@@ -10,14 +10,19 @@ namespace ZoneFvg.Core.News;
 /// </summary>
 public sealed class NewsCalendar
 {
+    /// <summary>Currency code of events that concern every symbol, compared ignoring case (NWS-001, owner decision of 2026-11-14).</summary>
+    public const string AllCurrencies = "ALL";
+
     private readonly int _beforeMinutes;
     private readonly int _afterMinutes;
+    private readonly List<NewsEvent> _windowEvents;
     private readonly Dictionary<string, NewsWindow[]> _windows = new Dictionary<string, NewsWindow[]>(StringComparer.Ordinal);
 
     /// <summary>
-    /// Builds the calendar. The source lists are merged in the given order with
-    /// <see cref="NewsMerge.Merge"/> (NWS-002); the manual blackouts are added unmerged, so they
-    /// keep their own times (NWS-011).
+    /// Builds the calendar. <see cref="Events"/> holds the source events merged with
+    /// <see cref="NewsMerge.Merge(IReadOnlyList{IReadOnlyList{NewsEvent}})"/> for logging; the
+    /// windows come from <see cref="NewsMerge.WindowEvents"/>, so every event keeps its own
+    /// window (NWS-002). The manual blackouts are added unmerged (NWS-011).
     /// </summary>
     /// <param name="sources">Events of each trusted source, in a fixed source order. May be empty.</param>
     /// <param name="extraBlackouts">Events from the ExtraBlackouts parameter (NWS-011).</param>
@@ -50,27 +55,27 @@ public sealed class NewsCalendar
         _beforeMinutes = beforeMinutes;
         _afterMinutes = afterMinutes;
 
-        IReadOnlyList<NewsEvent> merged = Array.Empty<NewsEvent>();
-        for (int i = 0; i < sources.Count; i++)
+        foreach (NewsEvent blackout in extraBlackouts)
         {
-            IReadOnlyList<NewsEvent> source = sources[i] ?? throw new ArgumentNullException(nameof(sources), "A source list must not be null.");
-            merged = i == 0 ? source : NewsMerge.Merge(merged, source);
+            if (blackout == null)
+            {
+                throw new ArgumentNullException(nameof(extraBlackouts), "An event must not be null.");
+            }
         }
 
-        var events = new List<NewsEvent>(merged.Count + extraBlackouts.Count);
-        events.AddRange(merged);
+        var events = new List<NewsEvent>(NewsMerge.Merge(sources));
         events.AddRange(extraBlackouts);
-        if (events.Contains(null!))
-        {
-            throw new ArgumentNullException(nameof(sources), "An event must not be null.");
-        }
-
         events.Sort(NewsEventOrder.Instance);
         Events = events;
         EventsWithoutWindow = events.FindAll(e => !e.HasClockTime);
+
+        var windowEvents = new List<NewsEvent>(NewsMerge.WindowEvents(sources));
+        windowEvents.AddRange(extraBlackouts);
+        windowEvents.Sort(NewsEventOrder.Instance);
+        _windowEvents = windowEvents;
     }
 
-    /// <summary>All events of the calendar in <see cref="NewsEventOrder"/> order (NWS-002).</summary>
+    /// <summary>All events of the calendar, matched events merged, in <see cref="NewsEventOrder"/> order; for logging (NWS-002).</summary>
     public IReadOnlyList<NewsEvent> Events { get; }
 
     /// <summary>
@@ -81,8 +86,9 @@ public sealed class NewsCalendar
 
     /// <summary>
     /// The news windows of a symbol, in time order, merged where they overlap or touch (NWS-001).
-    /// Only high-impact events with a clock time whose currency is the symbol's base or quote
-    /// count.
+    /// Every high-impact event with a clock time whose currency is the symbol's base or quote, or
+    /// "All", opens its own window; an event matched with a high one in another feed counts as
+    /// high (NWS-002).
     /// </summary>
     /// <param name="symbol">Symbol name, for example EURUSD.</param>
     /// <returns>The windows.</returns>
@@ -194,10 +200,11 @@ public sealed class NewsCalendar
         TimeSpan before = TimeSpan.FromMinutes(_beforeMinutes);
         TimeSpan after = TimeSpan.FromMinutes(_afterMinutes);
         var raw = new List<NewsWindow>();
-        foreach (NewsEvent newsEvent in Events)
+        foreach (NewsEvent newsEvent in _windowEvents)
         {
             string currency = newsEvent.Currency.Trim().ToUpperInvariant();
-            if (newsEvent.HasClockTime && newsEvent.Impact == NewsImpact.High && (currency == baseCurrency || currency == quoteCurrency))
+            bool relevant = currency == baseCurrency || currency == quoteCurrency || currency == AllCurrencies;
+            if (newsEvent.HasClockTime && newsEvent.Impact == NewsImpact.High && relevant)
             {
                 DateTime time = newsEvent.TimeUtc!.Value;
                 raw.Add(new NewsWindow(time - before, time + after));

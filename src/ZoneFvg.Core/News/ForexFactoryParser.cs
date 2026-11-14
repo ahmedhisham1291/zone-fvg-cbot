@@ -17,7 +17,7 @@ namespace ZoneFvg.Core.News;
 /// array with at least one event, every event must have the four fields as strings with a date
 /// that has an offset, and at least one event must fall in the current week (Monday 00:00 UTC to
 /// the next Monday). One malformed event rejects the whole document, so a damaged download can
-/// never silently lose an event.</para>
+/// never silently lose an event; such a rejection raises an alert (NWS-005).</para>
 /// <para>Impact values other than High, Medium, Low and Holiday (compared ignoring case) are kept
 /// as <see cref="NewsImpact.Unknown"/>, which is not high (NWS-003).</para>
 /// </remarks>
@@ -84,7 +84,7 @@ public sealed class ForexFactoryParser : INewsFeedParser
             string? error = ReadEvent(item, out NewsEvent? newsEvent);
             if (error != null)
             {
-                return NewsParseResult.Rejected("Event " + index.ToString(CultureInfo.InvariantCulture) + " is malformed: " + error);
+                return NewsParseResult.RejectedMalformedEvent("Event " + index.ToString(CultureInfo.InvariantCulture) + " is malformed: " + error);
             }
 
             events.Add(newsEvent!);
