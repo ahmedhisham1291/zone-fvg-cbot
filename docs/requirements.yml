@@ -189,7 +189,7 @@ requirements:
     wp: WP03
     spec: "3.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Bullish FVG. With c3, c2, c1 the three most recently closed M15 bars
       (c1 newest): low(c1) > high(c3); c2 closes above its open; gap height
@@ -203,7 +203,7 @@ requirements:
     wp: WP03
     spec: "3.5"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Signal levels (buy). Entry = low(c1) - EntryLevelPct/100 x gap height.
       Stop = min(zone distal, lowest low since the touch bar inclusive)
