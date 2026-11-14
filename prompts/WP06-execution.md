@@ -12,6 +12,14 @@ EXE-001, EXE-002, EXE-003, EXE-004, EXE-005, EXE-006, EXE-007, EXE-008,
 EXE-009, EXE-010, EXE-011, EXE-012, EXE-013, EXE-014, EXE-015, RSK-002,
 RSK-003.
 
+Before EXE-003, add `double AtrH4` as the last parameter of `Signal` and fill
+it in `FvgDetector.BuildSignal` with the ATR(H4) the engine already uses
+(architecture section 10). Update existing tests only by adding the new
+argument; assert the value in the SIG-017 tests and in the replay-equality
+tests. EXE-003 uses `signal.AtrH4`. Also correct the XML comment in
+`BarIntakeOrder.cs` that tells callers to sort arrival groups D1, H4, M15: the
+order is by (nominal close time, rank), as `CloseTimeUtc` defines.
+
 RSK-002 and RSK-003 were started in WP04, which built the decisions. WP06
 completes them: a refused trade is recorded with its reason (EXE-014) and an
 alert is raised for every RSK-002 refusal through the alert hook; the margin
@@ -21,7 +29,10 @@ broker and skips a trade above it.
 
 ## Allowed paths
 
-`src/ZoneFvg.Core/Execution/**`, `tests/ZoneFvg.Core.Tests/**` (including
+`src/ZoneFvg.Core/Execution/**`, `src/ZoneFvg.Core/Domain/Signal.cs` and
+`src/ZoneFvg.Core/Signals/FvgDetector.cs` (only to add and fill `AtrH4`, see
+below), `src/ZoneFvg.Core/Domain/BarIntakeOrder.cs` (comment only, see below),
+`tests/ZoneFvg.Core.Tests/**` (including
 `Fakes/FakeBroker.cs` and `Scenarios/`), and the `status:` lines of the
 requirements above.
 

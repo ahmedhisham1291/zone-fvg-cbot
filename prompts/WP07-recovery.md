@@ -11,6 +11,11 @@ REC-001, REC-002, REC-003, REC-004, REC-005, REC-006, REC-007, REC-008,
 REC-009, REC-010, REC-011, REC-012, REC-013, RSK-006, RSK-008, RSK-010.
 
 RSK-006, RSK-008 and RSK-010 were started in WP04, which built the decisions.
+RSK-010 now requires the request limit to be checked before a request is
+sent; change the WP04 counter accordingly, tests first. When the risk snapshot
+cannot be built or history is incomplete, `BotCore` still runs
+`EmergencyGuardFromEquity` and allows no new entries (architecture section 10).
+
 WP07 completes them in `BotCore`: when the daily budget is exhausted, pending
 entry orders are cancelled and the bot stays Blocked until the next CE(S)T day
 (this cause clears only at the day change, not when risk falls); the kill
@@ -19,6 +24,7 @@ switch and the request and error limits put the bot into Halted.
 ## Allowed paths
 
 `src/ZoneFvg.Core/Recovery/**`, `src/ZoneFvg.Core/App/**`,
+`src/ZoneFvg.Core/Risk/**` (only the RSK-010 change below),
 `tests/ZoneFvg.Core.Tests/**`, and the `status:` lines of the requirements
 above.
 

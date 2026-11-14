@@ -208,8 +208,10 @@ requirements:
       Signal levels (buy). Entry = low(c1) - EntryLevelPct/100 x gap height.
       Stop = min(zone distal, lowest low since the touch bar inclusive)
       - StopBufferAtr x ATR(M15). Target = entry + RewardRisk x (entry - stop).
-      Sell mirrors this. The signal carries zone id, levels, stop distance in
-      price, the three FVG bar times and the confirmation bar close time.
+      Sell mirrors this. The signal carries zone id, levels, the three FVG bar
+      times, the confirmation bar close time and the ATR(H4) used (added in
+      WP06). The stop distance is abs(entry - stop); there is no separate
+      field.
 
   - id: SIG-018
     wp: WP03
@@ -368,7 +370,8 @@ requirements:
       per day <= 6, counted from broker history and open orders. Order
       requests per instance <= 20 per hour and <= MaxRequestsPerDay (100) per
       day; unhandled errors <= 5 per hour. Exceeding a request or error limit
-      halts the instance.
+      halts the instance. A request that would exceed a request limit is
+      never sent: the check runs before the request.
 
   - id: RSK-011
     wp: WP04
@@ -551,7 +554,8 @@ requirements:
     status: planned
     text: >-
       Stop bounds. A signal is skipped if its stop distance is below
-      MinStopPips (12) or above MaxStopAtr (2.0) x ATR(H4).
+      MinStopPips (12) or above MaxStopAtr (2.0) x ATR(H4), where ATR(H4) is
+      the value carried by the signal.
 
   - id: EXE-004
     wp: WP06
