@@ -400,7 +400,7 @@ requirements:
     wp: WP05
     spec: "6.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       News windows. For a symbol, relevant currencies are its base and quote.
       A window spans NewsBeforeMin (30) minutes before to NewsAfterMin (30)
@@ -412,7 +412,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Merge rule. An event is high impact if either feed rates it high. Events
       from the two feeds with the same currency and times within 5 minutes are
@@ -424,7 +424,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Forex Factory parser. Parses the weekly JSON export (title, country as
       currency code, date as ISO 8601 with offset, impact) into events in UTC.
@@ -435,7 +435,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Single source. NewsSources accepts only ForexFactory (the default). Any
       other value stops the bot at start with a clear message, the same way a
@@ -446,7 +446,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       A download is accepted only if it parses, contains at least one event
       and covers the current time (Forex Factory: the current week). A
@@ -457,7 +457,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Refresh policy. Each source is fetched at start and every
       NewsRefreshHours (4), and never more often than once per 60 minutes.
@@ -471,7 +471,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Cache. The last accepted data of each source is stored with its fetch
       time through the key-value port and reloaded at start. Cached data older
@@ -481,7 +481,7 @@ requirements:
     wp: WP05
     spec: "6.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Fail-safe. If no source has trusted data covering the current time, the
       calendar status is Unavailable; with NewsFailMode=Block no entries are
@@ -491,7 +491,7 @@ requirements:
     wp: WP05
     spec: "6.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       A signal is skipped if the current time is inside a news window of its
       symbol, or if any of its three FVG bars overlaps one.
@@ -500,7 +500,7 @@ requirements:
     wp: WP05
     spec: "6.2, 6.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Backtest provider. In backtests events come only from the embedded
       history provider; no network call is made. The embedded data format is
@@ -510,7 +510,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       ExtraBlackouts. The parameter accepts a semicolon-separated list of
       "yyyy-MM-dd HH:mm CUR" entries in UTC, each treated as a high-impact
@@ -520,7 +520,7 @@ requirements:
     wp: WP05
     spec: "6.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Events without a clock time (all-day, tentative, holidays) create no
       window and are listed in the log.
