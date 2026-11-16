@@ -1,0 +1,7 @@
+# Embedded news history for backtests (spec 6.4, NWS-010).
+# Format of each event line: yyyy-MM-dd HH:mm,CUR,Impact,Title (UTC; Impact is High, Medium, Low or Holiday).
+# Lines starting with '#' and empty lines are ignored.
+#
+# This file holds no events yet: the history is built in phase 4 (spec 6.4). Until then the core
+# rejects the empty history, the calendar is unavailable in backtests and no entry is placed
+# (fail closed). Run backtests with NewsEnabled = false until the history is added here.

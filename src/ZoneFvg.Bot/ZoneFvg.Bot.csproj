@@ -16,11 +16,9 @@
     <ProjectReference Include="..\ZoneFvg.Core\ZoneFvg.Core.csproj" />
   </ItemGroup>
 
-  <!-- TEMPORARY (WP08): prints the member list of the cTrader.Automate package's XML documentation
-       to the CI log, so the adapter can be checked against the exact package version. Removed
-       before the work package is finished. -->
-  <Target Name="Wp08DumpApi" AfterTargets="Build">
-    <Exec Command="python3 Wp08ApiDump.py &quot;$(NuGetPackageRoot)&quot;" WorkingDirectory="$(MSBuildProjectDirectory)" IgnoreStandardErrorWarningFormat="true" />
-  </Target>
+  <ItemGroup>
+    <!-- News history for backtests, read by ZoneFvgBot and passed to the core as text (spec 6.4). -->
+    <EmbeddedResource Include="News\news-history.csv" LogicalName="ZoneFvg.Bot.news-history.csv" />
+  </ItemGroup>
 
 </Project>
