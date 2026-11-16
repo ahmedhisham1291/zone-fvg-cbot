@@ -958,7 +958,7 @@ requirements:
     wp: WP10
     spec: "12.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Trade log format. Backtests export one row per closed trade: symbol,
       zone id, open and close time (UTC), side, volume, entry, stop, target,
@@ -968,7 +968,7 @@ requirements:
     wp: WP10
     spec: "12.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Portfolio combiner. Merges per-symbol trade logs by time and reports
       combined equity curve, maximum drawdown and how often each account-level
@@ -988,7 +988,7 @@ requirements:
     wp: WP10
     spec: "12.1, 15.2, 15.5"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       FTMO challenge simulator. Replays sampled trade sequences through the
       2-Step rules (profit target, daily loss from the 00:00 CE(S)T balance,
@@ -1000,7 +1000,7 @@ requirements:
     wp: WP10
     spec: "13.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Acceptance report. Produces every measure of spec 13.1 from trade logs
       and states pass or fail against each threshold.
