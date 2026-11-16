@@ -88,6 +88,8 @@ public sealed record TradeJournalEntry(
 /// </summary>
 public static class TradeExcursion
 {
+    private static readonly TimeSpan M15 = TimeSpan.FromMinutes(15.0);
+
     /// <summary>
     /// Adverse and favourable moves in R (OPS-002). For a buy the adverse move is entry minus the
     /// lowest low and the favourable move the highest high minus entry; for a sell the other way
@@ -102,12 +104,6 @@ public static class TradeExcursion
     public static (double AdverseR, double FavourableR)? InR(Side side, double entry, double stop, IEnumerable<Bar> bars)
     {
         ArgumentNullException.ThrowIfNull(bars);
-        double risk = side == Side.Buy ? entry - stop : stop - entry;
-        if (!double.IsFinite(risk) || !(risk > 0.0))
-        {
-            return null;
-        }
-
         double low = double.PositiveInfinity;
         double high = double.NegativeInfinity;
         foreach (Bar bar in bars)
@@ -116,7 +112,61 @@ public static class TradeExcursion
             high = Math.Max(high, bar.High);
         }
 
-        if (double.IsPositiveInfinity(low))
+        return FromExtremes(side, entry, stop, low, high);
+    }
+
+    /// <summary>
+    /// Adverse and favourable moves in R of a closed trade (OPS-002), from the closed M15 bars that
+    /// overlap its life (open time before the close, close time after the fill) and its exit price.
+    /// The bars of the fill and of the close count whole, so at M15 resolution a move can be shown
+    /// slightly larger than it was; the exit price is included because the bar of the close may not
+    /// have closed yet when the trade is journaled.
+    /// </summary>
+    /// <param name="side">Direction of the position.</param>
+    /// <param name="entry">Fill price.</param>
+    /// <param name="stop">Planned stop price.</param>
+    /// <param name="entryUtc">Fill time.</param>
+    /// <param name="closeUtc">Close time.</param>
+    /// <param name="exitPrice">Closing price, or null when not known.</param>
+    /// <param name="m15Bars">Closed M15 bars, oldest first.</param>
+    /// <returns>
+    /// The two moves in R, or null when the bars do not reach back to the bar of the fill, nothing
+    /// covers the trade, or the stop is not on the loss side of entry.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="m15Bars"/> is null.</exception>
+    public static (double AdverseR, double FavourableR)? ForTrade(Side side, double entry, double stop, DateTime entryUtc, DateTime closeUtc, double? exitPrice, IReadOnlyList<Bar> m15Bars)
+    {
+        ArgumentNullException.ThrowIfNull(m15Bars);
+        if (m15Bars.Count == 0 || m15Bars[0].OpenTimeUtc > entryUtc)
+        {
+            // The bars do not cover the start of the trade: NA rather than a value that is too small.
+            return null;
+        }
+
+        double low = double.PositiveInfinity;
+        double high = double.NegativeInfinity;
+        foreach (Bar bar in m15Bars)
+        {
+            if (bar.OpenTimeUtc < closeUtc && bar.OpenTimeUtc + M15 > entryUtc)
+            {
+                low = Math.Min(low, bar.Low);
+                high = Math.Max(high, bar.High);
+            }
+        }
+
+        if (exitPrice.HasValue && double.IsFinite(exitPrice.Value))
+        {
+            low = Math.Min(low, exitPrice.Value);
+            high = Math.Max(high, exitPrice.Value);
+        }
+
+        return FromExtremes(side, entry, stop, low, high);
+    }
+
+    private static (double AdverseR, double FavourableR)? FromExtremes(Side side, double entry, double stop, double low, double high)
+    {
+        double risk = side == Side.Buy ? entry - stop : stop - entry;
+        if (!double.IsFinite(risk) || !(risk > 0.0) || double.IsPositiveInfinity(low))
         {
             return null;
         }
