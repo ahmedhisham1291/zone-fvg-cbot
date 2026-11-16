@@ -440,8 +440,10 @@ public class RecoveryScenarios
         h.Core.OnTradeEvent();
         h.Start(A.AddMinutes(80.0));
 
-        Assert.Equal(1, h.Journal.Count(TradeJournal.Category, "event=opened"));
-        Assert.Equal(1, h.Journal.Count(TradeJournal.Category, "event=closed"));
+        Assert.Equal(1, h.Journal.Count("position", "event=opened"));
+        Assert.Equal(1, h.Journal.Count("trade", " trade symbol=USDJPY position="));
+        Assert.Equal(1, h.Hooks.Count(BotAlertKind.TradeOpened));
+        Assert.Equal(1, h.Hooks.Count(BotAlertKind.TradeClosed));
     }
 
     // ------------------------------------------------------------------ REC-009
@@ -542,7 +544,8 @@ public class RecoveryScenarios
             + " daily-budget=ok used 0 limit 1500; data=ok} catch-up=[] weekend-close-pending=no state=Running news=enabled hash="
             + RecoveryData.Hash + " version=" + BuildInfo.Version;
         Assert.Equal(expected, core.LastReport!.Text);
-        Assert.Equal(1, h.Journal.Count("recovery", "reason=start " + expected));
+        Assert.Equal(1, h.Journal.Count("report", "trigger=start text=" + expected.Replace(" ", "\\s", StringComparison.Ordinal)));
+        Assert.Equal(1, h.Journal.Count("recovery", " recovery symbol=USDJPY trigger=start adopted=0 kept=0 cancelled=0 strangers=0 zones=0 downtime=NA state=Running"));
         BotAlert alert = Assert.Single(h.Hooks.Alerts, a => a.Kind == BotAlertKind.RecoveryReport);
         Assert.Equal(expected, alert.Message);
         Assert.Equal(Nine, alert.AtUtc);

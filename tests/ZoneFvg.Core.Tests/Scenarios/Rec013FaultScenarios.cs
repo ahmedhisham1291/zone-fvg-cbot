@@ -104,8 +104,9 @@ public class Rec013FaultScenarios
         h.Start(A.AddHours(2.25));
         h.FeedTo(A.AddHours(6.0));
 
-        string closed = "event=closed symbol=USDJPY position=" + positionId.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ";
-        Assert.Equal(1, h.Journal.Count(TradeJournal.Category, closed));
+        string closed = " trade symbol=USDJPY position=" + positionId.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ";
+        Assert.Equal(1, h.Journal.Count("trade", closed));
+        Assert.Equal(1, h.Hooks.Count(BotAlertKind.TradeClosed));
         Assert.Equal(1, first.LastReport!.ReplaySignals);
         Assert.Empty(first.LastReport.ActiveZones);
         Assert.Equal(1, h.Count(BrokerCall.Place));

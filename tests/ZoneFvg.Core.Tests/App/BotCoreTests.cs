@@ -57,7 +57,7 @@ public class BotCoreTests
         core.OnStart(h.History);
 
         Assert.Equal(BotState.Running, core.State);
-        Assert.Equal(1, h.Journal.Count("state", "from=Recovering to=Running reason=recovery complete"));
+        Assert.Equal(1, h.Journal.Count("state", "from=Recovering to=Running reason=recovery\\scomplete"));
     }
 
     // ------------------------------------------------------------------ REC-001
@@ -74,7 +74,7 @@ public class BotCoreTests
         Assert.Equal(BotState.Blocked, core.State);
         Assert.Equal(0, h.Count(BrokerCall.Place));
         Assert.Equal(1, h.Journal.Count("skip", "reason=BotNotRunning"));
-        Assert.Equal(1, h.Journal.Count("state", "to=Blocked reason=recovery complete (calendar unavailable)"));
+        Assert.Equal(1, h.Journal.Count("state", "to=Blocked reason=recovery\\scomplete\\s(calendar\\sunavailable)"));
     }
 
     [Fact]
@@ -154,7 +154,8 @@ public class BotCoreTests
 
         core.OnTradeEvent();
 
-        Assert.Equal(new[] { "handler=OnTradeEvent type=InvalidOperationException message=positions unavailable errors-last-hour=1" }, h.Journal.Lines("error"));
+        string line = Assert.Single(h.Journal.Lines("error"));
+        Assert.Equal("2026-03-04T08:00:00Z error source=OnTradeEvent error=InvalidOperationException:\\spositions\\nunavailable", line);
         BotAlert alert = Assert.Single(h.Hooks.Alerts, a => a.Kind == BotAlertKind.Error);
         Assert.Equal(RecoveryData.Symbol, alert.Symbol);
         Assert.Equal(BotState.Running, core.State);
@@ -205,8 +206,8 @@ public class BotCoreTests
         core.OnException(null!);
 
         Assert.Equal(BotState.Halted, core.State);
-        Assert.Equal(6, h.Journal.Count("error", "handler=platform"));
-        Assert.Equal(1, h.Journal.Count("error", "handler=platform type=ArgumentNullException"));
+        Assert.Equal(6, h.Journal.Count("error", "source=platform "));
+        Assert.Equal(1, h.Journal.Count("error", "source=platform error=ArgumentNullException:"));
     }
 
     [Fact]
@@ -237,7 +238,7 @@ public class BotCoreTests
             core.OnTimer();
         }
 
-        Assert.Equal(6, h.Journal.Count("error", "handler=OnTimer type=InvalidOperationException message=no server time"));
+        Assert.Equal(6, h.Journal.Count("error", "source=OnTimer error=InvalidOperationException:\\sno\\sserver\\stime"));
         Assert.Equal(BotState.Halted, core.State);
         Assert.All(h.Hooks.Alerts.Where(a => a.Kind == BotAlertKind.Error), a => Assert.Equal(A, a.AtUtc));
     }
@@ -252,7 +253,7 @@ public class BotCoreTests
 
         core.OnTimer();
 
-        Assert.Equal(1, h.Journal.Count("error", "handler=OnTimer type=InvalidOperationException message=The broker's server time is not UTC (REC-012)."));
+        Assert.Equal(1, h.Journal.Count("error", "source=OnTimer error=InvalidOperationException:\\sThe\\sbroker's\\sserver\\stime\\sis\\snot\\sUTC\\s(REC-012)."));
     }
 
     [Fact]
@@ -269,9 +270,9 @@ public class BotCoreTests
         core.OnBarClosed(TimeFrame.M15, m0);
         core.OnBarClosed(TimeFrame.M15, m0);
 
-        Assert.Equal(1, h.Journal.Count("error", "handler=OnBarClosed type=InvalidOperationException message=The M15 bar opening 2026-03-04 08:00 has not closed"));
-        Assert.Equal(1, h.Journal.Count("error", "handler=OnBarClosed type=ArgumentNullException"));
-        Assert.Equal(1, h.Journal.Count("bar", "event=ignored timeframe=M15 open=2026-03-04 08:00 reason=already processed"));
+        Assert.Equal(1, h.Journal.Count("error", "source=OnBarClosed error=InvalidOperationException:\\sThe\\sM15\\sbar\\sopening\\s2026-03-04\\s08:00\\shas\\snot\\sclosed"));
+        Assert.Equal(1, h.Journal.Count("error", "source=OnBarClosed error=ArgumentNullException:"));
+        Assert.Equal(1, h.Journal.Count("bar", "event=ignored timeframe=M15 open=2026-03-04\\s08:00 reason=already\\sprocessed"));
         Assert.Equal(ZoneState.Touched, Assert.Single(core.Zones).State);
     }
 
@@ -285,7 +286,7 @@ public class BotCoreTests
         core.OnStart(null!);
         core.OnConnected(null!);
 
-        Assert.Equal(2, h.Journal.Count("error", "type=ArgumentNullException"));
+        Assert.Equal(2, h.Journal.Count("error", "error=ArgumentNullException:"));
         Assert.Equal(BotState.Recovering, core.State);
     }
 
@@ -300,7 +301,7 @@ public class BotCoreTests
         h.Timer(A.AddMinutes(2.0));
 
         Assert.Equal(new[] { (A.AddMinutes(1.0), BotState.Running), (A.AddMinutes(2.0), BotState.Recovering) }, h.Hooks.Heartbeats);
-        Assert.Equal(new[] { A.AddMinutes(1.0) }, h.Hooks.InactivityChecks);
+        Assert.Equal(new[] { A.AddMinutes(1.0), A.AddMinutes(2.0) }, h.Hooks.InactivityChecks);
         Assert.Equal(A.AddMinutes(1.0).ToString("o", System.Globalization.CultureInfo.InvariantCulture), h.Store.Values[RecoveryService.LastSeenKey]);
     }
 
