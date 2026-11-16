@@ -289,6 +289,7 @@ public class SignalEnginePropertyTests
             Assert.True(a.Fvg.C3OpenUtc == b.Fvg.C3OpenUtc && a.Fvg.C2OpenUtc == b.Fvg.C2OpenUtc && a.Fvg.C1OpenUtc == b.Fvg.C1OpenUtc, what + "gap bar times");
             Assert.True(a.ConfirmationCloseUtc == b.ConfirmationCloseUtc, what + "confirmation time");
             Assert.True(a.FromReplay == b.FromReplay, what + "replay flag");
+            Assert.True(PriceMath.AlmostEqual(a.AtrH4, b.AtrH4, PriceMath.DefaultTolerance), what + "ATR(H4) differs");
         }
     }
 
