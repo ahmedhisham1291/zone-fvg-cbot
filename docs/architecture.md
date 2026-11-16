@@ -27,6 +27,7 @@ packages. Changing a contract here needs the human's approval.
 |   Execution/    Ports, OrderManager, TradeManager, filters   |
 |   Recovery/     BotStateMachine, RecoveryService             |
 |   Ops/          Journal, AlertService, Heartbeat             |
+|   Simulation/   trade log, FTMO challenge simulator          |
 |   App/          BotCore: the single entry point the adapter  |
 |                 calls                                        |
 +--------------------------------------------------------------+
@@ -36,7 +37,11 @@ Dependency direction inside Core: `Domain` <- `Indicators` <- `Signals`;
 `Risk`, `News` depend on `Domain` only, except that `Risk` reads the data
 records in `Execution/Ports` (section 10); `Execution` depends on `Signals`,
 `Risk`, `News`; `Recovery` depends on `Execution`; `App` depends on all.
-Nothing depends on `App`.
+Nothing depends on `App`. `News` also reads `Execution/Ports`; `Ops` depends
+on `Domain`, `Execution`, `Execution/Ports`, `News`, `Risk` and `Simulation`;
+`Simulation` depends on `Domain` and `Risk`. The test
+`NamespaceDependencyTests` enforces the allowed list; a new edge needs the
+human's approval.
 
 ## 2. Two layers of state (spec 3.3)
 
@@ -246,4 +251,7 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-16 | cTrader adapter (WP08) | Decisions 1 to 11 of pull request #23 are accepted: stop and target sent as prices; pip value from live conversion rates; commission per side doubled (over-stated), unknown commission type blocks orders; HTTP waits with a hard timeout instead of background sending (replaces the earlier "send in the background"); a bar counts as closed once its nominal close time has passed, one remembered time per timeframe; local storage per instance, to be checked in WP11; backtests without Telegram, heartbeat or news until the embedded history is filled; the error mapping; market open = trading enabled and session open; DayResetZone accepts only Europe/Prague. Chart drawing gets read-only core snapshots in a follow-up | Owner decision on pull request #23 |
 | 2026-11-16 | Ladder sizing (RSK-013) | The owner's 4-part plan replaces the fixed 0.5% risk: deal risk 0.30% split 29.62/14.81/22.215/33.3225%, growth 1.5924 per consecutive win, at most 0.5% per trade; computed from broker data; all other limits unchanged | Owner decision after simulation: at a 40% win rate, about 51% pass and 1% fail of simulated challenges, against 63% and 4% for fixed 0.5% |
 | 2026-11-16 | Closed-trade journal data | `ClosedTradeInfo` also carries `VolumeUnits`, `ClosingPrice` and `ExitReason` (`TradeExitReason`, in `Execution/Ports`), journal data only; no risk or trading rule reads them. The adapter keeps an in-memory map of position id to close reason from the `Positions.Closed` event (lost on restart, then `Unknown`). The machine-readable `tradelog` line is printed in backtests only, never in real time | Owner decision on pull request #31; SIM-001 trade log and OPS-002 exit reason |
+| 2026-11-16 | Ladder sizing details (RSK-013) | Filled entries are numbered and judged by fill time (the broker keeps no order time after a fill); a close at the same instant as a placement counts as before it; "newest first" is by close time, later entry wins ties; a partial fill or partial close is one entry with summed net; trades before RiskEpochDate are ignored, also for the win run; break-even ends the run, open trades are skipped; core default `LadderEnabled = true` while the pre-RSK-013 test fixture sets it false; parameter ranges: growth >= 1, first weight <= 1/3.375, percents in (0, 100]; five cBot parameters including `MaxRiskPercentPerTrade`; invalid bot broker data skips the signal as `BrokerDataInvalid`; open trades without a stop still count at the fixed 0.5% in the open-risk cap; simulator ladder mode is opt-in (`--sizing ladder`); the ladder percent goes into the journal in a later change | Owner decision on pull request #35 |
+| 2026-11-16 | Trade journal MAE/MFE (OPS-002) | MAE and MFE in R are measured on closed M15 bars from the fill bar to the close bar plus the exit price (whole fill and close bars count); trades open longer than 30 days, or without bars back to the fill, report NA | Owner decision on pull request #33 |
+| 2026-11-16 | Clean-up structure | One alert enum `AlertKind` lives in `Execution` (in `Ops` it would create a cycle); members used only by tests are made `internal`, not deleted, so no existing assertion is removed; the namespace graph above is pinned by a test | Owner decision on pull requests #34 and #36 |
 | 2026-11-14 | Terminal zones | Used, Invalid and Expired zones leave the book at once and are reported once. Their ids are remembered, so a repeated id is still discarded | `Zones` holds non-terminal zones only (section 3). A Used zone has no further effect on signals |
