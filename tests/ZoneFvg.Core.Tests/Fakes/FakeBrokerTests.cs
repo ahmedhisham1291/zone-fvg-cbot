@@ -406,4 +406,42 @@ public class FakeBrokerTests
         Assert.Throws<ArgumentException>(() => broker.AdvanceTo(new DateTime(2026, 1, 14, 11, 0, 0, DateTimeKind.Unspecified)));
         Assert.Throws<ArgumentException>(() => broker.GetSymbol("GBPUSD"));
     }
+
+    [Theory]
+    [Trait("Req", "SIM-001")]
+    [InlineData(1.104, TradeExitReason.TakeProfit)]
+    [InlineData(1.098, TradeExitReason.StopLoss)]
+    [InlineData(1.101, TradeExitReason.ClosedByBot)]
+    public void History_WithExitReasons_CarriesVolumeClosingPriceAndReason(double exit, TradeExitReason reason)
+    {
+        FakeBroker broker = Broker();
+        broker.ReportExitReasons = true;
+        long id = broker.AddPosition("EURUSD", Side.Buy, 1000.0, 1.1, 1.098, 1.104, ExecutionData.Label("D-2"), "c");
+        broker.Tick("EURUSD", 1.1005, 1.1006);
+
+        broker.Tick("EURUSD", exit, exit + 0.0001);
+        if (reason == TradeExitReason.ClosedByBot)
+        {
+            broker.ClosePosition(id);
+        }
+
+        ClosedTradeInfo trade = Assert.Single(broker.History);
+        Assert.Equal(1000.0, trade.VolumeUnits);
+        Assert.Equal(exit, trade.ClosingPrice);
+        Assert.Equal(reason, trade.ExitReason);
+    }
+
+    [Fact]
+    [Trait("Req", "SIM-001")]
+    public void History_WithoutExitReasons_ReportsUnknown()
+    {
+        FakeBroker broker = Broker();
+        broker.AddPosition("EURUSD", Side.Sell, 1000.0, 1.1, 1.102, 1.096, ExecutionData.Label("D-2"), "c");
+
+        broker.Tick("EURUSD", 1.0959, 1.096);
+
+        ClosedTradeInfo trade = Assert.Single(broker.History);
+        Assert.Equal(TradeExitReason.Unknown, trade.ExitReason);
+        Assert.Equal(1.096, trade.ClosingPrice);
+    }
 }

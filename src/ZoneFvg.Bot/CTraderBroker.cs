@@ -29,6 +29,12 @@ namespace ZoneFvg.Bot
         private readonly Robot _robot;
         private readonly AdapterLog _log;
 
+        // Journal data only (SIM-001, OPS-002): why each position closed, as seen in Positions.Closed,
+        // and the positions the bot itself asked to close. Lost on restart; a close not seen is Unknown.
+        // No trading decision reads them.
+        private readonly Dictionary<long, TradeExitReason> _exitReasons = new Dictionary<long, TradeExitReason>();
+        private readonly HashSet<long> _closedByBot = new HashSet<long>();
+
         /// <summary>Creates the broker port for one cBot instance (EXE-008, EXE-009).</summary>
         /// <param name="robot">The running cBot.</param>
         /// <param name="log">Masked log.</param>
@@ -208,7 +214,14 @@ namespace ZoneFvg.Bot
                         t.NetProfit,
                         t.Commissions,
                         t.Swap,
-                        t.Balance));
+                        t.Balance)
+                    {
+                        // HistoricalTrade.VolumeInUnits ("closed by the Closing Deal") and ClosingPrice
+                        // ("execution price of the Closing Deal"): journal data only (SIM-001, OPS-002).
+                        VolumeUnits = t.VolumeInUnits,
+                        ClosingPrice = t.ClosingPrice,
+                        ExitReason = _exitReasons.TryGetValue(t.PositionId, out TradeExitReason reason) ? reason : TradeExitReason.Unknown,
+                    });
                 }
 
                 return result.AsReadOnly();
@@ -217,6 +230,28 @@ namespace ZoneFvg.Bot
             {
                 throw new InvalidOperationException("The broker history could not be read.", exception);
             }
+        }
+
+        /// <summary>
+        /// Remembers why a position closed, from the <c>Positions.Closed</c> event, for the trade
+        /// journal and the backtest trade log (SIM-001, OPS-002). Journal data only.
+        /// </summary>
+        /// <param name="args">The event arguments.</param>
+        public void RecordClose(PositionClosedEventArgs args)
+        {
+            // PositionClosedEventArgs.Position and Reason:
+            // https://help.ctrader.com/ctrader-algo/references/EventArgs/PositionClosedEventArgs
+            // PositionCloseReason (Closed = "closed by the trader", StopLoss, TakeProfit, StopOut):
+            // https://help.ctrader.com/ctrader-algo/references/Trading/Positions/PositionCloseReason/
+            long id = args.Position.Id;
+            _exitReasons[id] = args.Reason switch
+            {
+                PositionCloseReason.TakeProfit => TradeExitReason.TakeProfit,
+                PositionCloseReason.StopLoss => TradeExitReason.StopLoss,
+                PositionCloseReason.StopOut => TradeExitReason.StopOut,
+                PositionCloseReason.Closed => _closedByBot.Contains(id) ? TradeExitReason.ClosedByBot : TradeExitReason.ClosedOutside,
+                _ => TradeExitReason.Unknown,
+            };
         }
 
         /// <summary>Margin the trade would use (RSK-003), as the platform estimates it.</summary>
@@ -315,6 +350,8 @@ namespace ZoneFvg.Bot
                     return (null, positionId);
                 }
 
+                // Before the call, because the platform may raise Positions.Closed during it (journal data only).
+                _closedByBot.Add(positionId);
                 return (_robot.ClosePosition(position), positionId);
             });
         }

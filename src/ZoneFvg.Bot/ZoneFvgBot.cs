@@ -29,6 +29,7 @@ namespace cAlgo.Robots
 
         private BotCore? _core;
         private CTraderBars? _bars;
+        private CTraderBroker? _broker;
         private AdapterLog? _log;
         private ChartPainter? _painter;
 
@@ -362,6 +363,7 @@ namespace cAlgo.Robots
         private void Subscribe()
         {
             BotCore core = _core!;
+            CTraderBroker broker = _broker!;
             CTraderBars bars = _bars!;
             ChartPainter painter = _painter!;
 
@@ -375,7 +377,12 @@ namespace cAlgo.Robots
 
             // Positions.Opened / Closed / Modified: https://help.ctrader.com/ctrader-algo/references/Trading/Positions/Positions/
             Positions.Opened += _ => core.OnTradeEvent();
-            Positions.Closed += _ => core.OnTradeEvent();
+            Positions.Closed += args =>
+            {
+                // The close reason is journal data for the trade journal and the backtest trade log (SIM-001).
+                broker.RecordClose(args);
+                core.OnTradeEvent();
+            };
             Positions.Modified += _ => core.OnTradeEvent();
 
             // PendingOrders.Created / Filled / Cancelled / Modified: https://help.ctrader.com/ctrader-algo/references/Trading/Orders/PendingOrders/
@@ -402,6 +409,7 @@ namespace cAlgo.Robots
 
             // MarketData.GetBars(TimeFrame): https://help.ctrader.com/ctrader-algo/references/MarketData/MarketData/
             var broker = new CTraderBroker(this, log);
+            _broker = broker;
             _bars = new CTraderBars(
                 MarketData.GetBars(CTraderBars.ToApi(CoreTimeFrame.D1)),
                 MarketData.GetBars(CTraderBars.ToApi(CoreTimeFrame.H4)),
@@ -478,6 +486,10 @@ namespace cAlgo.Robots
                 NewsFeedUrl = ParameterText.Text(NewsFeedUrl),
                 MarketHolidays = ParameterText.Text(MarketHolidays),
                 EmbeddedNewsHistory = isBacktest ? ReadNewsHistory() : string.Empty,
+
+                // One machine-readable line per closed trade for the backtest trade log (SIM-001,
+                // docs/backtest-howto.md). Journal only.
+                WriteTradeLog = isBacktest,
             };
         }
 

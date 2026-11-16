@@ -118,6 +118,12 @@ public sealed class FakeBroker : IBroker
 
     public IReadOnlyList<ClosedTradeInfo> History => _history.AsReadOnly();
 
+    /// <summary>
+    /// When true, closed trades carry their exit reason, as the adapter reports it for closes it saw
+    /// (SIM-001, OPS-002). Default false: the reason is Unknown, as for a close the adapter did not see.
+    /// </summary>
+    public bool ReportExitReasons { get; set; }
+
     public int Count(BrokerCall call)
     {
         return Requests.Count(request => request.Call == call);
@@ -204,10 +210,10 @@ public sealed class FakeBroker : IBroker
 
         foreach (PositionInfo position in _positions.Where(p => p.Symbol == symbol).ToList())
         {
-            double? exit = ExitPrice(position, bid, ask);
+            (double Price, TradeExitReason Reason)? exit = ExitPrice(position, bid, ask);
             if (exit.HasValue)
             {
-                Book(position, exit.Value);
+                Book(position, exit.Value.Price, exit.Value.Reason);
             }
         }
     }
@@ -442,24 +448,24 @@ public sealed class FakeBroker : IBroker
         }
     }
 
-    private static double? ExitPrice(PositionInfo position, double bid, double ask)
+    private static (double Price, TradeExitReason Reason)? ExitPrice(PositionInfo position, double bid, double ask)
     {
         if (position.Side == Side.Buy)
         {
             if (position.StopLoss.HasValue && bid <= position.StopLoss.Value + Tolerance)
             {
-                return position.StopLoss.Value;
+                return (position.StopLoss.Value, TradeExitReason.StopLoss);
             }
 
-            return position.TakeProfit.HasValue && bid >= position.TakeProfit.Value - Tolerance ? position.TakeProfit.Value : null;
+            return position.TakeProfit.HasValue && bid >= position.TakeProfit.Value - Tolerance ? (position.TakeProfit.Value, TradeExitReason.TakeProfit) : null;
         }
 
         if (position.StopLoss.HasValue && ask >= position.StopLoss.Value - Tolerance)
         {
-            return position.StopLoss.Value;
+            return (position.StopLoss.Value, TradeExitReason.StopLoss);
         }
 
-        return position.TakeProfit.HasValue && ask <= position.TakeProfit.Value + Tolerance ? position.TakeProfit.Value : null;
+        return position.TakeProfit.HasValue && ask <= position.TakeProfit.Value + Tolerance ? (position.TakeProfit.Value, TradeExitReason.TakeProfit) : null;
     }
 
     private void CloseAtMarket(long positionId)
@@ -471,17 +477,22 @@ public sealed class FakeBroker : IBroker
             exit = position.Side == Side.Buy ? price.Bid : price.Ask;
         }
 
-        Book(position, exit);
+        Book(position, exit, TradeExitReason.ClosedByBot);
     }
 
-    private void Book(PositionInfo position, double exit)
+    private void Book(PositionInfo position, double exit, TradeExitReason reason)
     {
         SymbolInfo symbol = _symbols[position.Symbol];
         double move = position.Side == Side.Buy ? exit - position.EntryPrice : position.EntryPrice - exit;
         double commission = -symbol.RoundTripCommissionPerUnit * position.VolumeUnits;
         double net = (move / symbol.PipSize * symbol.PipValuePerUnit * position.VolumeUnits) + commission;
         Account = Account with { Balance = Account.Balance + net, Equity = Account.Equity + net };
-        _history.Add(new ClosedTradeInfo(position.Id, position.Symbol, position.Label, position.OpenTimeUtc, ServerTimeUtc, net, commission, 0.0, Account.Balance));
+        _history.Add(new ClosedTradeInfo(position.Id, position.Symbol, position.Label, position.OpenTimeUtc, ServerTimeUtc, net, commission, 0.0, Account.Balance)
+        {
+            VolumeUnits = position.VolumeUnits,
+            ClosingPrice = exit,
+            ExitReason = ReportExitReasons ? reason : TradeExitReason.Unknown,
+        });
         _positions.Remove(position);
     }
 
