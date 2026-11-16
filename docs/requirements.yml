@@ -807,7 +807,7 @@ requirements:
     wp: WP09
     spec: "11"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Signal journal. Every signal, taken or skipped, is journaled with the
       fields listed in spec section 11.
@@ -816,7 +816,7 @@ requirements:
     wp: WP09
     spec: "11"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Trade journal. Every closed trade is journaled with the fields listed
       in spec section 11, including result in R computed from the planned risk
@@ -846,7 +846,7 @@ requirements:
     wp: WP09
     spec: "11"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Heartbeat. While the bot process is healthy it calls HeartbeatUrl every
       five minutes, in every state. A failed call is logged and never affects
@@ -856,7 +856,7 @@ requirements:
     wp: WP09
     spec: "11, 15.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Inactivity warning. An alert is raised when 21 days have passed since
       the account's last opened trade, in every state.
@@ -865,7 +865,7 @@ requirements:
     wp: WP09
     spec: "10.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Secrets never appear in logs, journal entries, alerts, exception
       messages or the repository. Journal and log writers mask the Telegram
