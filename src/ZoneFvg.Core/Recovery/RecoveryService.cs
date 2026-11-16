@@ -45,6 +45,7 @@ public sealed class RecoveryService
     private readonly RequestCounter _counter;
     private readonly IExecutionEvents _events;
     private readonly Func<RecoveryFindings, BotState> _enterState;
+    private readonly IReadOnlyCollection<MonthDay> _marketHolidays;
     private readonly IReadOnlyDictionary<TimeFrame, int> _warmup;
     private readonly string _parameterHash;
     private readonly TradeManager _trades;
@@ -64,6 +65,7 @@ public sealed class RecoveryService
     /// <param name="counter">Request counter of this instance (RSK-010).</param>
     /// <param name="events">Hook for skip records and alerts.</param>
     /// <param name="enterState">Called at step 10 with the findings; enters the next state and returns it.</param>
+    /// <param name="marketHolidays">Market holidays, which are not data gaps (REC-003); null means none.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">The symbol is empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
@@ -78,7 +80,8 @@ public sealed class RecoveryService
         IJournalSink journal,
         RequestCounter counter,
         IExecutionEvents events,
-        Func<RecoveryFindings, BotState> enterState)
+        Func<RecoveryFindings, BotState> enterState,
+        IReadOnlyCollection<MonthDay>? marketHolidays = null)
     {
         ArgumentNullException.ThrowIfNull(signalParameters);
         ArgumentNullException.ThrowIfNull(executionParameters);
@@ -95,6 +98,7 @@ public sealed class RecoveryService
         _counter = counter ?? throw new ArgumentNullException(nameof(counter));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _enterState = enterState ?? throw new ArgumentNullException(nameof(enterState));
+        _marketHolidays = marketHolidays ?? Array.Empty<MonthDay>();
         _warmup = WarmupCalculator.For(signalParameters);
         _parameterHash = ParameterHash.Compute(signalParameters, executionParameters);
         _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
@@ -400,7 +404,7 @@ public sealed class RecoveryService
 
     private string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? series, DateTime now)
     {
-        return BarSeriesCheck.Problem(timeFrame, series, _warmup[timeFrame], now, _executionParameters.FridayCloseUtc);
+        return BarSeriesCheck.Problem(timeFrame, series, _warmup[timeFrame], now, _executionParameters.FridayCloseUtc, _marketHolidays);
     }
 
     private string? StrangerReason(string label, string comment, SortedSet<string> knownZones)

@@ -29,6 +29,13 @@ namespace ZoneFvg.Core.App;
 /// </remarks>
 public sealed class BotCore
 {
+    /// <summary>
+    /// Key-value store key of the CE(S)T day on which the daily budget was found exhausted (RSK-006,
+    /// owner decision of 2026-11-16). The value can only add a block until the next CE(S)T day; a
+    /// missing, unreadable or other-day value is ignored and the budget is recomputed.
+    /// </summary>
+    internal const string BudgetExhaustedKey = "risk.budgetExhaustedDay";
+
     private static readonly TimeSpan RecoveryRetryInterval = TimeSpan.FromMinutes(15.0);
     private static readonly DateTime FallbackTimeUtc = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -61,6 +68,8 @@ public sealed class BotCore
     private readonly BotStateMachine _machine = new BotStateMachine();
     private readonly Bar?[] _lastBars = new Bar?[3];
     private readonly List<Bar> _recentM15 = new List<Bar>();
+    private readonly SortedSet<string> _newsSourcesDown = new SortedSet<string>(StringComparer.Ordinal);
+    private readonly IReadOnlyList<MonthDay> _marketHolidays;
 
     private SignalEngine? _engine;
     private IBarHistory? _history;
@@ -109,6 +118,7 @@ public sealed class BotCore
         _symbol = parameters.Symbol;
         _newsEnabled = parameters.News.NewsEnabled;
         _fridayCloseUtc = parameters.Execution.FridayCloseUtc;
+        _marketHolidays = MonthDay.ParseList(parameters.MarketHolidays);
         _risk = parameters.Risk;
         _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution);
         _news = CreateNews(parameters, store, http, isBacktest);
@@ -121,7 +131,7 @@ public sealed class BotCore
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
         _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
         _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, journal);
-        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, journal, _requests, _events, EnterStateAfterRecovery);
+        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, journal, _requests, _events, EnterStateAfterRecovery, _marketHolidays);
     }
 
     /// <summary>The current state (REC-001).</summary>
@@ -331,6 +341,8 @@ public sealed class BotCore
         ClearExpiredCauses(now);
         if (_machine.State != BotState.Recovering)
         {
+            // The emergency guard is checked every minute as well as at M15 closes (owner decision of 2026-11-16).
+            CheckEmergencyGuard(now);
             JournalActions("friday-close", _trades.FridayClose(now));
             WeekendDuty();
         }
@@ -448,6 +460,8 @@ public sealed class BotCore
             ApplyGuard(findings.Guard, now, true);
         }
 
+        ApplyStoredBudgetBlock(now);
+
         UpdateCalendar(now);
         ApplyState("recovery complete", now);
         return _machine.State;
@@ -480,6 +494,7 @@ public sealed class BotCore
             if (_budgetBlockedDayUtc != day)
             {
                 _budgetBlockedDayUtc = day;
+                _store.Set(BudgetExhaustedKey, day.ToString("o", CultureInfo.InvariantCulture));
                 Alert(BotAlertKind.DailyLimit, "daily risk budget exhausted, no entries until the next CE(S)T day: " + guard.Text, now);
             }
         }
@@ -496,6 +511,44 @@ public sealed class BotCore
             _riskDataAlertSent = true;
             Alert(BotAlertKind.RiskDataUnavailable, "no new entries: " + guard.Text, now);
         }
+    }
+
+    private void CheckEmergencyGuard(DateTime now)
+    {
+        GuardStatus guard = _guard.Evaluate(now);
+        if (guard.EmergencyFires)
+        {
+            JournalActions("emergency", _safety.CloseAllBotTrades("emergency guard"));
+            EnterHalt(HaltCause.EmergencyGuard, "emergency guard: " + guard.Text, now);
+        }
+    }
+
+    // RSK-006 (owner decision of 2026-11-16): a day stored as exhausted blocks until the next CE(S)T day,
+    // also when the recomputed budget would allow entries after a restart. It never allows anything.
+    private void ApplyStoredBudgetBlock(DateTime now)
+    {
+        string? text = _store.Get(BudgetExhaustedKey);
+        if (text == null)
+        {
+            return;
+        }
+
+        DateTime today = CestClock.StartOfCestDayUtc(now);
+        bool readable = DateTime.TryParseExact(text, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime stored) && stored.Kind == DateTimeKind.Utc;
+        if (!readable || stored != today)
+        {
+            Write("risk", "event=stored-budget-day-ignored value=" + OneLine(text) + (readable ? " reason=other day" : " reason=unreadable"));
+            return;
+        }
+
+        if (_budgetBlockedDayUtc == today)
+        {
+            return;
+        }
+
+        _budgetBlockedDayUtc = today;
+        JournalActions("daily-budget", _trades.CancelEntryOrders("daily budget exhausted earlier today"));
+        Alert(BotAlertKind.DailyLimit, "daily risk budget was exhausted earlier today; no entries until the next CE(S)T day", now);
     }
 
     private void EnterHalt(HaltCause cause, string detail, DateTime now)
@@ -593,7 +646,7 @@ public sealed class BotCore
     private void CheckLiveGap(TimeFrame timeFrame, Bar bar, DateTime now)
     {
         Bar? previous = _lastBars[BarIntakeOrder.Rank(timeFrame)];
-        if (previous == null || !BarSeriesCheck.IsGap(timeFrame, previous, bar, _fridayCloseUtc))
+        if (previous == null || !BarSeriesCheck.IsGap(timeFrame, previous, bar, _fridayCloseUtc, _marketHolidays))
         {
             return;
         }
@@ -703,6 +756,15 @@ public sealed class BotCore
         foreach (NewsFeedReport report in update.Reports)
         {
             Write("news", "source=" + report.Source + " outcome=" + report.Outcome + " detail=" + report.Detail);
+            if (report.Outcome == NewsFeedOutcome.DownloadAccepted)
+            {
+                _newsSourcesDown.Remove(report.Source);
+            }
+            else if (report.Outcome == NewsFeedOutcome.DownloadRejected && _newsSourcesDown.Add(report.Source))
+            {
+                // Once per outage of the source (owner decision on pull request #20).
+                Alert(BotAlertKind.NewsFeedDown, "news source " + report.Source + " download failed: " + report.Detail, now);
+            }
         }
 
         if (update.AlertRaised)

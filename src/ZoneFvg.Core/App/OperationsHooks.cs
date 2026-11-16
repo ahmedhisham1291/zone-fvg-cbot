@@ -45,6 +45,9 @@ public enum BotAlertKind
     /// <summary>The news calendar is unavailable; entries blocked (NWS fail-safe, spec 6.3).</summary>
     CalendarUnavailable,
 
+    /// <summary>A download from a news source failed; raised once per outage of the source (owner decision on pull request #20).</summary>
+    NewsFeedDown,
+
     /// <summary>A news download contained a malformed event (WP05 decision).</summary>
     NewsFeedMalformed,
 

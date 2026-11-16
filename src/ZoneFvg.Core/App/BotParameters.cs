@@ -1,6 +1,7 @@
 using System;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.News;
+using ZoneFvg.Core.Recovery;
 using ZoneFvg.Core.Risk;
 using ZoneFvg.Core.Signals;
 
@@ -30,12 +31,19 @@ public sealed record BotParameters
     /// <summary>Address of the Forex Factory weekly export. Needed outside backtests while NewsEnabled is true.</summary>
     public string NewsFeedUrl { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Market holidays as comma-separated <c>MM-dd</c> days whose whole UTC day counts as closed, so
+    /// missing bars on them are not data gaps (REC-003, owner decision of 2026-11-16). Default 25
+    /// December and 1 January.
+    /// </summary>
+    public string MarketHolidays { get; init; } = "12-25,01-01";
+
     /// <summary>The embedded news history used in backtests (spec 6.4), as text.</summary>
     public string EmbeddedNewsHistory { get; init; } = string.Empty;
 
     /// <summary>
     /// Checks every value and throws for the first problem: the symbol must start with six letters
-    /// and contain no '|'; each parameter group must be valid; outside backtests with NewsEnabled
+    /// and contain no '|'; each parameter group and the market holidays must be valid; outside backtests with NewsEnabled
     /// true the feed address must be set.
     /// </summary>
     /// <param name="isBacktest">True in a backtest.</param>
@@ -58,6 +66,7 @@ public sealed record BotParameters
         Execution.Validate();
         Risk.Validate();
         News.Validate();
+        MonthDay.ParseList(MarketHolidays);
         if (!isBacktest && News.NewsEnabled && string.IsNullOrWhiteSpace(NewsFeedUrl))
         {
             throw new ArgumentException("NewsFeedUrl must be set when the news filter is enabled outside backtests.", nameof(NewsFeedUrl));

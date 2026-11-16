@@ -11,8 +11,9 @@ namespace ZoneFvg.Core.Recovery;
 /// </summary>
 /// <remarks>
 /// <para>A gap is a missing bar where the market was open (prompt WP07). The market counts as
-/// closed during the weekend closure, from Friday at FridayCloseUtc to Monday 00:00 UTC; at every
-/// other time it counts as open. Two consecutive bars of a series have a gap when the open-market
+/// closed during the weekend closure, from Friday at FridayCloseUtc to Monday 00:00 UTC, and on
+/// the whole UTC day of a market holiday (owner decision of 2026-11-16); at every other time it
+/// counts as open. Two consecutive bars of a series have a gap when the open-market
 /// time between the close of the first and the open of the second is at least one bar length.
 /// For M15 bars, which are aligned to 15 minutes, this is the rule "consecutive M15 bars more than
 /// 15 minutes apart outside the weekend closure". For H4 and D1 it tolerates the one-hour shift of
@@ -24,35 +25,33 @@ public static class BarSeriesCheck
 {
     /// <summary>
     /// Open-market time between two instants (REC-003): their distance minus the part inside a
-    /// weekend closure, Friday at <paramref name="fridayCloseUtc"/> to Monday 00:00 UTC.
+    /// weekend closure, Friday at <paramref name="fridayCloseUtc"/> to Monday 00:00 UTC, or on a
+    /// market holiday (the whole UTC day).
     /// </summary>
     /// <param name="fromUtc">Start, kind UTC.</param>
     /// <param name="toUtc">End, kind UTC.</param>
     /// <param name="fridayCloseUtc">UTC time of day at which the weekend closure starts on Fridays.</param>
+    /// <param name="holidays">Market holidays (owner decision of 2026-11-16); null means none.</param>
     /// <returns>The open-market time; zero when <paramref name="toUtc"/> is not after <paramref name="fromUtc"/>.</returns>
-    public static TimeSpan OpenMarketTime(DateTime fromUtc, DateTime toUtc, TimeSpan fridayCloseUtc)
+    public static TimeSpan OpenMarketTime(DateTime fromUtc, DateTime toUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null)
     {
-        if (toUtc <= fromUtc)
+        TimeSpan open = TimeSpan.Zero;
+        DateTime from = fromUtc;
+        while (from < toUtc)
         {
-            return TimeSpan.Zero;
-        }
-
-        int sinceMonday = ((int)fromUtc.DayOfWeek + 6) % 7;
-        DateTime monday = fromUtc.Date.AddDays(-sinceMonday);
-        TimeSpan closed = TimeSpan.Zero;
-        for (DateTime friday = monday.AddDays(-3.0); friday < toUtc; friday = friday.AddDays(7.0))
-        {
-            DateTime start = friday + fridayCloseUtc;
-            DateTime end = friday.AddDays(3.0);
-            DateTime from = start > fromUtc ? start : fromUtc;
-            DateTime to = end < toUtc ? end : toUtc;
-            if (to > from)
+            DateTime dayStart = from.Date;
+            DateTime dayEnd = dayStart.AddDays(1.0);
+            DateTime to = dayEnd < toUtc ? dayEnd : toUtc;
+            DateTime openUntil = OpenUntil(dayStart, fridayCloseUtc, holidays);
+            if (openUntil > from)
             {
-                closed += to - from;
+                open += (openUntil < to ? openUntil : to) - from;
             }
+
+            from = to;
         }
 
-        return toUtc - fromUtc - closed;
+        return open;
     }
 
     /// <summary>True when bars are missing between two consecutive bars of a series (REC-003).</summary>
@@ -62,12 +61,13 @@ public static class BarSeriesCheck
     /// <param name="fridayCloseUtc">UTC time of day at which the weekend closure starts on Fridays.</param>
     /// <returns>True when at least one bar length of open-market time lies between them.</returns>
     /// <exception cref="ArgumentNullException">A bar is null.</exception>
-    public static bool IsGap(TimeFrame timeFrame, Bar previous, Bar next, TimeSpan fridayCloseUtc)
+    /// <param name="holidays">Market holidays (owner decision of 2026-11-16); null means none.</param>
+    public static bool IsGap(TimeFrame timeFrame, Bar previous, Bar next, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null)
     {
         ArgumentNullException.ThrowIfNull(previous);
         ArgumentNullException.ThrowIfNull(next);
         TimeSpan length = BarIntakeOrder.Length(timeFrame);
-        return OpenMarketTime(previous.OpenTimeUtc + length, next.OpenTimeUtc, fridayCloseUtc) >= length;
+        return OpenMarketTime(previous.OpenTimeUtc + length, next.OpenTimeUtc, fridayCloseUtc, holidays) >= length;
     }
 
     /// <summary>
@@ -81,7 +81,8 @@ public static class BarSeriesCheck
     /// <param name="nowUtc">Server time, kind UTC.</param>
     /// <param name="fridayCloseUtc">UTC time of day at which the weekend closure starts on Fridays.</param>
     /// <returns>A short invariant description of the first problem, or null.</returns>
-    public static string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc)
+    /// <param name="holidays">Market holidays (owner decision of 2026-11-16); null means none.</param>
+    public static string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null)
     {
         if (bars == null)
         {
@@ -114,7 +115,7 @@ public static class BarSeriesCheck
                     return timeFrame + ": bar opening " + Stamp(bar.OpenTimeUtc) + " does not follow " + Stamp(previous.OpenTimeUtc);
                 }
 
-                if (IsGap(timeFrame, previous, bar, fridayCloseUtc))
+                if (IsGap(timeFrame, previous, bar, fridayCloseUtc, holidays))
                 {
                     return timeFrame + ": gap between " + Stamp(previous.OpenTimeUtc) + " and " + Stamp(bar.OpenTimeUtc);
                 }
@@ -124,13 +125,25 @@ public static class BarSeriesCheck
         if (bars.Count > 0)
         {
             DateTime lastClose = bars[bars.Count - 1].OpenTimeUtc + length;
-            if (OpenMarketTime(lastClose, nowUtc, fridayCloseUtc) >= length + length)
+            if (OpenMarketTime(lastClose, nowUtc, fridayCloseUtc, holidays) >= length + length)
             {
                 return timeFrame + ": last bar closed " + Stamp(lastClose) + ", not recent at " + Stamp(nowUtc);
             }
         }
 
         return null;
+    }
+
+    // The end of the open part of a UTC day that starts at its open: Saturday, Sunday and holidays are
+    // closed all day, Friday closes at FridayCloseUtc, other days are open all day.
+    private static DateTime OpenUntil(DateTime dayStart, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays)
+    {
+        if (dayStart.DayOfWeek == DayOfWeek.Saturday || dayStart.DayOfWeek == DayOfWeek.Sunday || MonthDay.Contains(holidays, dayStart))
+        {
+            return dayStart;
+        }
+
+        return dayStart.DayOfWeek == DayOfWeek.Friday ? dayStart + fridayCloseUtc : dayStart.AddDays(1.0);
     }
 
     private static string Text(int value)
