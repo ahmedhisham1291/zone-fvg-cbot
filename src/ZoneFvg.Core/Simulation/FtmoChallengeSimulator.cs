@@ -328,9 +328,10 @@ public static class FtmoChallengeSimulator
                     return;
                 }
 
+                // Roll the day before removing the trade: it was open during the new day too.
                 OpenTrade closing = _open[next];
-                _open.RemoveAt(next);
                 RollTo(closing.Trade.CloseTimeUtc);
+                _open.RemoveAt(next);
                 if (_outcome == null)
                 {
                     Close(closing);
