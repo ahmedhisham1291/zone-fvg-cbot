@@ -826,7 +826,7 @@ requirements:
     wp: WP09
     spec: "11, 15.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Daily summary once per CE(S)T day with trades, net R, balance, equity,
       drawdown, distance to both FTMO floors, progress to target, skips by
@@ -836,7 +836,7 @@ requirements:
     wp: WP09
     spec: "11"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Telegram alerts are best-effort: sending never blocks or throws into
       trading logic; failures are retried later from a bounded queue; the bot
