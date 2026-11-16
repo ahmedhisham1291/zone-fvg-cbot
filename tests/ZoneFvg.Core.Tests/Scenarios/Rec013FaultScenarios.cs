@@ -106,7 +106,7 @@ public class Rec013FaultScenarios
 
         string closed = " trade symbol=USDJPY position=" + positionId.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ";
         Assert.Equal(1, h.Journal.Count("trade", closed));
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.TradeClosed));
+        Assert.Equal(1, h.Alerts(AlertKind.TradeClosed));
         Assert.Equal(1, first.LastReport!.ReplaySignals);
         Assert.Empty(first.LastReport.ActiveZones);
         Assert.Equal(1, h.Count(BrokerCall.Place));
@@ -180,8 +180,8 @@ public class Rec013FaultScenarios
         h.Core.OnTradeEvent();
 
         Assert.Equal(RecoveryData.Stop, h.ReferencePosition()!.StopLoss);
-        Assert.Equal(1, h.Hooks.Count(AlertKind.StopLossMissing));
-        Assert.Equal(1, h.Hooks.Count(AlertKind.StopLossRestored));
+        Assert.Equal(1, h.Alerts(AlertKind.StopLossMissing));
+        Assert.Equal(1, h.Alerts(AlertKind.StopLossRestored));
         ScenarioAssert.Global(h.Broker);
     }
 
@@ -224,7 +224,7 @@ public class Rec013FaultScenarios
 
         Assert.Equal(BotState.Blocked, stale.State);
         Assert.Equal(3, http.Calls);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.CalendarUnavailable));
+        Assert.Equal(1, h.Alerts(AlertKind.CalendarUnavailable));
         Assert.Equal(0, h.Count(BrokerCall.Place));
         ScenarioAssert.Global(h.Broker);
     }
@@ -243,7 +243,7 @@ public class Rec013FaultScenarios
         Assert.Equal(1, h.Count(BrokerCall.Close));
         Assert.Equal(RecoveryData.At(6, 21, 0), h.Broker.Requests.Single(r => r.Call == BrokerCall.Close).AtUtc);
         Assert.Contains(positionId + " Closed (weekend close)", restarted.LastReport!.CatchUp);
-        Assert.Contains(h.Hooks.Alerts, alert => alert.Kind == BotAlertKind.RecoveryReport && alert.Message.Contains("Closed (weekend close)", StringComparison.Ordinal));
+        Assert.Contains(h.AlertLines(AlertKind.Started), line => line.Contains("Closed\\s(weekend\\sclose)", StringComparison.Ordinal));
         Assert.False(restarted.WeekendClosePending);
         ScenarioAssert.Global(h.Broker);
     }
@@ -263,7 +263,7 @@ public class Rec013FaultScenarios
         string stranger = Assert.Single(restarted.LastReport!.Strangers);
         Assert.StartsWith(position.Id + " (parameter hash " + RecoveryData.Hash + " differs)", stranger, StringComparison.Ordinal);
         Assert.Empty(restarted.LastReport.PositionsAdopted);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.Stranger));
+        Assert.Equal(1, h.Alerts(AlertKind.Stranger));
         Assert.Equal(requests, h.Broker.WriteRequestCount);
         Assert.Equal(RecoveryData.Stop, h.ReferencePosition()!.StopLoss);
         Assert.Equal(RecoveryData.Target, h.ReferencePosition()!.TakeProfit);
@@ -275,7 +275,7 @@ public class Rec013FaultScenarios
     public void Fault13_AHandlerThrowsRepeatedly_BotHaltsAfterTheLimitAndKeepsRunning()
     {
         var h = new BotHarness();
-        BotCore core = h.Start(A);
+        BotCore core = h.Start(A, RecoveryData.WithHeartbeat());
         h.Port.PositionsFault = new InvalidOperationException("positions unavailable");
 
         for (int i = 1; i <= 5; i++)
@@ -290,11 +290,11 @@ public class Rec013FaultScenarios
 
         Assert.Equal(BotState.Halted, core.State);
         Assert.Equal(new[] { HaltCause.ErrorLimit }, core.HaltCauses);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.ErrorStorm));
+        Assert.Equal(1, h.Alerts(AlertKind.ErrorStorm));
 
-        // The process continues: the timer still reaches the heartbeat hook in Halted.
+        // The process continues: the timer still calls the heartbeat in Halted.
         h.Timer(A.AddMinutes(7.0));
-        Assert.Equal(BotState.Halted, h.Hooks.Heartbeats[^1].State);
+        Assert.EndsWith(" state=Halted", h.Journal.Lines("heartbeat")[^1].Split(" failures=")[0], StringComparison.Ordinal);
         h.Port.PositionsFault = null;
         ScenarioAssert.Global(h.Broker);
     }

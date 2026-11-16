@@ -5,6 +5,7 @@ using System.Linq;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Risk;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Execution;
 
@@ -322,15 +323,5 @@ public sealed class OrderManager
     private static string Price(double? value)
     {
         return value.HasValue ? Text(value.Value) : "none";
-    }
-
-    private static string Text(double value)
-    {
-        return value.ToString("R", CultureInfo.InvariantCulture);
-    }
-
-    private static string Text(long value)
-    {
-        return value.ToString(CultureInfo.InvariantCulture);
     }
 }

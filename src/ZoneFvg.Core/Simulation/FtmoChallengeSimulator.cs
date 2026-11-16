@@ -49,7 +49,7 @@ public static class FtmoChallengeSimulator
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="startDayUtc"/> is not the start of a CE(S)T day, or a trade is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public static ChallengePath RunPath(IReadOnlyList<TradeRecord> trades, DateTime startDayUtc, FtmoChallengeParameters parameters)
+    internal static ChallengePath RunPath(IReadOnlyList<TradeRecord> trades, DateTime startDayUtc, FtmoChallengeParameters parameters)
     {
         ArgumentNullException.ThrowIfNull(trades);
         ArgumentNullException.ThrowIfNull(parameters);

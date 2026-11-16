@@ -61,7 +61,7 @@ public class OpsWiringScenarios
         Assert.Equal(1, Lines(h, "alert", "event=queued kind=TradeClosed "));
         Assert.Equal(1, http.Urls.Count(url => url.Contains("TradeClosed", StringComparison.Ordinal)));
         Assert.Equal(3, Lines(h, "recovery", " trigger=start "));
-        Assert.Equal(3, h.Hooks.Count(BotAlertKind.RecoveryReport));
+        Assert.Equal(3, h.AlertLines(AlertKind.Started).Count(line => !line.Contains("recovery\\swaits", StringComparison.Ordinal)));
         Assert.Equal(1, Lines(h, "signal", " result=taken "));
         Assert.Equal(2, Lines(h, "signal", " skip=SignalFromReplay"));
         Assert.Equal(2, Lines(h, "skip", " reason=SignalFromReplay "));
@@ -110,11 +110,18 @@ public class OpsWiringScenarios
         var h = new BotHarness(http: new FakeTransport(NewsTestData.Ok("{\"ok\":true}")));
         h.Start(A, WithTelegram());
         h.Core.OnDisconnected();
+        var historyReads = new List<DateTime>();
+        h.Port.History = since =>
+        {
+            historyReads.Add(since);
+            return h.Broker.GetHistory(since);
+        };
 
         h.Timer(RecoveryData.At(4, 23, 1));
 
         Assert.Equal(BotState.Recovering, h.Core.State);
         Assert.Equal(1, Lines(h, "alert", "event=queued kind=DailySummary "));
-        Assert.Equal(RecoveryData.At(4, 23, 1), h.Hooks.InactivityChecks[^1]);
+        // The inactivity check reads 30 days of history (OPS-006).
+        Assert.Contains(RecoveryData.At(4, 23, 1).AddDays(-30.0), historyReads);
     }
 }

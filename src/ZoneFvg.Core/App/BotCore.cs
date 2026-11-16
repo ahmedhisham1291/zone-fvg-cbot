@@ -10,6 +10,7 @@ using ZoneFvg.Core.Ops;
 using ZoneFvg.Core.Recovery;
 using ZoneFvg.Core.Risk;
 using ZoneFvg.Core.Signals;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.App;
 
@@ -55,7 +56,6 @@ public sealed class BotCore
     private readonly IBroker _broker;
     private readonly IKeyValueStore _store;
     private readonly Operations _ops;
-    private readonly IOperationsHooks _hooks;
     private readonly DateTime _startedUtc;
     private readonly bool _isBacktest;
     private readonly string _symbol;
@@ -111,11 +111,6 @@ public sealed class BotCore
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">A parameter is invalid.</exception>
     public BotCore(BotParameters parameters, IBroker broker, IKeyValueStore store, IHttpTransport http, IJournalSink journal, bool isBacktest)
-        : this(parameters, broker, store, http, journal, isBacktest, new NoOperationsHooks())
-    {
-    }
-
-    internal BotCore(BotParameters parameters, IBroker broker, IKeyValueStore store, IHttpTransport http, IJournalSink journal, bool isBacktest, IOperationsHooks hooks)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(http);
@@ -123,7 +118,6 @@ public sealed class BotCore
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         ArgumentNullException.ThrowIfNull(journal);
-        _hooks = hooks ?? throw new ArgumentNullException(nameof(hooks));
         _startedUtc = broker.ServerTimeUtc;
         _lastKnownServerTimeUtc = _startedUtc;
         _ops = new Operations(parameters.Ops, parameters.Risk, parameters.Symbol, broker, http, journal, _startedUtc);
@@ -227,9 +221,9 @@ public sealed class BotCore
     }
 
     /// <summary>
-    /// Once a minute (spec 9.3): heartbeat hook in every state; then, while connected, news refresh,
-    /// recovery retry, Friday close (EXE-013), weekend close (REC-009), state update and the
-    /// inactivity hook.
+    /// Once a minute (spec 9.3): while connected, news refresh, recovery retry, Friday close
+    /// (EXE-013), weekend close (REC-009) and state update; then in every state the daily summary,
+    /// the inactivity check, the heartbeat and alert sending (OPS-003 to OPS-006).
     /// </summary>
     public void OnTimer()
     {
@@ -319,12 +313,12 @@ public sealed class BotCore
         DateTime close = BarIntakeOrder.CloseTimeUtc(timeFrame, bar);
         if (close > now)
         {
-            throw new InvalidOperationException("The " + timeFrame + " bar opening " + Stamp(bar.OpenTimeUtc) + " has not closed at server time " + Stamp(now) + " (closed bars only).");
+            throw new InvalidOperationException("The " + timeFrame + " bar opening " + Minute(bar.OpenTimeUtc) + " has not closed at server time " + Minute(now) + " (closed bars only).");
         }
 
         if (_hasFed && !(close > _lastFedCloseUtc || (close == _lastFedCloseUtc && rank > _lastFedRank)))
         {
-            Write("bar", ("event", "ignored"), ("timeframe", timeFrame.ToString()), ("open", Stamp(bar.OpenTimeUtc)), ("reason", "already processed"));
+            Write("bar", ("event", "ignored"), ("timeframe", timeFrame.ToString()), ("open", Minute(bar.OpenTimeUtc)), ("reason", "already processed"));
             return;
         }
 
@@ -353,7 +347,7 @@ public sealed class BotCore
 
         WeekendDuty();
         UpdateCalendar(now);
-        ApplyState("M15 bar closed at " + Stamp(close), now);
+        ApplyState("M15 bar closed at " + Minute(close), now);
         ResolvePending(guard, now);
         PlaceSignals(signals, zonesBefore, guard, now);
         CheckRequestLimit(now);
@@ -363,7 +357,6 @@ public sealed class BotCore
     private void Timer()
     {
         DateTime now = Now();
-        _hooks.Heartbeat(now, _machine.State);
         try
         {
             if (!_disconnected)
@@ -419,7 +412,6 @@ public sealed class BotCore
     {
         // At least 30 days of history, so the 21-day warning has data (OPS-006, WP09).
         DateTime since = now.AddDays(-InactivityHistoryDays);
-        _hooks.Inactivity(now);
         try
         {
             _ops.Inactivity.Check(now, _broker.GetHistory(since), since, _broker.GetPositions());
@@ -439,8 +431,7 @@ public sealed class BotCore
         {
             foreach (string token in stored.Split(','))
             {
-                if (DateTime.TryParseExact(token, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime time)
-                    && time.Kind == DateTimeKind.Utc && time > now.AddDays(-8.0) && time <= now)
+                if (TryParseUtc(token, out DateTime time) && time > now.AddDays(-8.0) && time <= now)
                 {
                     starts.Add(token);
                 }
@@ -464,8 +455,7 @@ public sealed class BotCore
         int count = 0;
         foreach (string token in stored.Split(','))
         {
-            if (DateTime.TryParseExact(token, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime time)
-                && time.Kind == DateTimeKind.Utc && time >= previous && time < today)
+            if (TryParseUtc(token, out DateTime time) && time >= previous && time < today)
             {
                 count++;
             }
@@ -531,23 +521,23 @@ public sealed class BotCore
             report.Downtime,
             report.State));
         Write("report", ("trigger", reason), ("text", report.Text));
-        OpsAlertKind recovered = reason == "start" ? OpsAlertKind.Started : OpsAlertKind.Recovered;
+        AlertKind recovered = reason == "start" ? AlertKind.Started : AlertKind.Recovered;
         if (!report.DataComplete)
         {
             if (!_dataAlertSent)
             {
                 _dataAlertSent = true;
-                Alert(BotAlertKind.DataIncomplete, "recovery waits for data: " + string.Join("; ", report.DataProblems), now, null, recovered);
+                Alert(recovered, "recovery waits for data: " + string.Join("; ", report.DataProblems), now);
             }
 
             return;
         }
 
         _dataAlertSent = false;
-        Alert(BotAlertKind.RecoveryReport, report.Text, now, null, recovered);
+        Alert(recovered, report.Text, now);
         if (report.Strangers.Count > 0)
         {
-            Alert(BotAlertKind.Stranger, "kept with their stop and target: " + string.Join(", ", report.Strangers), now);
+            Alert(AlertKind.Stranger, "kept with their stop and target: " + string.Join(", ", report.Strangers), now);
         }
     }
 
@@ -637,7 +627,7 @@ public sealed class BotCore
             {
                 _budgetBlockedDayUtc = day;
                 _store.Set(BudgetExhaustedKey, day.ToString("o", CultureInfo.InvariantCulture));
-                Alert(BotAlertKind.DailyLimit, "daily risk budget exhausted, no entries until the next CE(S)T day: " + guard.Text, now);
+                Alert(AlertKind.DailyLimit, "daily risk budget exhausted, no entries until the next CE(S)T day: " + guard.Text, now);
             }
         }
 
@@ -651,7 +641,7 @@ public sealed class BotCore
         if (!_riskDataAlertSent)
         {
             _riskDataAlertSent = true;
-            Alert(BotAlertKind.RiskDataUnavailable, "no new entries: " + guard.Text, now);
+            Alert(AlertKind.RiskDataUnavailable, "no new entries: " + guard.Text, now);
         }
     }
 
@@ -676,7 +666,7 @@ public sealed class BotCore
         }
 
         DateTime today = CestClock.StartOfCestDayUtc(now);
-        bool readable = DateTime.TryParseExact(text, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime stored) && stored.Kind == DateTimeKind.Utc;
+        bool readable = TryParseUtc(text, out DateTime stored);
         if (!readable || stored != today)
         {
             Write("risk", ("event", "stored-budget-day-ignored"), ("value", OneLine(text)), ("reason", readable ? "other day" : "unreadable"));
@@ -690,7 +680,7 @@ public sealed class BotCore
 
         _budgetBlockedDayUtc = today;
         JournalActions("daily-budget", _trades.CancelEntryOrders("daily budget exhausted earlier today"));
-        Alert(BotAlertKind.DailyLimit, "daily risk budget was exhausted earlier today; no entries until the next CE(S)T day", now);
+        Alert(AlertKind.DailyLimit, "daily risk budget was exhausted earlier today; no entries until the next CE(S)T day", now);
     }
 
     private void EnterHalt(HaltCause cause, string detail, DateTime now)
@@ -771,7 +761,7 @@ public sealed class BotCore
         if (_budgetBlockedDayUtc.HasValue && CestClock.StartOfCestDayUtc(now) > _budgetBlockedDayUtc.Value)
         {
             _budgetBlockedDayUtc = null;
-            Write("risk", ("event", "daily-budget-reset"), ("day", Stamp(CestClock.StartOfCestDayUtc(now))));
+            Write("risk", ("event", "daily-budget-reset"), ("day", Minute(CestClock.StartOfCestDayUtc(now))));
         }
     }
 
@@ -793,12 +783,12 @@ public sealed class BotCore
             return;
         }
 
-        string detail = timeFrame + " bars missing between " + Stamp(previous.OpenTimeUtc) + " and " + Stamp(bar.OpenTimeUtc);
+        string detail = timeFrame + " bars missing between " + Minute(previous.OpenTimeUtc) + " and " + Minute(bar.OpenTimeUtc);
         Write("bar", ("event", "gap"), ("detail", detail));
         if (!_dataGap)
         {
             _dataGap = true;
-            Alert(BotAlertKind.DataGap, detail + "; entries blocked until recovery reloads the history", now);
+            Alert(AlertKind.DataGap, detail + "; entries blocked until recovery reloads the history", now);
         }
     }
 
@@ -943,22 +933,12 @@ public sealed class BotCore
             else if (report.Outcome == NewsFeedOutcome.DownloadRejected && _newsSourcesDown.Add(report.Source))
             {
                 // Once per outage of the source (owner decision on pull request #20).
-                Alert(BotAlertKind.NewsFeedDown, "news source " + report.Source + " download failed: " + report.Detail, now);
+                Alert(AlertKind.NewsFeedDown, "news source " + report.Source + " download failed: " + report.Detail, now);
             }
         }
 
         // Calendar unavailable and malformed downloads are raised by WP09 (OpsEvents.NewsUpdated).
         _ops.Events.NewsUpdated(update, now);
-        if (update.AlertRaised)
-        {
-            _hooks.Alert(new BotAlert(BotAlertKind.CalendarUnavailable, null, _symbol, "news calendar unavailable: no new entries until a feed returns", now));
-        }
-
-        if (update.MalformedDownloadAlert)
-        {
-            _hooks.Alert(new BotAlert(BotAlertKind.NewsFeedMalformed, null, _symbol, "a news download contained a malformed event and was rejected", now));
-        }
-
         if (update.Recovered)
         {
             Write("news", ("event", "calendar-available"));
@@ -1009,7 +989,7 @@ public sealed class BotCore
         _ops.Journal.Error(now, handler, exception);
         string text = "handler=" + handler + " type=" + exception.GetType().Name + " message=" + OneLine(exception.Message)
             + " errors-last-hour=" + decision.LastHourCount.ToString(CultureInfo.InvariantCulture);
-        TryAlert(BotAlertKind.Error, text, now);
+        TryAlert(AlertKind.Error, text, now);
         if (!decision.Halt)
         {
             return;
@@ -1057,7 +1037,7 @@ public sealed class BotCore
     private void Record(StateTransition transition)
     {
         _ops.Journal.State(transition.AtUtc, transition.From, transition.To, transition.Reason);
-        Alert(BotAlertKind.StateChanged, transition.From + " -> " + transition.To + ": " + transition.Reason, transition.AtUtc);
+        Alert(AlertKind.StateChanged, transition.From + " -> " + transition.To + ": " + transition.Reason, transition.AtUtc);
     }
 
     private void JournalActions(string what, IReadOnlyList<TradeAction> actions)
@@ -1068,22 +1048,20 @@ public sealed class BotCore
         }
     }
 
-    private void Alert(BotAlertKind kind, string message, DateTime now, AlertKind? executionKind = null, OpsAlertKind? opsKind = null)
+    private void Alert(AlertKind kind, string message, DateTime now)
     {
-        _hooks.Alert(new BotAlert(kind, executionKind, _symbol, message, now));
-        OpsAlertKind? target = opsKind ?? OpsKindFor(kind);
-        if (target.HasValue)
+        if (AlertKinds.Telegram(kind).HasValue)
         {
-            _ops.Alerts.Raise(target.Value, message, now);
+            _ops.Alerts.Raise(kind, message, now);
         }
         else
         {
-            // No Telegram kind in WP09's list (spec 11); the notice is journaled.
+            // Journal only by the Telegram table (spec 11); the notice is journaled.
             Write("notice", ("kind", kind.ToString()), ("message", message));
         }
     }
 
-    private void TryAlert(BotAlertKind kind, string message, DateTime now)
+    private void TryAlert(AlertKind kind, string message, DateTime now)
     {
         try
         {
@@ -1100,45 +1078,18 @@ public sealed class BotCore
         _ops.Journal.Write(_lastKnownServerTimeUtc ?? FallbackTimeUtc, category, fields);
     }
 
-    private static OpsAlertKind? OpsKindFor(BotAlertKind kind)
-    {
-        switch (kind)
-        {
-            case BotAlertKind.StateChanged:
-                return OpsAlertKind.StateChanged;
-            case BotAlertKind.KillSwitch:
-                return OpsAlertKind.KillSwitch;
-            case BotAlertKind.EmergencyGuard:
-                return OpsAlertKind.EmergencyGuard;
-            case BotAlertKind.DailyLimit:
-                return OpsAlertKind.DailyLimit;
-            case BotAlertKind.CircuitBreaker:
-                return OpsAlertKind.CircuitBreaker;
-            case BotAlertKind.ErrorStorm:
-                return OpsAlertKind.ErrorStorm;
-            case BotAlertKind.NewsFeedDown:
-                return OpsAlertKind.NewsFeedDown;
-            case BotAlertKind.TradeOpened:
-                return OpsAlertKind.TradeOpened;
-            case BotAlertKind.TradeClosed:
-                return OpsAlertKind.TradeClosed;
-            default:
-                return null;
-        }
-    }
-
-    private static BotAlertKind AlertFor(HaltCause cause)
+    private static AlertKind AlertFor(HaltCause cause)
     {
         switch (cause)
         {
             case HaltCause.KillSwitch:
-                return BotAlertKind.KillSwitch;
+                return AlertKind.KillSwitch;
             case HaltCause.EmergencyGuard:
-                return BotAlertKind.EmergencyGuard;
+                return AlertKind.EmergencyGuard;
             case HaltCause.RequestLimit:
-                return BotAlertKind.CircuitBreaker;
+                return AlertKind.CircuitBreaker;
             default:
-                return BotAlertKind.ErrorStorm;
+                return AlertKind.ErrorStorm;
         }
     }
 
@@ -1147,14 +1098,9 @@ public sealed class BotCore
         return (text ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ');
     }
 
-    private static string Stamp(DateTime value)
-    {
-        return value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-    }
-
     /// <summary>
     /// The execution hook: forwards skip records and alerts to WP09's <see cref="OpsEvents"/>
-    /// (journal and Telegram, OPS-001, OPS-004) and tells the observer hook of each alert.
+    /// (journal and Telegram, OPS-001, OPS-004).
     /// </summary>
     private sealed class CoreEvents : IExecutionEvents
     {
@@ -1173,7 +1119,6 @@ public sealed class BotCore
         public void Alert(ExecutionAlert alert)
         {
             _core._ops.Events.Alert(alert);
-            _core._hooks.Alert(new BotAlert(BotAlertKind.Execution, alert.Kind, _core._symbol, alert.Message, _core.SafeNow()));
         }
     }
 
@@ -1196,16 +1141,16 @@ public sealed class BotCore
                 "position",
                 ("event", "opened"),
                 ("symbol", position.Symbol),
-                ("position", Number(position.Id)),
+                ("position", Text(position.Id)),
                 ("label", position.Label),
                 ("side", position.Side.ToString()),
-                ("volume", Number(position.VolumeUnits)),
-                ("entry", Number(position.EntryPrice)),
-                ("stop", position.StopLoss.HasValue ? Number(position.StopLoss.Value) : null),
-                ("target", position.TakeProfit.HasValue ? Number(position.TakeProfit.Value) : null),
+                ("volume", Text(position.VolumeUnits)),
+                ("entry", Text(position.EntryPrice)),
+                ("stop", position.StopLoss.HasValue ? Text(position.StopLoss.Value) : null),
+                ("target", position.TakeProfit.HasValue ? Text(position.TakeProfit.Value) : null),
                 ("opened", position.OpenTimeUtc.ToString("o", CultureInfo.InvariantCulture)));
-            string text = "position " + Number(position.Id) + " " + position.Side + " " + Number(position.VolumeUnits) + " at " + Number(position.EntryPrice);
-            _core.Alert(BotAlertKind.TradeOpened, text, atUtc);
+            string text = "position " + Text(position.Id) + " " + position.Side + " " + Text(position.VolumeUnits) + " at " + Text(position.EntryPrice);
+            _core.Alert(AlertKind.TradeOpened, text, atUtc);
         }
 
         public void Closed(ClosedTradeInfo trade, OpenedTradePlan? plan, DateTime atUtc)
@@ -1217,18 +1162,8 @@ public sealed class BotCore
                 _core.WriteTradeLogLine(trade, plan);
             }
 
-            string text = "position " + Number(trade.PositionId) + " closed, net " + trade.NetProfit.ToString("0.00", CultureInfo.InvariantCulture);
-            _core.Alert(BotAlertKind.TradeClosed, text, atUtc);
-        }
-
-        private static string Number(double value)
-        {
-            return value.ToString("R", CultureInfo.InvariantCulture);
-        }
-
-        private static string Number(long value)
-        {
-            return value.ToString(CultureInfo.InvariantCulture);
+            string text = "position " + Text(trade.PositionId) + " closed, net " + trade.NetProfit.ToString("0.00", CultureInfo.InvariantCulture);
+            _core.Alert(AlertKind.TradeClosed, text, atUtc);
         }
     }
 }

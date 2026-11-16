@@ -146,7 +146,6 @@ public class Plt005ChartSnapshotScenarios
         Assert.Equal(unread.Broker.Requests, read.Broker.Requests);
         Assert.Equal(unread.Broker.GetPendingOrders(), read.Broker.GetPendingOrders());
         Assert.Equal(unread.Journal.Entries, read.Journal.Entries);
-        Assert.Equal(unread.Hooks.Alerts, read.Hooks.Alerts);
     }
 
     private static IEnumerable<DateTime> CloseTimes(BarSet bars, DateTime afterUtc, DateTime untilUtc)

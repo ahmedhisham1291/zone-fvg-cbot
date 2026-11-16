@@ -12,8 +12,7 @@ namespace ZoneFvg.Core.Domain;
 /// <remarks>
 /// Whoever feeds bars to the core (live events or a replay of history) orders them by
 /// (<see cref="CloseTimeUtc"/>, <see cref="Rank"/>), never by the group in which they arrived
-/// and never by open time (architecture section 10, "Live bar order"). <see cref="Sort"/> orders
-/// bars whose nominal close times are equal.
+/// and never by open time (architecture section 10, "Live bar order").
 /// </remarks>
 public static class BarIntakeOrder
 {
@@ -73,46 +72,5 @@ public static class BarIntakeOrder
     {
         ArgumentNullException.ThrowIfNull(bar);
         return bar.OpenTimeUtc + Length(timeFrame);
-    }
-
-    /// <summary>
-    /// Puts bars that closed at the same instant into processing order D1, H4, M15 (SIG-004).
-    /// The caller guarantees that the bars closed together; at most one bar per timeframe is allowed.
-    /// </summary>
-    /// <param name="closedTogether">The bars that closed at the same instant, each with its timeframe, in any order.</param>
-    /// <returns>The same bars ordered D1, H4, M15.</returns>
-    /// <exception cref="ArgumentException">A bar is missing, or two bars have the same timeframe.</exception>
-    public static IReadOnlyList<(TimeFrame TimeFrame, Bar Bar)> Sort(IEnumerable<(TimeFrame TimeFrame, Bar Bar)> closedTogether)
-    {
-        ArgumentNullException.ThrowIfNull(closedTogether);
-
-        var slots = new Bar?[SameInstant.Count];
-        foreach ((TimeFrame timeFrame, Bar bar) in closedTogether)
-        {
-            int rank = Rank(timeFrame);
-            if (bar is null)
-            {
-                throw new ArgumentException("A bar is missing for timeframe " + timeFrame + ".", nameof(closedTogether));
-            }
-
-            if (slots[rank] is not null)
-            {
-                throw new ArgumentException("More than one bar was given for timeframe " + timeFrame + ".", nameof(closedTogether));
-            }
-
-            slots[rank] = bar;
-        }
-
-        var ordered = new List<(TimeFrame TimeFrame, Bar Bar)>(slots.Length);
-        for (int rank = 0; rank < slots.Length; rank++)
-        {
-            Bar? bar = slots[rank];
-            if (bar is not null)
-            {
-                ordered.Add((SameInstant[rank], bar));
-            }
-        }
-
-        return ordered.AsReadOnly();
     }
 }

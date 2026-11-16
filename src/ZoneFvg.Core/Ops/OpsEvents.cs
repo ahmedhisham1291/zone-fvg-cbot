@@ -44,7 +44,7 @@ public sealed class OpsEvents : IExecutionEvents
 
     /// <summary>
     /// Raises an execution alert as a Telegram alert of the kind given by
-    /// <see cref="OpsAlertKinds.From"/>, with the text <c>&lt;symbol&gt; &lt;kind&gt;: &lt;message&gt;</c>
+    /// <see cref="AlertKinds.Telegram"/>, with the text <c>&lt;symbol&gt; &lt;kind&gt;: &lt;message&gt;</c>
     /// (OPS-004, RSK-002, spec 11). Never throws for an alert failure.
     /// </summary>
     /// <param name="alert">The alert.</param>
@@ -52,13 +52,13 @@ public sealed class OpsEvents : IExecutionEvents
     public void Alert(ExecutionAlert alert)
     {
         ArgumentNullException.ThrowIfNull(alert);
-        _alerts.Raise(OpsAlertKinds.From(alert.Kind), alert.Symbol + " " + alert.Kind + ": " + alert.Message, _broker.ServerTimeUtc);
+        _alerts.Raise(alert.Kind, alert.Symbol + " " + alert.Kind + ": " + alert.Message, _broker.ServerTimeUtc);
     }
 
     /// <summary>
     /// Raises the alerts a news refresh calls for (OPS-004, NWS-005, NWS-008): a
-    /// <see cref="OpsAlertKind.CalendarUnavailable"/> alert when <see cref="NewsUpdate.AlertRaised"/>
-    /// is set, and a <see cref="OpsAlertKind.NewsFeedDown"/> alert per source whose download was
+    /// <see cref="AlertKind.CalendarUnavailable"/> alert when <see cref="NewsUpdate.AlertRaised"/>
+    /// is set, and a <see cref="AlertKind.NewsFeedDown"/> alert per source whose download was
     /// rejected as malformed when <see cref="NewsUpdate.MalformedDownloadAlert"/> is set.
     /// </summary>
     /// <param name="update">The result of <see cref="NewsService.Refresh"/>.</param>
@@ -71,7 +71,7 @@ public sealed class OpsEvents : IExecutionEvents
         int raised = 0;
         if (update.AlertRaised)
         {
-            _alerts.Raise(OpsAlertKind.CalendarUnavailable, "No trusted news data covers the current time; new entries are blocked.", atUtc);
+            _alerts.Raise(AlertKind.CalendarUnavailable, "No trusted news data covers the current time; new entries are blocked.", atUtc);
             raised++;
         }
 
@@ -80,7 +80,7 @@ public sealed class OpsEvents : IExecutionEvents
             IEnumerable<NewsFeedReport> malformed = update.Reports.Where(r => r.Outcome == NewsFeedOutcome.DownloadMalformed);
             foreach (NewsFeedReport report in malformed)
             {
-                _alerts.Raise(OpsAlertKind.NewsFeedDown, "Download from " + report.Source + " rejected as malformed; earlier data kept. " + report.Detail, atUtc);
+                _alerts.Raise(AlertKind.NewsFeedDown, "Download from " + report.Source + " rejected as malformed; earlier data kept. " + report.Detail, atUtc);
                 raised++;
             }
         }

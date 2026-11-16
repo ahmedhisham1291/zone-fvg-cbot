@@ -3,6 +3,7 @@ using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.News;
+using ZoneFvg.Core.Ops;
 using ZoneFvg.Core.Recovery;
 using ZoneFvg.Core.Signals;
 
@@ -77,6 +78,15 @@ public static class RecoveryData
             EmbeddedNewsHistory = news,
             NewsFeedUrl = NewsTestData.FeedUrl,
         };
+    }
+
+    /// <summary>
+    /// <see cref="Parameters"/> with a heartbeat address (OPS-005). The harness's transport fails
+    /// the call, so each heartbeat is journaled as <c>heartbeat event=failed ... state=&lt;state&gt;</c>.
+    /// </summary>
+    public static BotParameters WithHeartbeat()
+    {
+        return Parameters() with { Ops = new OpsParameters { HeartbeatUrl = "https://hb.example.invalid/ping" } };
     }
 
     /// <summary>The comment of the reference order, with the given parameter hash (default: the current one).</summary>
@@ -218,41 +228,6 @@ public sealed class RecordingJournal : IJournalSink
     }
 }
 
-/// <summary>Operations hooks that record every call.</summary>
-public sealed class RecordingHooks : IOperationsHooks
-{
-    public List<BotAlert> Alerts { get; } = new();
-
-    public List<(DateTime At, BotState State)> Heartbeats { get; } = new();
-
-    public List<DateTime> InactivityChecks { get; } = new();
-
-    public void Alert(BotAlert alert)
-    {
-        Alerts.Add(alert);
-    }
-
-    public void Heartbeat(DateTime serverTimeUtc, BotState state)
-    {
-        Heartbeats.Add((serverTimeUtc, state));
-    }
-
-    public void Inactivity(DateTime serverTimeUtc)
-    {
-        InactivityChecks.Add(serverTimeUtc);
-    }
-
-    public int Count(BotAlertKind kind)
-    {
-        return Alerts.Count(alert => alert.Kind == kind);
-    }
-
-    public int Count(AlertKind kind)
-    {
-        return Alerts.Count(alert => alert.ExecutionKind == kind);
-    }
-}
-
 /// <summary>A broker port that forwards to a <see cref="FakeBroker"/> and can inject read failures.</summary>
 public sealed class SwitchableBroker : IBroker
 {
@@ -330,8 +305,6 @@ public sealed class BotHarness
 
     public RecordingJournal Journal { get; } = new();
 
-    public RecordingHooks Hooks { get; } = new();
-
     public bool IsBacktest { get; }
 
     public BotCore Core { get; private set; } = null!;
@@ -345,7 +318,7 @@ public sealed class BotHarness
 
     public BotCore NewCore(BotParameters? parameters = null)
     {
-        return new BotCore(parameters ?? RecoveryData.Parameters(), Port, Store, Http, Journal, IsBacktest, Hooks);
+        return new BotCore(parameters ?? RecoveryData.Parameters(), Port, Store, Http, Journal, IsBacktest);
     }
 
     /// <summary>Moves the broker to the time, creates a new core (the old one is dropped) and starts it.</summary>
@@ -407,6 +380,47 @@ public sealed class BotHarness
     {
         return Broker.Count(call);
     }
+
+    /// <summary>
+    /// The alerts of the given kind the core raised, read from its journal: alert lines (queued,
+    /// disabled or collapsed) of the kind's Telegram kind, or notice lines for a journal-only kind.
+    /// An execution alert reads <c>ZFVG USDJPY &lt;Telegram kind&gt;: USDJPY &lt;kind&gt;: ...</c>, so
+    /// execution kinds are counted by that text and the core's own alerts exclude it.
+    /// </summary>
+    public IReadOnlyList<string> AlertLines(AlertKind kind)
+    {
+        AlertKind? telegram = AlertKinds.Telegram(kind);
+        if (!telegram.HasValue)
+        {
+            return Journal.Lines("notice").Where(line => line.Contains(" notice kind=" + kind + " ", StringComparison.Ordinal)).ToList();
+        }
+
+        string prefix = " text=ZFVG\\s" + RecoveryData.Symbol + "\\s" + telegram + ":\\s" + RecoveryData.Symbol + "\\s";
+        List<string> lines = Journal.Lines("alert")
+            .Where(line => RaiseEvents.Any(raise => line.Contains(" alert event=" + raise + " kind=" + telegram + " ", StringComparison.Ordinal)))
+            .ToList();
+        if (ExecutionKinds.Contains(kind))
+        {
+            return lines.Where(line => line.Contains(prefix + kind + ":", StringComparison.Ordinal)).ToList();
+        }
+
+        return lines.Where(line => !ExecutionKinds.Any(execution => line.Contains(prefix + execution + ":", StringComparison.Ordinal))).ToList();
+    }
+
+    /// <summary>Number of <see cref="AlertLines"/>.</summary>
+    public int Alerts(AlertKind kind)
+    {
+        return AlertLines(kind).Count;
+    }
+
+    private static readonly string[] RaiseEvents = { "queued", "disabled", "collapsed" };
+
+    // The kinds the execution layer raises as ExecutionAlert (OPS-004).
+    private static readonly AlertKind[] ExecutionKinds =
+    {
+        AlertKind.SanityCap, AlertKind.OrderRejected, AlertKind.OrderMismatch, AlertKind.OrderNotFound, AlertKind.CancelFailed,
+        AlertKind.StopLossMissing, AlertKind.StopLossRestored, AlertKind.PositionClosedWithoutStop, AlertKind.CloseFailed, AlertKind.RequestLimitReached,
+    };
 
     public PendingOrderInfo? ReferenceOrder()
     {

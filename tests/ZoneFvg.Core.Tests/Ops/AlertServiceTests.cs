@@ -20,7 +20,7 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
 
-        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(OpsAlertKind.OrderRejected, "order 1001 rejected", T0));
+        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(AlertKind.OrderRejected, "order 1001 rejected", T0));
         Assert.Empty(a.Transport.Calls);
         Assert.Equal(1, a.Service.Pump(T0));
 
@@ -37,7 +37,7 @@ public class AlertServiceTests
         AlertSetup a = OpsData.Alerts();
         const string message = "ZFVG EURUSD KillSwitch: drawdown 8.0%";
 
-        a.Service.Raise(OpsAlertKind.KillSwitch, "drawdown 8.0%", T0);
+        a.Service.Raise(AlertKind.KillSwitch, "drawdown 8.0%", T0);
         a.Service.Pump(T0);
 
         string hash = JournalFormat.Hash8(message);
@@ -57,7 +57,7 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
 
-        a.Service.Raise(OpsAlertKind.DailySummary, "line one\nline two", T0);
+        a.Service.Raise(AlertKind.DailySummary, "line one\nline two", T0);
 
         Assert.EndsWith(" text=ZFVG\\sEURUSD\\sDailySummary:\\sline\\sone\\nline\\stwo queue=1", a.Sink.Of("alert").Single(), StringComparison.Ordinal);
     }
@@ -69,8 +69,8 @@ public class AlertServiceTests
         AlertSetup a = OpsData.Alerts();
         string text = "chat " + OpsData.ChatId + " token " + OpsData.Token + " url " + OpsData.HeartbeatUrl;
 
-        a.Service.Raise(OpsAlertKind.ErrorStorm, text, T0);
-        a.Service.Raise(OpsAlertKind.ErrorStorm, text, T0.AddMinutes(1.0));
+        a.Service.Raise(AlertKind.ErrorStorm, text, T0);
+        a.Service.Raise(AlertKind.ErrorStorm, text, T0.AddMinutes(1.0));
 
         Assert.Equal(
             new[]
@@ -90,7 +90,7 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts(new OpsParameters { HeartbeatUrl = OpsData.HeartbeatUrl });
 
-        Assert.Equal(AlertRaiseOutcome.Disabled, a.Service.Raise(OpsAlertKind.ErrorStorm, "monitor " + OpsData.HeartbeatUrl + " down", T0));
+        Assert.Equal(AlertRaiseOutcome.Disabled, a.Service.Raise(AlertKind.ErrorStorm, "monitor " + OpsData.HeartbeatUrl + " down", T0));
 
         Assert.EndsWith(" event=disabled kind=ErrorStorm hash=" + JournalFormat.Hash8("ZFVG EURUSD ErrorStorm: monitor *** down") + " text=ZFVG\\sEURUSD\\sErrorStorm:\\smonitor\\s***\\sdown queue=0", a.Sink.Of("alert").Single(), StringComparison.Ordinal);
         Assert.DoesNotContain(a.Sink.Lines, l => OpsData.ContainsSecret(l.Line));
@@ -102,16 +102,16 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
 
-        string text = a.Service.Format(OpsAlertKind.ErrorStorm, new string('a', 2000));
+        string text = a.Service.Format(AlertKind.ErrorStorm, new string('a', 2000));
 
         Assert.Equal(1000, text.Length);
         Assert.StartsWith("ZFVG EURUSD ErrorStorm: aaa", text, StringComparison.Ordinal);
         Assert.EndsWith("aaa...", text, StringComparison.Ordinal);
         // Prefix "ZFVG EURUSD ErrorStorm: " is 24 characters, so exactly 976 'a' fit without cutting.
-        Assert.Equal(1000, a.Service.Format(OpsAlertKind.ErrorStorm, new string('a', 976)).Length);
-        Assert.EndsWith("aaaa", a.Service.Format(OpsAlertKind.ErrorStorm, new string('a', 976)), StringComparison.Ordinal);
-        Assert.EndsWith("a...", a.Service.Format(OpsAlertKind.ErrorStorm, new string('a', 977)), StringComparison.Ordinal);
-        Assert.Equal("ZFVG EURUSD Started: ", a.Service.Format(OpsAlertKind.Started, null));
+        Assert.Equal(1000, a.Service.Format(AlertKind.ErrorStorm, new string('a', 976)).Length);
+        Assert.EndsWith("aaaa", a.Service.Format(AlertKind.ErrorStorm, new string('a', 976)), StringComparison.Ordinal);
+        Assert.EndsWith("a...", a.Service.Format(AlertKind.ErrorStorm, new string('a', 977)), StringComparison.Ordinal);
+        Assert.Equal("ZFVG EURUSD Started: ", a.Service.Format(AlertKind.Started, null));
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class AlertServiceTests
         AlertSetup a = OpsData.Alerts();
         string text = new string('a', 972) + "\U0001F600" + new string('b', 50);
 
-        string message = a.Service.Format(OpsAlertKind.ErrorStorm, text);
+        string message = a.Service.Format(AlertKind.ErrorStorm, text);
 
         // Prefix 24 + 972 = 996 characters before the pair; the pair occupies 996 and 997, so a cut at 997 would split it.
         Assert.Equal(999, message.Length);
@@ -134,7 +134,7 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
         a.Transport.Then(ScriptedTransport.Failed(0));
-        a.Service.Raise(OpsAlertKind.TradeOpened, "buy", T0);
+        a.Service.Raise(AlertKind.TradeOpened, "buy", T0);
 
         Assert.Equal(0, a.Service.Pump(T0));
 
@@ -152,7 +152,7 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
         a.Transport.ThenThrow(url => new InvalidOperationException("GET " + url + " timed out"));
-        a.Service.Raise(OpsAlertKind.TradeClosed, "sell", T0);
+        a.Service.Raise(AlertKind.TradeClosed, "sell", T0);
 
         Assert.Equal(0, a.Service.Pump(T0));
 
@@ -170,7 +170,7 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
         a.Transport.Default = ScriptedTransport.Failed(503);
-        a.Service.Raise(OpsAlertKind.ErrorStorm, "x", T0);
+        a.Service.Raise(AlertKind.ErrorStorm, "x", T0);
         DateTime now = T0;
         var waits = new List<double>();
         for (int i = 0; i < 7; i++)
@@ -201,14 +201,14 @@ public class AlertServiceTests
         AlertSetup a = OpsData.Alerts();
         a.Transport.Then(ScriptedTransport.Failed());
         a.Transport.Then(ScriptedTransport.Failed());
-        a.Service.Raise(OpsAlertKind.ErrorStorm, "x", T0);
+        a.Service.Raise(AlertKind.ErrorStorm, "x", T0);
         a.Service.Pump(T0);
         a.Service.Pump(T0.AddMinutes(1.0));
         Assert.Equal(T0.AddMinutes(3.0), a.Service.NextAttemptUtc);
         Assert.Equal(1, a.Service.Pump(T0.AddMinutes(3.0)));
 
         a.Transport.Then(ScriptedTransport.Failed());
-        a.Service.Raise(OpsAlertKind.ErrorStorm, "y", T0.AddMinutes(4.0));
+        a.Service.Raise(AlertKind.ErrorStorm, "y", T0.AddMinutes(4.0));
         a.Service.Pump(T0.AddMinutes(4.0));
 
         Assert.Equal(T0.AddMinutes(5.0), a.Service.NextAttemptUtc);
@@ -221,7 +221,7 @@ public class AlertServiceTests
         AlertSetup a = OpsData.Alerts();
         for (int i = 1; i <= 5; i++)
         {
-            a.Service.Raise(OpsAlertKind.TradeOpened, "t" + i, T0);
+            a.Service.Raise(AlertKind.TradeOpened, "t" + i, T0);
         }
 
         Assert.Equal(3, a.Service.Pump(T0));
@@ -240,13 +240,13 @@ public class AlertServiceTests
         AlertSetup a = OpsData.Alerts();
         for (int i = 0; i < 50; i++)
         {
-            a.Service.Raise(OpsAlertKind.TradeOpened, "n" + i, T0);
+            a.Service.Raise(AlertKind.TradeOpened, "n" + i, T0);
         }
 
         Assert.Equal(50, a.Service.QueueLength);
         Assert.Equal(0, a.Service.Dropped);
 
-        a.Service.Raise(OpsAlertKind.TradeOpened, "n50", T0);
+        a.Service.Raise(AlertKind.TradeOpened, "n50", T0);
 
         Assert.Equal(50, a.Service.QueueLength);
         Assert.Equal(1, a.Service.Dropped);
@@ -262,13 +262,13 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
 
-        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(OpsAlertKind.StopLossMissing, "position 7", T0));
-        Assert.Equal(AlertRaiseOutcome.Collapsed, a.Service.Raise(OpsAlertKind.StopLossMissing, "position 7", T0));
-        Assert.Equal(AlertRaiseOutcome.Collapsed, a.Service.Raise(OpsAlertKind.StopLossMissing, "position 7", T0.AddMinutes(10.0).AddSeconds(-1.0)));
-        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(OpsAlertKind.StopLossMissing, "position 8", T0));
-        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(OpsAlertKind.StopLossRepaired, "position 7", T0));
-        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(OpsAlertKind.StopLossMissing, "position 7", T0.AddMinutes(10.0)));
-        Assert.Equal(AlertRaiseOutcome.Collapsed, a.Service.Raise(OpsAlertKind.StopLossMissing, "position 7", T0.AddMinutes(19.0)));
+        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(AlertKind.StopLossMissing, "position 7", T0));
+        Assert.Equal(AlertRaiseOutcome.Collapsed, a.Service.Raise(AlertKind.StopLossMissing, "position 7", T0));
+        Assert.Equal(AlertRaiseOutcome.Collapsed, a.Service.Raise(AlertKind.StopLossMissing, "position 7", T0.AddMinutes(10.0).AddSeconds(-1.0)));
+        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(AlertKind.StopLossMissing, "position 8", T0));
+        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(AlertKind.StopLossRepaired, "position 7", T0));
+        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(AlertKind.StopLossMissing, "position 7", T0.AddMinutes(10.0)));
+        Assert.Equal(AlertRaiseOutcome.Collapsed, a.Service.Raise(AlertKind.StopLossMissing, "position 7", T0.AddMinutes(19.0)));
 
         Assert.Equal(3, a.Service.Collapsed);
         Assert.Equal(4, a.Service.QueueLength);
@@ -280,9 +280,9 @@ public class AlertServiceTests
     public void Raise_TimeBeforeEarlierRaise_IsNotCollapsed()
     {
         AlertSetup a = OpsData.Alerts();
-        a.Service.Raise(OpsAlertKind.StopLossMissing, "position 7", T0);
+        a.Service.Raise(AlertKind.StopLossMissing, "position 7", T0);
 
-        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(OpsAlertKind.StopLossMissing, "position 7", T0.AddMinutes(-1.0)));
+        Assert.Equal(AlertRaiseOutcome.Queued, a.Service.Raise(AlertKind.StopLossMissing, "position 7", T0.AddMinutes(-1.0)));
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public class AlertServiceTests
         AlertSetup a = OpsData.Alerts(new OpsParameters());
 
         Assert.False(a.Service.Enabled);
-        Assert.Equal(AlertRaiseOutcome.Disabled, a.Service.Raise(OpsAlertKind.KillSwitch, "halt", T0));
+        Assert.Equal(AlertRaiseOutcome.Disabled, a.Service.Raise(AlertKind.KillSwitch, "halt", T0));
         Assert.Equal(0, a.Service.Pump(T0));
         Assert.Equal(0, a.Service.Pump(T0.AddHours(1.0)));
 
@@ -313,8 +313,8 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
         a.Transport.Then(ScriptedTransport.Failed(status));
-        a.Service.Raise(OpsAlertKind.TradeOpened, "first", T0);
-        a.Service.Raise(OpsAlertKind.TradeOpened, "second", T0);
+        a.Service.Raise(AlertKind.TradeOpened, "first", T0);
+        a.Service.Raise(AlertKind.TradeOpened, "second", T0);
 
         Assert.Equal(1, a.Service.Pump(T0));
 
@@ -334,7 +334,7 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
         a.Transport.Then(ScriptedTransport.Failed(status));
-        a.Service.Raise(OpsAlertKind.TradeOpened, "first", T0);
+        a.Service.Raise(AlertKind.TradeOpened, "first", T0);
 
         Assert.Equal(0, a.Service.Pump(T0));
 
@@ -349,7 +349,7 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
         a.Transport.Then(null!);
-        a.Service.Raise(OpsAlertKind.TradeOpened, "first", T0);
+        a.Service.Raise(AlertKind.TradeOpened, "first", T0);
 
         Assert.Equal(0, a.Service.Pump(T0));
         Assert.Equal(1, a.Service.QueueLength);
@@ -361,10 +361,10 @@ public class AlertServiceTests
     {
         AlertSetup a = OpsData.Alerts();
 
-        a.Service.Raise(OpsAlertKind.ErrorStorm, "failed " + OpsData.HeartbeatUrl + " with " + OpsData.Token, T0);
+        a.Service.Raise(AlertKind.ErrorStorm, "failed " + OpsData.HeartbeatUrl + " with " + OpsData.Token, T0);
         a.Service.Pump(T0);
 
-        Assert.Equal("ZFVG EURUSD ErrorStorm: failed *** with ***", a.Service.Format(OpsAlertKind.ErrorStorm, "failed " + OpsData.HeartbeatUrl + " with " + OpsData.Token));
+        Assert.Equal("ZFVG EURUSD ErrorStorm: failed *** with ***", a.Service.Format(AlertKind.ErrorStorm, "failed " + OpsData.HeartbeatUrl + " with " + OpsData.Token));
         Assert.Equal(OpsData.TelegramUrl("ZFVG%20EURUSD%20ErrorStorm%3A%20failed%20%2A%2A%2A%20with%20%2A%2A%2A"), a.Transport.Calls.Single().Url);
     }
 
@@ -385,33 +385,77 @@ public class AlertServiceTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new AlertService(new OpsParameters { TelegramBotToken = "t" }, "x", http, journal, masker));
     }
 
-    public static IEnumerable<object[]> ExecutionKinds()
+    public static IEnumerable<object?[]> TelegramTable()
     {
-        yield return new object[] { AlertKind.SanityCap, OpsAlertKind.SanityCap };
-        yield return new object[] { AlertKind.OrderRejected, OpsAlertKind.OrderRejected };
-        yield return new object[] { AlertKind.OrderMismatch, OpsAlertKind.OrderProblem };
-        yield return new object[] { AlertKind.OrderNotFound, OpsAlertKind.OrderProblem };
-        yield return new object[] { AlertKind.CancelFailed, OpsAlertKind.OrderProblem };
-        yield return new object[] { AlertKind.StopLossMissing, OpsAlertKind.StopLossMissing };
-        yield return new object[] { AlertKind.StopLossRestored, OpsAlertKind.StopLossRepaired };
-        yield return new object[] { AlertKind.PositionClosedWithoutStop, OpsAlertKind.StopLossMissing };
-        yield return new object[] { AlertKind.CloseFailed, OpsAlertKind.OrderProblem };
-        yield return new object[] { AlertKind.RequestLimitReached, OpsAlertKind.CircuitBreaker };
+        yield return new object?[] { AlertKind.SanityCap, AlertKind.SanityCap };
+        yield return new object?[] { AlertKind.OrderRejected, AlertKind.OrderRejected };
+        yield return new object?[] { AlertKind.OrderMismatch, AlertKind.OrderProblem };
+        yield return new object?[] { AlertKind.OrderNotFound, AlertKind.OrderProblem };
+        yield return new object?[] { AlertKind.CancelFailed, AlertKind.OrderProblem };
+        yield return new object?[] { AlertKind.StopLossMissing, AlertKind.StopLossMissing };
+        yield return new object?[] { AlertKind.StopLossRestored, AlertKind.StopLossRepaired };
+        yield return new object?[] { AlertKind.PositionClosedWithoutStop, AlertKind.StopLossMissing };
+        yield return new object?[] { AlertKind.CloseFailed, AlertKind.OrderProblem };
+        yield return new object?[] { AlertKind.RequestLimitReached, AlertKind.CircuitBreaker };
+        yield return new object?[] { AlertKind.Started, AlertKind.Started };
+        yield return new object?[] { AlertKind.Recovered, AlertKind.Recovered };
+        yield return new object?[] { AlertKind.StateChanged, AlertKind.StateChanged };
+        yield return new object?[] { AlertKind.TradeOpened, AlertKind.TradeOpened };
+        yield return new object?[] { AlertKind.TradeClosed, AlertKind.TradeClosed };
+        yield return new object?[] { AlertKind.OrderProblem, AlertKind.OrderProblem };
+        yield return new object?[] { AlertKind.StopLossRepaired, AlertKind.StopLossRepaired };
+        yield return new object?[] { AlertKind.KillSwitch, AlertKind.KillSwitch };
+        yield return new object?[] { AlertKind.EmergencyGuard, AlertKind.EmergencyGuard };
+        yield return new object?[] { AlertKind.DailyLimit, AlertKind.DailyLimit };
+        yield return new object?[] { AlertKind.NewsFeedDown, AlertKind.NewsFeedDown };
+        yield return new object?[] { AlertKind.CalendarUnavailable, AlertKind.CalendarUnavailable };
+        yield return new object?[] { AlertKind.CircuitBreaker, AlertKind.CircuitBreaker };
+        yield return new object?[] { AlertKind.ErrorStorm, AlertKind.ErrorStorm };
+        yield return new object?[] { AlertKind.Inactivity, AlertKind.Inactivity };
+        yield return new object?[] { AlertKind.DailySummary, AlertKind.DailySummary };
+        yield return new object?[] { AlertKind.DataGap, null };
+        yield return new object?[] { AlertKind.Stranger, null };
+        yield return new object?[] { AlertKind.Error, null };
+        yield return new object?[] { AlertKind.RiskDataUnavailable, null };
     }
 
     [Theory]
     [Trait("Req", "OPS-004")]
-    [MemberData(nameof(ExecutionKinds))]
-    public void From_EveryExecutionAlertKind_MapsToTelegramKind(AlertKind kind, OpsAlertKind expected)
+    [MemberData(nameof(TelegramTable))]
+    public void Telegram_EveryAlertKind_MapsToItsTelegramKindOrJournalOnly(AlertKind kind, AlertKind? expected)
     {
-        Assert.Equal(expected, OpsAlertKinds.From(kind));
+        Assert.Equal(expected, AlertKinds.Telegram(kind));
     }
 
     [Fact]
     [Trait("Req", "OPS-004")]
-    public void From_EveryDefinedKindIsMappedAndUndefinedThrows()
+    public void Telegram_EveryDefinedKindIsInTheTableAndUndefinedThrows()
     {
-        Assert.Equal(Enum.GetValues<AlertKind>().Length, ExecutionKinds().Count());
-        Assert.Throws<ArgumentOutOfRangeException>(() => OpsAlertKinds.From((AlertKind)99));
+        Assert.Equal(Enum.GetValues<AlertKind>().OrderBy(k => k), TelegramTable().Select(row => (AlertKind)row[0]!).OrderBy(k => k));
+        Assert.Throws<ArgumentOutOfRangeException>(() => AlertKinds.Telegram((AlertKind)99));
+    }
+
+    [Fact]
+    [Trait("Req", "OPS-004")]
+    public void Raise_JournalOnlyKind_FailsAndJournalsTheError()
+    {
+        AlertSetup setup = OpsData.Alerts();
+
+        AlertRaiseOutcome outcome = setup.Service.Raise(AlertKind.DataGap, "gap", OpsData.T0);
+
+        Assert.Equal(AlertRaiseOutcome.Failed, outcome);
+        Assert.Contains(setup.Sink.Lines, line => line.Category == "error" && line.Line.Contains("journal\\sonly", StringComparison.Ordinal));
+        Assert.Empty(setup.Service.PendingTexts);
+    }
+
+    [Fact]
+    [Trait("Req", "OPS-004")]
+    public void Raise_DetailedExecutionKind_IsSentAsItsTelegramKind()
+    {
+        AlertSetup setup = OpsData.Alerts();
+
+        setup.Service.Raise(AlertKind.CancelFailed, "order 5", OpsData.T0);
+
+        Assert.Equal("ZFVG EURUSD OrderProblem: order 5", Assert.Single(setup.Service.PendingTexts));
     }
 }

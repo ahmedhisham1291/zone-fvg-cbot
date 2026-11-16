@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Indicators;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Signals;
 
@@ -140,16 +141,6 @@ public sealed record SignalParameters
     private static ArgumentOutOfRangeException OutOfRange(string name, string rule, string actual)
     {
         return new ArgumentOutOfRangeException(name, name + " " + rule + " but was " + actual + ".");
-    }
-
-    private static string Text(int value)
-    {
-        return value.ToString(CultureInfo.InvariantCulture);
-    }
-
-    private static string Text(double value)
-    {
-        return value.ToString("R", CultureInfo.InvariantCulture);
     }
 }
 

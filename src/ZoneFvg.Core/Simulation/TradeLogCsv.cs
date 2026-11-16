@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using ZoneFvg.Core.Domain;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Simulation;
 
@@ -111,17 +112,17 @@ public static class TradeLogCsv
             .Append(Time(record.OpenTimeUtc)).Append(',')
             .Append(Time(record.CloseTimeUtc)).Append(',')
             .Append(record.Side == Side.Buy ? "Buy" : "Sell").Append(',')
-            .Append(Number(record.VolumeUnits)).Append(',')
-            .Append(Number(record.Entry)).Append(',')
-            .Append(Number(record.Stop)).Append(',')
-            .Append(Number(record.Target)).Append(',')
-            .Append(Number(record.ExitPrice)).Append(',')
+            .Append(Text(record.VolumeUnits)).Append(',')
+            .Append(Text(record.Entry)).Append(',')
+            .Append(Text(record.Stop)).Append(',')
+            .Append(Text(record.Target)).Append(',')
+            .Append(Text(record.ExitPrice)).Append(',')
             .Append(record.ExitReason).Append(',')
-            .Append(Number(record.ResultMoney)).Append(',')
-            .Append(Number(record.ResultR)).Append(',')
-            .Append(Number(record.Commission)).Append(',')
-            .Append(Number(record.Swap)).Append(',')
-            .Append(Number(record.RiskMoney))
+            .Append(Text(record.ResultMoney)).Append(',')
+            .Append(Text(record.ResultR)).Append(',')
+            .Append(Text(record.Commission)).Append(',')
+            .Append(Text(record.Swap)).Append(',')
+            .Append(Text(record.RiskMoney))
             .ToString();
     }
 
@@ -219,11 +220,6 @@ public static class TradeLogCsv
     private static string Time(DateTime value)
     {
         return value.ToString(TimeFormat, CultureInfo.InvariantCulture);
-    }
-
-    private static string Number(double value)
-    {
-        return value.ToString("R", CultureInfo.InvariantCulture);
     }
 }
 

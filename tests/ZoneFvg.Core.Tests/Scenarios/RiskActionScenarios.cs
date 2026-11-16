@@ -57,7 +57,7 @@ public class RiskActionScenarios
         Assert.True(core.BudgetBlocked);
         Assert.Empty(h.Broker.GetPendingOrders());
         Assert.Equal(1, h.Count(BrokerCall.Cancel));
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.DailyLimit));
+        Assert.Equal(1, h.Alerts(AlertKind.DailyLimit));
 
         // Without the order M - W = 1,100: the risk has fallen, but the cause clears only at the day change.
         h.FeedTo(A.AddHours(3.0));
@@ -171,7 +171,7 @@ public class RiskActionScenarios
         Assert.Equal(new[] { HaltCause.KillSwitch }, core.HaltCauses);
         Assert.Empty(h.Broker.GetPendingOrders());
         Assert.Equal(1, h.Count(BrokerCall.Cancel));
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.KillSwitch));
+        Assert.Equal(1, h.Alerts(AlertKind.KillSwitch));
 
         BotCore restarted = h.Start(A.AddHours(2.0));
         Assert.Equal(BotState.Halted, restarted.State);
@@ -229,7 +229,7 @@ public class RiskActionScenarios
         Assert.Null(h.ReferencePosition());
         Assert.DoesNotContain(h.Broker.GetPendingOrders(), order => order.Id == other);
         Assert.Contains(h.Broker.GetPositions(), position => position.Id == manual);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.EmergencyGuard));
+        Assert.Equal(1, h.Alerts(AlertKind.EmergencyGuard));
         ScenarioAssert.Global(h.Broker);
     }
 
@@ -285,7 +285,7 @@ public class RiskActionScenarios
         Assert.Equal(BotState.Halted, core.State);
         Assert.Equal(new[] { HaltCause.EmergencyGuard }, core.HaltCauses);
         Assert.Empty(h.Broker.GetPositions());
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.RiskDataUnavailable));
+        Assert.Equal(1, h.Alerts(AlertKind.RiskDataUnavailable));
         Assert.Contains("journaled=failed(InvalidOperationException: history unavailable)", core.LastReport!.Text, StringComparison.Ordinal);
         ScenarioAssert.Global(h.Broker);
     }
@@ -303,7 +303,7 @@ public class RiskActionScenarios
         Assert.Equal(BotState.Running, core.State);
         Assert.Equal(0, h.Count(BrokerCall.Place));
         Assert.Equal(1, h.Journal.Count("skip", "zone=" + RecoveryData.ZoneId + " reason=BrokerDataInvalid"));
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.RiskDataUnavailable));
+        Assert.Equal(1, h.Alerts(AlertKind.RiskDataUnavailable));
     }
 
     // ------------------------------------------------------------------ RSK-010
@@ -329,7 +329,7 @@ public class RiskActionScenarios
         Assert.Equal(BotState.Halted, core.State);
         Assert.Equal(new[] { HaltCause.RequestLimit }, core.HaltCauses);
         Assert.Equal(1, h.Journal.Count("skip", "reason=RequestLimitReached"));
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.CircuitBreaker));
+        Assert.Equal(1, h.Alerts(AlertKind.CircuitBreaker));
         ScenarioAssert.Global(h.Broker, 20);
     }
 
@@ -447,11 +447,11 @@ public class RiskActionScenarios
         var http = new FakeTransport(NewsTestData.Failed());
         var h = new BotHarness(isBacktest: false, http: http);
         h.Start(A);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.NewsFeedDown));
+        Assert.Equal(1, h.Alerts(AlertKind.NewsFeedDown));
 
         h.Timer(A.AddHours(1.0));
         Assert.Equal(2, http.Calls);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.NewsFeedDown));
+        Assert.Equal(1, h.Alerts(AlertKind.NewsFeedDown));
 
         http.Respond = _ => NewsTestData.Ok(document);
         h.Timer(A.AddHours(2.0));
@@ -461,7 +461,7 @@ public class RiskActionScenarios
         http.Respond = _ => NewsTestData.Failed();
         h.Timer(A.AddHours(6.0));
         Assert.Equal(4, http.Calls);
-        Assert.Equal(2, h.Hooks.Count(BotAlertKind.NewsFeedDown));
+        Assert.Equal(2, h.Alerts(AlertKind.NewsFeedDown));
     }
 
     [Fact]
@@ -475,6 +475,6 @@ public class RiskActionScenarios
 
         Assert.Equal(1, http.Calls);
         Assert.Equal(BotState.Blocked, core.State);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.CalendarUnavailable));
+        Assert.Equal(1, h.Alerts(AlertKind.CalendarUnavailable));
     }
 }

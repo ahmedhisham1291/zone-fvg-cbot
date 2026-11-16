@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Indicators;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Signals;
 
@@ -144,8 +145,8 @@ public sealed class SignalEngine
         bool after = closeUtc > _lastCloseUtc || (closeUtc == _lastCloseUtc && rank > _lastRank);
         if (!after)
         {
-            string rejected = "the " + timeFrame + " bar closing at " + Stamp(closeUtc) + " UTC";
-            string last = "the last accepted " + BarIntakeOrder.SameInstant[_lastRank] + " bar, which closed at " + Stamp(_lastCloseUtc) + " UTC";
+            string rejected = "the " + timeFrame + " bar closing at " + Second(closeUtc) + " UTC";
+            string last = "the last accepted " + BarIntakeOrder.SameInstant[_lastRank] + " bar, which closed at " + Second(_lastCloseUtc) + " UTC";
             throw new InvalidOperationException("Bar rejected (SIG-004): " + rejected + " does not come after " + last + " in the order close time, then D1, H4, M15.");
         }
     }
@@ -231,10 +232,5 @@ public sealed class SignalEngine
     private bool BiasAllows(ZoneType type)
     {
         return (type == ZoneType.Demand && Bias == Bias.Long) || (type == ZoneType.Supply && Bias == Bias.Short);
-    }
-
-    private static string Stamp(DateTime timeUtc)
-    {
-        return timeUtc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 }
