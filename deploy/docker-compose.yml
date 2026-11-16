@@ -1,0 +1,120 @@
+# Zone + FVG cBot on a VPS: one cTrader CLI container per symbol (spec 10.2, PLT-008).
+#
+# Read deploy/README.md before using this file. It explains every line, with links
+# to the documentation each one comes from. Short version of the sources:
+#   cTrader CLI image, tags, environment variables, Compose example:
+#     https://github.com/spotware/ctrader-console-docker (README, "Supported tags",
+#     "Configuration by environment variable", "Compose, Kubernetes and CI")
+#   cTrader CLI run command and options: https://help.ctrader.com/ctrader-cli/cbots/
+#     and https://github.com/spotware/CLI-references ("run", "Global options")
+#   Compose file attributes: https://docs.docker.com/reference/compose-file/services/
+#     (same text as https://github.com/compose-spec/compose-spec, container_spec.md)
+#   json-file log rotation: https://docs.docker.com/engine/logging/drivers/json-file/
+#
+# Layout on the server (deploy/README.md, "Directory layout"): this file is copied to
+# /opt/zfvg/docker-compose.yml. Relative paths below are resolved from /opt/zfvg.
+#
+# No secret is written in this file. The cTrader ID and account number come from
+# /opt/zfvg/.env (template: deploy/.env.example). The cTrader ID password comes from
+# /opt/zfvg/secrets/ctrader-cli.pwd. The Telegram token and chat id are in the
+# per-symbol parameter files under /opt/zfvg/params/ (spec 7). None of these files
+# is in the repository.
+
+name: zfvg
+
+x-bot: &bot
+  # Official cTrader CLI image, pinned. Never "latest" (WP11 decision). Tags other than
+  # "latest" are immutable according to the image README ("Supported tags").
+  image: ghcr.io/spotware/ctrader-console:5.9.11
+  # Restart after a crash or a reboot; stop restarting only after "docker compose stop".
+  restart: unless-stopped
+  # docker stop sends SIGTERM to the CLI (PID 1); give the cBot time to stop cleanly.
+  stop_grace_period: 30s
+  # "run <algo>" with options from the environment; --exit-on-stop makes the container
+  # exit when the cBot stops, so the restart policy can start it again (image README,
+  # "Operating the container"). No --full-access: the cBot uses AccessRights.None.
+  command: ["run", "/mnt/algo/ZoneFvgBot.algo", "--environment-variables", "--exit-on-stop"]
+  # CTID and ACCOUNT. The file is /opt/zfvg/.env, outside the repository.
+  env_file:
+    - path: .env
+      required: true
+  # The cTrader ID password, mounted read-only at /run/secrets/ctrader_password.
+  secrets:
+    - ctrader_password
+  security_opt:
+    - no-new-privileges:true
+  # The cBot's output goes to stdout. Rotate it so it cannot fill the disk (spec 11).
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+x-env: &env
+  # cTrader keeps its data and the cBot's local storage under the home directory
+  # (Documents/cAlgo/LocalStorage). HOME points into the named data volume, so they
+  # survive container re-creation. Pattern from the image README, "Running as a
+  # non-root user". Where the files land is checked on first start (README).
+  HOME: /data
+  PWD_FILE: /run/secrets/ctrader_password
+  PERIOD: m15
+  CBOT_SET: /mnt/params/bot.cbotset
+
+services:
+  eurusd:
+    <<: *bot
+    environment:
+      <<: *env
+      SYMBOL: EURUSD
+    volumes:
+      - ./algo/current:/mnt/algo:ro
+      - ./params/eurusd:/mnt/params:ro
+      - eurusd-data:/data
+      - eurusd-logs:/logs
+
+  gbpusd:
+    <<: *bot
+    environment:
+      <<: *env
+      SYMBOL: GBPUSD
+    volumes:
+      - ./algo/current:/mnt/algo:ro
+      - ./params/gbpusd:/mnt/params:ro
+      - gbpusd-data:/data
+      - gbpusd-logs:/logs
+
+  usdjpy:
+    <<: *bot
+    environment:
+      <<: *env
+      SYMBOL: USDJPY
+    volumes:
+      - ./algo/current:/mnt/algo:ro
+      - ./params/usdjpy:/mnt/params:ro
+      - usdjpy-data:/data
+      - usdjpy-logs:/logs
+
+  audusd:
+    <<: *bot
+    environment:
+      <<: *env
+      SYMBOL: AUDUSD
+    volumes:
+      - ./algo/current:/mnt/algo:ro
+      - ./params/audusd:/mnt/params:ro
+      - audusd-data:/data
+      - audusd-logs:/logs
+
+secrets:
+  ctrader_password:
+    file: ./secrets/ctrader-cli.pwd
+
+volumes:
+  eurusd-data:
+  eurusd-logs:
+  gbpusd-data:
+  gbpusd-logs:
+  usdjpy-data:
+  usdjpy-logs:
+  audusd-data:
+  audusd-logs:
