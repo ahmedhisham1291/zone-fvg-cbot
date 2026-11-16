@@ -978,7 +978,7 @@ requirements:
     wp: WP10
     spec: "12.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Monte Carlo. Reshuffles trade order with a seeded generator and reports
       the distribution of maximum drawdown and of 30-trade average R,
