@@ -165,7 +165,56 @@ public sealed class TradeJournal
             NetProfit = parts.Sum(t => t.NetProfit),
             Commission = parts.Sum(t => t.Commission),
             Swap = parts.Sum(t => t.Swap),
+            VolumeUnits = SumVolume(parts),
+            ClosingPrice = AverageClosingPrice(parts),
         };
+    }
+
+    // Journal data only (SIM-001, OPS-002): the closed volume, or null when a part does not report it.
+    private static double? SumVolume(IReadOnlyList<ClosedTradeInfo> parts)
+    {
+        double total = 0.0;
+        foreach (ClosedTradeInfo part in parts)
+        {
+            if (!part.VolumeUnits.HasValue)
+            {
+                return null;
+            }
+
+            total += part.VolumeUnits.Value;
+        }
+
+        return total;
+    }
+
+    // Journal data only (SIM-001, OPS-002): the volume-weighted closing price of the parts, or null
+    // when a part does not report its price or volume or the total volume is not greater than zero.
+    private static double? AverageClosingPrice(IReadOnlyList<ClosedTradeInfo> parts)
+    {
+        if (parts.Count == 1)
+        {
+            // One closing deal: its own price, without rounding through the average.
+            return parts[0].ClosingPrice;
+        }
+
+        double? volume = SumVolume(parts);
+        if (!volume.HasValue || !(volume.Value > 0.0))
+        {
+            return null;
+        }
+
+        double weighted = 0.0;
+        foreach (ClosedTradeInfo part in parts)
+        {
+            if (!part.ClosingPrice.HasValue)
+            {
+                return null;
+            }
+
+            weighted += part.ClosingPrice.Value * part.VolumeUnits!.Value;
+        }
+
+        return weighted / volume.Value;
     }
 
     private static string WritePlan(PositionInfo position)

@@ -89,25 +89,40 @@ public static class TradeLogCsv
         text.Append(Header).Append('\n');
         foreach (TradeRecord record in records)
         {
-            text.Append(record.Symbol).Append(',')
-                .Append(record.ZoneId).Append(',')
-                .Append(Time(record.OpenTimeUtc)).Append(',')
-                .Append(Time(record.CloseTimeUtc)).Append(',')
-                .Append(record.Side == Side.Buy ? "Buy" : "Sell").Append(',')
-                .Append(Number(record.VolumeUnits)).Append(',')
-                .Append(Number(record.Entry)).Append(',')
-                .Append(Number(record.Stop)).Append(',')
-                .Append(Number(record.Target)).Append(',')
-                .Append(Number(record.ExitPrice)).Append(',')
-                .Append(record.ExitReason).Append(',')
-                .Append(Number(record.ResultMoney)).Append(',')
-                .Append(Number(record.ResultR)).Append(',')
-                .Append(Number(record.Commission)).Append(',')
-                .Append(Number(record.Swap)).Append(',')
-                .Append(Number(record.RiskMoney)).Append('\n');
+            text.Append(Row(record)).Append('\n');
         }
 
         return text.ToString();
+    }
+
+    /// <summary>
+    /// One data row of the trade log, without line feed (SIM-001): the columns of <see cref="Header"/>
+    /// in order, with round-trip number formatting.
+    /// </summary>
+    /// <param name="record">The record.</param>
+    /// <returns>The row.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="record"/> is null.</exception>
+    internal static string Row(TradeRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        return new StringBuilder()
+            .Append(record.Symbol).Append(',')
+            .Append(record.ZoneId).Append(',')
+            .Append(Time(record.OpenTimeUtc)).Append(',')
+            .Append(Time(record.CloseTimeUtc)).Append(',')
+            .Append(record.Side == Side.Buy ? "Buy" : "Sell").Append(',')
+            .Append(Number(record.VolumeUnits)).Append(',')
+            .Append(Number(record.Entry)).Append(',')
+            .Append(Number(record.Stop)).Append(',')
+            .Append(Number(record.Target)).Append(',')
+            .Append(Number(record.ExitPrice)).Append(',')
+            .Append(record.ExitReason).Append(',')
+            .Append(Number(record.ResultMoney)).Append(',')
+            .Append(Number(record.ResultR)).Append(',')
+            .Append(Number(record.Commission)).Append(',')
+            .Append(Number(record.Swap)).Append(',')
+            .Append(Number(record.RiskMoney))
+            .ToString();
     }
 
     private static string? ParseRow(string line, out TradeRecord? record)

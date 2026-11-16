@@ -55,4 +55,23 @@ public sealed record ClosedTradeInfo(
 
     /// <summary>Account balance right after the trade closed (RSK-008).</summary>
     public double BalanceAfterClose { get; init; } = BalanceAfterClose;
+
+    /// <summary>
+    /// Volume closed by this trade in units, or null when the broker port did not report it
+    /// (SIM-001, OPS-002). Journal data only; no trading decision reads it.
+    /// </summary>
+    public double? VolumeUnits { get; init; }
+
+    /// <summary>
+    /// Execution price of the closing deal, or null when the broker port did not report it
+    /// (SIM-001, OPS-002). Journal data only; no trading decision reads it.
+    /// </summary>
+    public double? ClosingPrice { get; init; }
+
+    /// <summary>
+    /// Why the position closed, as the adapter saw it; <see cref="TradeExitReason.Unknown"/> when
+    /// the adapter did not see the close, for example while the bot was stopped (SIM-001, OPS-002).
+    /// Journal data only; no trading decision reads it.
+    /// </summary>
+    public TradeExitReason ExitReason { get; init; } = TradeExitReason.Unknown;
 }

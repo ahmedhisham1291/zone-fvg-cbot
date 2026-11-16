@@ -6,14 +6,14 @@ using ZoneFvg.Core.Risk;
 namespace ZoneFvg.Core.Simulation;
 
 /// <summary>
-/// The commands of the <c>sim</c> console tool (SIM-002 to SIM-005): <c>combine</c>,
+/// The commands of the <c>sim</c> console tool (SIM-001 to SIM-005): <c>extract</c>, <c>combine</c>,
 /// <c>montecarlo</c>, <c>ftmo</c> and <c>accept</c>, each with <c>--help</c>. Arguments are
 /// parsed here, so the console program only reads and writes files. Every command that uses
 /// randomness requires <c>--seed</c>, and the same arguments and files always give the same
 /// output.
 /// </summary>
 /// <remarks>
-/// Every command first combines the trade logs it is given with <see cref="PortfolioCombiner"/>
+/// Every command except <c>extract</c> first combines the trade logs it is given with <see cref="PortfolioCombiner"/>
 /// and the default caps. Combining a list that is already combined changes nothing, because each
 /// kept trade was checked against exactly the trades that are kept again.
 /// </remarks>
@@ -31,6 +31,7 @@ public static class SimCommandLine
     private const string GeneralHelp =
         "Usage: sim <command> [options]\n\n"
         + "Commands:\n"
+        + "  extract     Make a trade log from a saved backtest log (SIM-001)\n"
         + "  combine     Merge trade logs and replay the account caps (SIM-002)\n"
         + "  montecarlo  Reshuffle the trade order: drawdown and 30-trade average R (SIM-003)\n"
         + "  ftmo        FTMO 2-Step challenge simulation (SIM-004)\n"
@@ -71,6 +72,7 @@ public static class SimCommandLine
             var context = new CommandContext(options, readFile);
             return spec.Name switch
             {
+                "extract" => Extract(context),
                 "combine" => Combine(context),
                 "montecarlo" => MonteCarloCommand(context),
                 "ftmo" => Ftmo(context),
@@ -87,6 +89,22 @@ public static class SimCommandLine
             // A parameter out of range, reported by the Validate method of the parameters.
             return SimCommandResult.Failed(ExitInvalid, exception.Message + "\n\n" + spec.Help);
         }
+    }
+
+    private static SimCommandResult Extract(CommandContext c)
+    {
+        string input = c.Options.Single("--in") ?? throw new SimInputException(ExitInvalid, "Option --in is required: the saved backtest log.");
+        string output = c.Options.Single("--out") ?? throw new SimInputException(ExitInvalid, "Option --out is required: the trade log file to write.");
+        BacktestLogResult result = BacktestLogExtract.Extract(c.ReadText(input));
+        if (!result.IsValid)
+        {
+            throw new SimInputException(ExitInvalid, "Invalid backtest log \"" + input + "\": " + result.Error);
+        }
+
+        string count = SimText.Int(result.Trades);
+        string report = "Extracted " + count + " trades (numbers 1 to " + count + ") into " + output + ".\n"
+            + "Check that " + count + " is the number of trades the backtest made. If it is smaller, the log was cut off: run a shorter period.\n";
+        return SimCommandResult.Ok(report, new[] { new SimOutputFile(output, result.TradeLog) });
     }
 
     private static SimCommandResult Combine(CommandContext c)
@@ -238,19 +256,22 @@ public static class SimCommandLine
             return Options.All(option).Count == 0 ? null : Combined(option).Trades;
         }
 
-        private IReadOnlyList<TradeRecord> ReadLog(string path)
+        internal string ReadText(string path)
         {
-            string text;
             try
             {
-                text = _readFile(path);
+                return _readFile(path);
             }
             catch (Exception exception)
             {
                 // Reported to the user with the reason; nothing is computed from a file that cannot be read.
                 throw new SimInputException(ExitUnreadable, "Cannot read \"" + path + "\": " + exception.Message);
             }
+        }
 
+        private IReadOnlyList<TradeRecord> ReadLog(string path)
+        {
+            string text = ReadText(path);
             TradeLogReadResult result = TradeLogCsv.Read(text);
             if (!result.IsValid)
             {
@@ -395,6 +416,11 @@ public static class SimCommandLine
             string[] ftmoOptions = { "--initial-capital", "--max-open-risk", "--max-per-currency", "--daily-budget", "--risk", "--daily-loss", "--max-loss", "--min-days", "--kill-switch", "--runs", "--seed", "--sizing" };
             switch (name)
             {
+                case "extract":
+                    return new CommandSpec(name, Array.Empty<string>(), new[] { "--in", "--out" }, "Usage: sim extract --in <saved log> --out <trade log>\n\n"
+                        + "Finds the trade lines a backtest of the cBot printed in its Log tab and writes them as a trade log (SIM-001).\n\n"
+                        + "  --in <file>             The backtest log, saved as a plain text file\n"
+                        + "  --out <file>            The trade log to write, for --log of the other commands\n");
                 case "combine":
                     return new CommandSpec(name, new[] { "--log" }, Concat(capOptions, "--out", "--equity"), "Usage: sim combine --log <file> [--log <file> ...] [--out <file>] [--equity <file>] [options]\n\n"
                         + "Merges trade logs by time, replays the caps of RSK-004 to RSK-006 and prints the report (SIM-002).\n\n"

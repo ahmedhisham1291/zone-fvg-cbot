@@ -190,4 +190,71 @@ public class TradeJournalTests
         Assert.Throws<ArgumentNullException>(() => new TradeJournal(RecoveryData.Symbol, RiskData.Parameters, _broker, null!, _events));
         Assert.Throws<ArgumentNullException>(() => new TradeJournal(RecoveryData.Symbol, RiskData.Parameters, _broker, _store, null!));
     }
+
+    // ---------------------------------------------------------------- SIM-001 closing data of summed parts
+
+    [Fact]
+    [Trait("Req", "SIM-001")]
+    public void Record_PartialClosesWithVolumeAndPrice_SumVolumeAndAverageThePriceByVolume()
+    {
+        _broker.AddClosedTrade(Closed(1008, RecoveryData.At(4, 9, 0), 100.0) with { VolumeUnits = 30000.0, ClosingPrice = 101.0, ExitReason = TradeExitReason.ClosedByBot });
+        _broker.AddClosedTrade(Closed(1008, RecoveryData.At(4, 9, 15), 50.5) with { VolumeUnits = 10000.0, ClosingPrice = 103.0, ExitReason = TradeExitReason.TakeProfit });
+
+        NewJournal().Record(Now);
+
+        ClosedTradeInfo trade = Assert.Single(_events.Closed).Trade;
+        Assert.Equal(40000.0, trade.VolumeUnits);
+        Assert.Equal(101.5, trade.ClosingPrice!.Value, 9);
+        Assert.Equal(TradeExitReason.TakeProfit, trade.ExitReason);
+    }
+
+    [Fact]
+    [Trait("Req", "SIM-001")]
+    public void Record_OneClosingDeal_KeepsItsOwnPriceVolumeAndReason()
+    {
+        _broker.AddClosedTrade(Closed(1009, RecoveryData.At(4, 9, 0), 100.0) with { VolumeUnits = 41000.0, ClosingPrice = 103.061, ExitReason = TradeExitReason.StopOut });
+
+        NewJournal().Record(Now);
+
+        ClosedTradeInfo trade = Assert.Single(_events.Closed).Trade;
+        Assert.Equal(41000.0, trade.VolumeUnits);
+        Assert.Equal(103.061, trade.ClosingPrice);
+        Assert.Equal(TradeExitReason.StopOut, trade.ExitReason);
+    }
+
+    [Theory]
+    [Trait("Req", "SIM-001")]
+    [InlineData(false, true, 10000.0)]
+    [InlineData(true, false, 10000.0)]
+    [InlineData(true, true, 0.0)]
+    public void Record_PartWithoutVolumeOrPrice_GivesNoAveragePrice(bool secondHasVolume, bool secondHasPrice, double volume)
+    {
+        _broker.AddClosedTrade(Closed(1010, RecoveryData.At(4, 9, 0), 100.0) with { VolumeUnits = volume == 0.0 ? 0.0 : 30000.0, ClosingPrice = 101.0 });
+        _broker.AddClosedTrade(Closed(1010, RecoveryData.At(4, 9, 15), 50.5) with
+        {
+            VolumeUnits = secondHasVolume ? volume : null,
+            ClosingPrice = secondHasPrice ? 103.0 : null,
+        });
+
+        NewJournal().Record(Now);
+
+        ClosedTradeInfo trade = Assert.Single(_events.Closed).Trade;
+        Assert.Null(trade.ClosingPrice);
+        double? expectedVolume = secondHasVolume ? (volume == 0.0 ? 0.0 : 30000.0 + volume) : null;
+        Assert.Equal(expectedVolume, trade.VolumeUnits);
+    }
+
+    [Fact]
+    [Trait("Req", "SIM-001")]
+    public void Record_ClosedTradeWithoutClosingData_ReportsUnknownReasonAndNoVolumeOrPrice()
+    {
+        _broker.AddClosedTrade(Closed(1011, RecoveryData.At(4, 9, 0), 100.0));
+
+        NewJournal().Record(Now);
+
+        ClosedTradeInfo trade = Assert.Single(_events.Closed).Trade;
+        Assert.Null(trade.VolumeUnits);
+        Assert.Null(trade.ClosingPrice);
+        Assert.Equal(TradeExitReason.Unknown, trade.ExitReason);
+    }
 }
