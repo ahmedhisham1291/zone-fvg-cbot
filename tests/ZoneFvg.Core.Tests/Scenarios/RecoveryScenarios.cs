@@ -145,6 +145,42 @@ public class RecoveryScenarios
 
     [Fact]
     [Trait("Req", "REC-003")]
+    public void Recovery_MissingDayThatIsAMarketHoliday_IsNotAGap()
+    {
+        // Every M15 bar of Tuesday 2026-03-03 is missing. With 3 March as a holiday the day counts as closed.
+        var h = new BotHarness();
+        foreach (Bar bar in h.Bars.M15.Where(bar => bar.OpenTimeUtc.Date == new DateTime(2026, 3, 3)))
+        {
+            h.History.Missing.Add(bar.OpenTimeUtc);
+        }
+
+        BotCore withHoliday = h.Start(A, RecoveryData.Parameters() with { MarketHolidays = "12-25,01-01,03-03" });
+        Assert.Equal(BotState.Running, withHoliday.State);
+
+        BotCore withoutHoliday = h.Start(A.AddMinutes(1.0));
+        Assert.Equal(BotState.Recovering, withoutHoliday.State);
+        Assert.Equal(new[] { "M15: gap between 2026-03-02 23:45 and 2026-03-04 00:00" }, withoutHoliday.LastReport!.DataProblems);
+    }
+
+    [Fact]
+    [Trait("Req", "REC-003")]
+    public void LiveGap_OverAMarketHoliday_IsNotAGap()
+    {
+        // 4 March is declared a holiday: m1 and m2 may be missing on it without blocking entries.
+        var h = new BotHarness();
+        BotCore core = h.Start(A, RecoveryData.Parameters() with { MarketHolidays = "03-04" });
+        h.FeedTo(A.AddMinutes(15.0));
+        Bar m3 = h.Bars.M15.Single(bar => bar.OpenTimeUtc == A.AddMinutes(45.0));
+        h.Broker.AdvanceTo(A.AddMinutes(60.0));
+
+        core.OnBarClosed(TimeFrame.M15, m3);
+
+        Assert.False(core.DataGap);
+        Assert.Equal(BotState.Running, core.State);
+    }
+
+    [Fact]
+    [Trait("Req", "REC-003")]
     public void Recovery_BrokerNotConnected_StaysRecoveringWithoutRequests()
     {
         var h = new BotHarness();

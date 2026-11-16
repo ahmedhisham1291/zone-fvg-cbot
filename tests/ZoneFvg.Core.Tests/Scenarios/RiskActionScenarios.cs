@@ -72,6 +72,67 @@ public class RiskActionScenarios
 
     [Fact]
     [Trait("Req", "RSK-006")]
+    public void DailyBudget_ExhaustedOnlyByAPendingOrder_StaysBlockedAfterARestartTheSameDay()
+    {
+        // As above: at 09:15 the budget is exhausted by the pending order's worst case (1,589.13); the order is
+        // cancelled and M - W falls to 1,100. A restart recomputes 1,100, but the stored day keeps the block.
+        var h = new BotHarness(broker: BotHarness.NewBroker(Nine, ExecutionData.Account(99100.0, 99100.0, 99100.0)));
+        h.Broker.AddClosedTrade(Loss(901, A.AddHours(-1.0), -900.0, 99100.0));
+        AddReferenceOrder(h.Broker);
+        h.Start(Nine);
+        h.Broker.AdvanceTo(A.AddMinutes(70.0));
+        h.Broker.Account = ExecutionData.Account(98900.0, 98900.0, 98900.0);
+        h.Broker.AddClosedTrade(Loss(902, A.AddMinutes(70.0), -200.0, 98900.0));
+        h.FeedTo(A.AddMinutes(75.0));
+        Assert.Equal("2026-03-03T23:00:00.0000000Z", h.Store.Values[BotCore.BudgetExhaustedKey]);
+
+        BotCore restarted = h.Start(A.AddHours(2.0));
+
+        Assert.Equal(BotState.Blocked, restarted.State);
+        Assert.True(restarted.BudgetBlocked);
+        Assert.Contains("daily-budget=ok", restarted.LastReport!.Risk, StringComparison.Ordinal);
+
+        // 23:00 UTC is the next CE(S)T day: the stored day no longer applies.
+        BotCore nextDay = h.Start(RecoveryData.At(4, 23, 0));
+        Assert.Equal(BotState.Running, nextDay.State);
+        ScenarioAssert.Global(h.Broker);
+    }
+
+    [Theory]
+    [Trait("Req", "RSK-006")]
+    [InlineData("not a time")]
+    [InlineData("2026-03-02T23:00:00.0000000Z")]
+    [InlineData("2026-03-04T23:00:00.0000000Z")]
+    [InlineData("2026-03-03T23:00:00.0000000")]
+    public void DailyBudget_StoredValueUnreadableOrForAnotherDay_FallsBackToRecomputing(string stored)
+    {
+        var h = new BotHarness(broker: BotHarness.NewBroker(Nine));
+        h.Store.Values[BotCore.BudgetExhaustedKey] = stored;
+
+        BotCore core = h.Start(Nine);
+
+        Assert.Equal(BotState.Running, core.State);
+        Assert.False(core.BudgetBlocked);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-006")]
+    public void DailyBudget_StoredDayOfToday_BlocksAndCancelsPendingEntriesEvenWhenTheRecomputationAllows()
+    {
+        var h = new BotHarness(broker: BotHarness.NewBroker(Nine));
+        h.Store.Values[BotCore.BudgetExhaustedKey] = "2026-03-03T23:00:00.0000000Z";
+        AddReferenceOrder(h.Broker);
+
+        BotCore core = h.Start(Nine);
+
+        Assert.Equal(BotState.Blocked, core.State);
+        Assert.True(core.BudgetBlocked);
+        Assert.Empty(h.Broker.GetPendingOrders());
+        Assert.Equal(1, h.Count(BrokerCall.Cancel));
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-006")]
     public void DailyBudget_ExhaustedAcrossARestart_StaysBlockedUntilTheNextCestDay()
     {
         // Lost 1,600 today: M - W = 1,600 + 489.13 with the order, 1,600 without it.
@@ -170,6 +231,45 @@ public class RiskActionScenarios
         Assert.Contains(h.Broker.GetPositions(), position => position.Id == manual);
         Assert.Equal(1, h.Hooks.Count(BotAlertKind.EmergencyGuard));
         ScenarioAssert.Global(h.Broker);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-009")]
+    public void EmergencyGuard_IsCheckedOnTheMinuteTimerBetweenBars()
+    {
+        var h = new BotHarness();
+        h.Start(A);
+        h.FeedTo(RecoveryData.Confirmation);
+        h.FillReferenceOrder(A.AddMinutes(50.0));
+        h.Timer(A.AddMinutes(51.0));
+        Assert.Equal(BotState.Running, h.Core.State);
+
+        h.Broker.Account = ExecutionData.Account(100000.0, 90500.0, 90000.0);
+        h.Timer(A.AddMinutes(52.0));
+
+        Assert.Equal(BotState.Halted, h.Core.State);
+        Assert.Equal(new[] { HaltCause.EmergencyGuard }, h.Core.HaltCauses);
+        Assert.Null(h.ReferencePosition());
+        Assert.Equal(A.AddMinutes(52.0), h.Broker.Requests.Single(r => r.Call == BrokerCall.Close).AtUtc);
+        ScenarioAssert.Global(h.Broker);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-009")]
+    public void EmergencyGuard_TimerWhileDisconnected_SendsNothing()
+    {
+        var h = new BotHarness();
+        h.Start(A);
+        h.FeedTo(RecoveryData.Confirmation);
+        h.FillReferenceOrder(A.AddMinutes(50.0));
+        h.Core.OnDisconnected();
+        h.Broker.Account = ExecutionData.Account(100000.0, 90500.0, 90000.0);
+        int writes = h.Broker.WriteRequestCount;
+
+        h.Timer(A.AddMinutes(52.0));
+
+        Assert.Equal(writes, h.Broker.WriteRequestCount);
+        Assert.Equal(BotState.Recovering, h.Core.State);
     }
 
     [Fact]
@@ -336,6 +436,32 @@ public class RiskActionScenarios
         Assert.Contains(" news=disabled ", core.LastReport.Text, StringComparison.Ordinal);
         Assert.Equal(1, h.Journal.Count("start", " news=disabled "));
         ScenarioAssert.Global(h.Broker);
+    }
+
+    [Fact]
+    [Trait("Req", "REC-010")]
+    public void NewsFeed_FailedDownloads_AlertOncePerOutageOfTheSource()
+    {
+        // Owner decision on pull request #20: a failed download alerts once per outage of the source.
+        string document = NewsTestData.OneEventDocument("Non-Farm Employment Change", "USD", "2026-03-06T08:30:00-05:00", "High");
+        var http = new FakeTransport(NewsTestData.Failed());
+        var h = new BotHarness(isBacktest: false, http: http);
+        h.Start(A);
+        Assert.Equal(1, h.Hooks.Count(BotAlertKind.NewsFeedDown));
+
+        h.Timer(A.AddHours(1.0));
+        Assert.Equal(2, http.Calls);
+        Assert.Equal(1, h.Hooks.Count(BotAlertKind.NewsFeedDown));
+
+        http.Respond = _ => NewsTestData.Ok(document);
+        h.Timer(A.AddHours(2.0));
+        Assert.Equal(BotState.Running, h.Core.State);
+
+        // With trusted data the next download is due after NewsRefreshHours (4).
+        http.Respond = _ => NewsTestData.Failed();
+        h.Timer(A.AddHours(6.0));
+        Assert.Equal(4, http.Calls);
+        Assert.Equal(2, h.Hooks.Count(BotAlertKind.NewsFeedDown));
     }
 
     [Fact]

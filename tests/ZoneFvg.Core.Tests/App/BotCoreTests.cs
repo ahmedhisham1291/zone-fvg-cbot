@@ -33,6 +33,8 @@ public class BotCoreTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new BotCore(RecoveryData.Parameters() with { Risk = new ZoneFvg.Core.Risk.RiskParameters() }, h.Broker, store, http, journal, true));
         Assert.Throws<ArgumentException>(() => new BotCore(RecoveryData.Parameters() with { NewsFeedUrl = string.Empty }, h.Broker, store, http, journal, false));
         Assert.Throws<ArgumentNullException>(() => new BotCore(RecoveryData.Parameters() with { Signal = null! }, h.Broker, store, http, journal, true));
+        Assert.Throws<ArgumentException>(() => new BotCore(RecoveryData.Parameters() with { MarketHolidays = "25.12." }, h.Broker, store, http, journal, true));
+        Assert.Equal("12-25,01-01", new BotParameters().MarketHolidays);
         Assert.Throws<ArgumentNullException>(() => new BotCore(null!, h.Broker, store, http, journal, true));
         Assert.Throws<ArgumentNullException>(() => new BotCore(RecoveryData.Parameters(), null!, store, http, journal, true));
         Assert.Throws<ArgumentNullException>(() => new BotCore(RecoveryData.Parameters(), h.Broker, null!, http, journal, true));
