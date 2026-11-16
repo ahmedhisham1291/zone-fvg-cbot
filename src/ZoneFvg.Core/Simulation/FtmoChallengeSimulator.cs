@@ -16,6 +16,11 @@ namespace ZoneFvg.Core.Simulation;
 /// <para>Scaling (RSK-001): a trade risks RiskPercent of the balance when it opens; its result is
 /// result_r times that risk, and at its stop it would lose that risk plus its commission in R
 /// (commission / risk_money). Swap is not counted at the stop (architecture section 10).</para>
+/// <para>Ladder sizing (RSK-013): when <see cref="FtmoChallengeParameters.Ladder"/> is set with
+/// LadderEnabled true, the percent comes from <see cref="LadderSizer"/> instead: every trade taken
+/// in the path is an entry, numbered in the order taken; its deal grows with the run of winning
+/// trades closed up to its open, newest close first (closes at the same instant in the order
+/// taken); a trade refused by the daily budget is not an entry.</para>
 /// <para>Each event is processed in time order; a close at the same instant as an open comes
 /// first. At 00:00 CE(S)T the day's start balance M is the balance then.</para>
 /// <list type="number">
@@ -184,7 +189,7 @@ public static class FtmoChallengeSimulator
     {
         double runs = s.Runs;
         text.Append("| ").Append(PhaseName(s.Parameters.ProfitTargetPercent))
-            .Append(" | ").Append(SimText.Short(s.Parameters.RiskPercent)).Append('%')
+            .Append(" | ").Append(s.Parameters.Ladder is { LadderEnabled: true } ? "ladder" : SimText.Short(s.Parameters.RiskPercent) + "%")
             .Append(" | ").Append(SimText.Short(s.Parameters.DailyBudgetPercent)).Append('%')
             .Append(" | ").Append(SimText.Percent(s.PassProbability))
             .Append(" | ").Append(SimText.Percent(s.BreachProbability))
@@ -253,6 +258,8 @@ public static class FtmoChallengeSimulator
         private readonly int _first;
         private readonly DateTime _startDay;
         private readonly FtmoChallengeParameters _p;
+        private readonly LadderSizer? _ladder;
+        private readonly List<double> _deals = new();
         private readonly List<OpenTrade> _open = new();
         private double _balance;
         private double _peak;
@@ -266,6 +273,7 @@ public static class FtmoChallengeSimulator
         private int _taken;
         private int _refused;
         private int _sequence;
+        private int _wins;
         private DateTime _lastEvent;
         private ChallengeOutcome? _outcome;
 
@@ -275,6 +283,7 @@ public static class FtmoChallengeSimulator
             _first = first;
             _startDay = startDay;
             _p = parameters;
+            _ladder = parameters.Ladder is { LadderEnabled: true } ? new LadderSizer(parameters.Ladder) : null;
             _balance = parameters.InitialCapital;
             _peak = _balance;
             _day = startDay;
@@ -374,7 +383,9 @@ public static class FtmoChallengeSimulator
                 return;
             }
 
-            double risk = _balance * _p.RiskPercent / 100.0;
+            double deal = _ladder == null ? 0.0 : _ladder.DealPercent(_wins);
+            double riskPercent = _ladder == null ? _p.RiskPercent : _ladder.RiskPercentFromDeals(DealsNewestFirst(deal));
+            double risk = _balance * riskPercent / 100.0;
             double atStop = (-1.0 + (trade.Commission / trade.RiskMoney)) * risk;
             double worst = _balance + atStop;
             foreach (OpenTrade open in _open)
@@ -390,6 +401,7 @@ public static class FtmoChallengeSimulator
                 return;
             }
 
+            _deals.Add(deal);
             _open.Add(new OpenTrade(trade, trade.ResultR * risk, atStop, _sequence++));
             _taken++;
             if (_lastTradingDay != _day)
@@ -402,9 +414,22 @@ public static class FtmoChallengeSimulator
             CheckFloors();
         }
 
+        private List<double> DealsNewestFirst(double deal)
+        {
+            // RSK-013: the new deal (weight w1), then the deals of up to three earlier entries.
+            var deals = new List<double>(LadderSizer.Parts) { deal };
+            for (int k = 1; k < LadderSizer.Parts && k <= _deals.Count; k++)
+            {
+                deals.Add(_deals[_deals.Count - k]);
+            }
+
+            return deals;
+        }
+
         private void Close(OpenTrade closing)
         {
             _balance += closing.Result;
+            _wins = PriceMath.GreaterThan(closing.Result, 0.0, PriceMath.DefaultTolerance) ? _wins + 1 : 0;
             if (closing.Result < closing.AtStop)
             {
                 // Closed below its stop (a gap or slippage): the day's worst case is the actual loss.
@@ -518,6 +543,14 @@ public sealed record FtmoChallengeParameters
     /// <summary>The bot's drawdown kill switch in percent of the peak balance (RSK-008, spec 15.4). Default 8.</summary>
     public double KillSwitchPercent { get; init; } = 8.0;
 
+    /// <summary>
+    /// Ladder sizing (RSK-013). When set with LadderEnabled true, the risk percent of each trade
+    /// comes from <see cref="LadderSizer"/> with these values and <see cref="RiskPercent"/> is only
+    /// the base of the daily budget scaling of <see cref="FtmoChallengeSimulator.Grid"/>. Null or
+    /// LadderEnabled false: every trade risks <see cref="RiskPercent"/>. Default null.
+    /// </summary>
+    public RiskParameters? Ladder { get; init; }
+
     /// <summary>Number of runs of <see cref="FtmoChallengeSimulator.Simulate"/> ("several thousand", spec 12.1 step 9). Default 5,000.</summary>
     public int Runs { get; init; } = 5000;
 
@@ -545,6 +578,8 @@ public sealed record FtmoChallengeParameters
         {
             throw new ArgumentOutOfRangeException(nameof(Runs), "Runs must be at least 1.");
         }
+
+        Ladder?.ValidateSizing();
     }
 
     private static void RequirePercent(double value, string name)

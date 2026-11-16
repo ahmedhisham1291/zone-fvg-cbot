@@ -13,7 +13,7 @@ namespace ZoneFvg.Core.Execution;
 
 /// <summary>
 /// Decides whether a signal becomes an order (EXE-001 to EXE-008, EXE-011, EXE-014, EXE-015,
-/// NWS-008, NWS-009, RSK-001 to RSK-006). Reads the broker port at every call and keeps nothing
+/// NWS-008, NWS-009, RSK-001 to RSK-006, RSK-013). Reads the broker port at every call and keeps nothing
 /// between calls; its fields are the validated parameters and the ports.
 /// </summary>
 /// <remarks>
@@ -21,7 +21,8 @@ namespace ZoneFvg.Core.Execution;
 /// EXE-001 freshness; state Running; no bot position without a stop loss (EXE-011); EXE-002
 /// session, Friday, spread, market open and symbol busy; NWS-008; NWS-009; stop and target on the
 /// correct side (RSK-002) and EXE-003 stop bounds; EXE-005; EXE-004; EXE-006; EXE-015; sizing
-/// (RSK-001, RSK-002); the broker's maximum volume; the account limits of
+/// (RSK-001, RSK-002) with the ladder percent of RSK-013 when LadderEnabled is true; the broker's
+/// maximum volume; the account limits of
 /// <see cref="RiskEngine.CheckNewTrade"/> (RSK-003 to RSK-006, RSK-010).</para>
 /// <para>Levels: entry, stop and target are put on the symbol's price grid
 /// (<see cref="PriceGrid"/>); for a sell the current spread is added to the stop first (EXE-007).
@@ -36,6 +37,7 @@ public sealed class PreTradeFilters
     private readonly ExecutionParameters _parameters;
     private readonly RiskParameters _riskParameters;
     private readonly PositionSizer _sizer;
+    private readonly LadderSizer _ladder;
     private readonly RiskEngine _risk;
     private readonly IBroker _broker;
     private readonly NewsService _news;
@@ -61,6 +63,7 @@ public sealed class PreTradeFilters
         _parameters = parameters;
         _riskParameters = riskParameters;
         _sizer = new PositionSizer(riskParameters);
+        _ladder = new LadderSizer(riskParameters);
         _risk = new RiskEngine(riskParameters);
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _news = news ?? throw new ArgumentNullException(nameof(news));
@@ -339,7 +342,23 @@ public sealed class PreTradeFilters
     {
         SymbolInfo info = c.Info!;
         c.Account = _broker.GetAccount();
-        SizingResult sizing = _sizer.Size(c.Account, new TradePlan(c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, c.Target), info);
+        double riskPercent = _riskParameters.RiskPercent;
+        if (_riskParameters.LadderEnabled)
+        {
+            // RSK-013: the percent comes from the bot's entries since RiskEpochDate, read from the broker now.
+            c.History = _broker.GetHistory(HistoryStart(c.Now));
+            try
+            {
+                DateTime epochStart = CestClock.StartOfCestDateUtc(_riskParameters.RiskEpochDate);
+                riskPercent = _ladder.NextRiskPercent(LadderSizer.EntriesFromBroker(c.Positions, c.Orders, c.History, epochStart));
+            }
+            catch (ArgumentException exception)
+            {
+                return c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, exception.Message);
+            }
+        }
+
+        SizingResult sizing = _sizer.Size(c.Account, new TradePlan(c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, c.Target), info, riskPercent);
         if (!sizing.IsAllowed)
         {
             return c.Skip(SkipReasons.FromRisk(sizing.Reason), sizing.Measured, sizing.Limit, sizing.Detail);
@@ -362,7 +381,7 @@ public sealed class PreTradeFilters
         RiskSnapshot snapshot;
         try
         {
-            snapshot = new RiskSnapshot(c.Now, c.Account!, c.Positions, c.Orders, _broker.GetHistory(since), since, SnapshotSymbols(c));
+            snapshot = new RiskSnapshot(c.Now, c.Account!, c.Positions, c.Orders, c.History ?? _broker.GetHistory(since), since, SnapshotSymbols(c));
         }
         catch (ArgumentException exception)
         {
@@ -480,6 +499,8 @@ public sealed class PreTradeFilters
         internal SymbolInfo? Info { get; set; }
 
         internal AccountSnapshot? Account { get; set; }
+
+        internal IReadOnlyList<ClosedTradeInfo>? History { get; set; }
 
         internal SizingResult? Sizing { get; set; }
 

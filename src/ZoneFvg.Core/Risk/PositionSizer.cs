@@ -42,11 +42,31 @@ public sealed class PositionSizer
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public SizingResult Size(AccountSnapshot account, TradePlan plan, SymbolInfo symbol)
     {
+        return Size(account, plan, symbol, _parameters.RiskPercent);
+    }
+
+    /// <summary>
+    /// Sizes a trade like <see cref="Size(AccountSnapshot, TradePlan, SymbolInfo)"/> but with the
+    /// given risk percent in place of the fixed RiskPercent: the percent of the next entry from
+    /// <see cref="LadderSizer.NextRiskPercent"/> (RSK-013, spec 4.1). The checks and their order
+    /// are the same (RSK-001, RSK-002); a risk percent that is not a finite number greater than 0
+    /// and at most 100 is an invalid input (fail closed).
+    /// </summary>
+    /// <param name="account">Account values from the broker port; the balance is used.</param>
+    /// <param name="plan">Symbol, side, entry, stop and target of the trade.</param>
+    /// <param name="symbol">Symbol data from the broker port for the plan's symbol.</param>
+    /// <param name="riskPercent">Risk of the trade in percent of balance.</param>
+    /// <returns>The allowed volume, or a skip with its reason and measured value.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public SizingResult Size(AccountSnapshot account, TradePlan plan, SymbolInfo symbol, double riskPercent)
+    {
         ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(symbol);
 
-        string? invalid = InvalidInput(account, plan, symbol);
+        string? invalid = !double.IsFinite(riskPercent) || riskPercent <= 0.0 || riskPercent > 100.0
+            ? "risk percent must be greater than 0 and at most 100"
+            : InvalidInput(account, plan, symbol);
         if (invalid != null)
         {
             return SizingResult.Skipped(RiskReason.InvalidInput, 0.0, 0.0, 0.0, 0.0, invalid);
@@ -63,7 +83,7 @@ public sealed class PositionSizer
         }
 
         double stopPips = PriceMath.ToPips(Math.Abs(plan.Entry - plan.StopLoss), symbol.PipSize);
-        double riskAmount = account.Balance * _parameters.RiskPercent / 100.0;
+        double riskAmount = account.Balance * riskPercent / 100.0;
         double rawVolume = riskAmount / (stopPips * symbol.PipValuePerUnit);
         if (!double.IsFinite(rawVolume))
         {

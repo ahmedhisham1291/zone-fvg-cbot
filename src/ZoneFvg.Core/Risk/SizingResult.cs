@@ -1,7 +1,7 @@
 namespace ZoneFvg.Core.Risk;
 
 /// <summary>
-/// Result of <see cref="PositionSizer.Size"/> (RSK-001, RSK-002): either an allowed volume, or
+/// Result of <see cref="PositionSizer.Size(Execution.Ports.AccountSnapshot, TradePlan, Execution.Ports.SymbolInfo, double)"/> (RSK-001, RSK-002, RSK-013): either an allowed volume, or
 /// a skip with exactly one reason and the measured value that failed.
 /// </summary>
 /// <remarks>
@@ -34,7 +34,7 @@ public sealed class SizingResult
     /// <summary>Money lost at the stop with <see cref="VolumeUnits"/>: volume x stop pips x pip value per unit. Zero when skipped.</summary>
     public double RiskMoney { get; }
 
-    /// <summary>Target risk: balance x RiskPercent / 100 (RSK-001). Zero when the input was invalid.</summary>
+    /// <summary>Target risk: balance x risk percent / 100, the percent being RiskPercent (RSK-001) or the ladder percent (RSK-013). Zero when the input was invalid.</summary>
     public double RiskAmount { get; }
 
     /// <summary>Stop distance in pips. Zero when it could not be computed.</summary>

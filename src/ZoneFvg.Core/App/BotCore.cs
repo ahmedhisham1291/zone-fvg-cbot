@@ -43,6 +43,9 @@ public sealed class BotCore
 
     private const double InactivityHistoryDays = 30.0;
 
+    // OPS-002: M15 bars read for the moves of one closed trade, at most 30 days. A longer trade gets NA.
+    private const int MaxExcursionBars = 2880;
+
     private static readonly TimeSpan RecoveryRetryInterval = TimeSpan.FromMinutes(15.0);
     private static readonly IReadOnlyList<Zone> NoZones = Array.AsReadOnly(Array.Empty<Zone>());
     private static readonly IReadOnlyList<Fvg> NoFvgs = Array.AsReadOnly(Array.Empty<Fvg>());
@@ -954,6 +957,32 @@ public sealed class BotCore
         }
     }
 
+    // OPS-002: the largest adverse and favourable moves in R over the closed M15 bars of the trade's life
+    // and its exit price. Journal only: reads bars, changes nothing. Null (NA) when the plan, its comment
+    // or the bars are missing.
+    private (double AdverseR, double FavourableR)? Excursion(ClosedTradeInfo trade, OpenedTradePlan? plan)
+    {
+        CommentPlan? levels = OrderComment.TryParse(plan?.Comment);
+        DateTime now = _lastKnownServerTimeUtc ?? trade.CloseTimeUtc;
+        double bars = Math.Ceiling((now - trade.EntryTimeUtc).TotalMinutes / 15.0) + 2.0;
+        if (plan == null || levels == null || _history == null || !(bars >= 1.0))
+        {
+            return null;
+        }
+
+        try
+        {
+            IReadOnlyList<Bar> m15 = _history.ClosedBars(TimeFrame.M15, (int)Math.Min(bars, MaxExcursionBars));
+            return TradeExcursion.ForTrade(plan.Side, plan.EntryPrice, levels.Stop, trade.EntryTimeUtc, trade.CloseTimeUtc, trade.ClosingPrice, m15);
+        }
+        catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
+        {
+            // Journal only: the trade line is still written, with mae and mfe NA.
+            Write("trade", ("event", "excursion-unavailable"), ("reason", exception.GetType().Name + ": " + OneLine(exception.Message)));
+            return null;
+        }
+    }
+
     // SIM-001: one machine-readable line per closed bot trade for the backtest trade log. Journal only.
     private void WriteTradeLogLine(ClosedTradeInfo trade, OpenedTradePlan? plan)
     {
@@ -1156,7 +1185,8 @@ public sealed class BotCore
         public void Closed(ClosedTradeInfo trade, OpenedTradePlan? plan, DateTime atUtc)
         {
             double? pipSize = _core.SymbolOrNull()?.PipSize;
-            _core._ops.Journal.Trade(new TradeJournalEntry(trade, plan?.Comment, plan?.Side, plan?.EntryPrice, pipSize, TradeExitReason.Unknown, null, null));
+            (double AdverseR, double FavourableR)? moves = _core.Excursion(trade, plan);
+            _core._ops.Journal.Trade(new TradeJournalEntry(trade, plan?.Comment, plan?.Side, plan?.EntryPrice, pipSize, trade.ExitReason, moves?.AdverseR, moves?.FavourableR));
             if (_core._writeTradeLog)
             {
                 _core.WriteTradeLogLine(trade, plan);
