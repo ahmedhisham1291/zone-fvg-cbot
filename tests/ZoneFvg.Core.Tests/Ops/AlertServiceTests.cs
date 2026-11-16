@@ -32,7 +32,7 @@ public class AlertServiceTests
 
     [Fact]
     [Trait("Req", "OPS-004")]
-    public void Raise_JournalsKindAndHashButNeverTheUrlOrText()
+    public void Raise_JournalsKindHashAndFullTextButNeverTheUrl()
     {
         AlertSetup a = OpsData.Alerts();
         const string message = "ZFVG EURUSD KillSwitch: drawdown 8.0%";
@@ -44,11 +44,56 @@ public class AlertServiceTests
         Assert.Equal(
             new[]
             {
-                "2026-01-14T10:00:00Z alert event=queued kind=KillSwitch hash=" + hash + " queue=1",
+                "2026-01-14T10:00:00Z alert event=queued kind=KillSwitch hash=" + hash + " text=ZFVG\\sEURUSD\\sKillSwitch:\\sdrawdown\\s8.0% queue=1",
                 "2026-01-14T10:00:00Z alert event=sent kind=KillSwitch hash=" + hash + " queue=0",
             },
             a.Sink.Of("alert"));
-        Assert.DoesNotContain(a.Sink.Lines, l => l.Line.Contains("telegram", StringComparison.OrdinalIgnoreCase) || l.Line.Contains("drawdown", StringComparison.Ordinal));
+        Assert.DoesNotContain(a.Sink.Lines, l => l.Line.Contains("telegram", StringComparison.OrdinalIgnoreCase) || l.Line.Contains("sendMessage", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    [Trait("Req", "OPS-004")]
+    public void Raise_MultiLineText_IsJournaledWholeOnOneLine()
+    {
+        AlertSetup a = OpsData.Alerts();
+
+        a.Service.Raise(OpsAlertKind.DailySummary, "line one\nline two", T0);
+
+        Assert.EndsWith(" text=ZFVG\\sEURUSD\\sDailySummary:\\sline\\sone\\nline\\stwo queue=1", a.Sink.Of("alert").Single(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Req", "OPS-007")]
+    public void Raise_SecretsInText_NeverReachTheLog()
+    {
+        AlertSetup a = OpsData.Alerts();
+        string text = "chat " + OpsData.ChatId + " token " + OpsData.Token + " url " + OpsData.HeartbeatUrl;
+
+        a.Service.Raise(OpsAlertKind.ErrorStorm, text, T0);
+        a.Service.Raise(OpsAlertKind.ErrorStorm, text, T0.AddMinutes(1.0));
+
+        Assert.Equal(
+            new[]
+            {
+                "2026-01-14T10:00:00Z alert event=queued kind=ErrorStorm hash=" + JournalFormat.Hash8("ZFVG EURUSD ErrorStorm: chat *** token *** url ***")
+                    + " text=ZFVG\\sEURUSD\\sErrorStorm:\\schat\\s***\\stoken\\s***\\surl\\s*** queue=1",
+                "2026-01-14T10:01:00Z alert event=collapsed kind=ErrorStorm hash=" + JournalFormat.Hash8("ZFVG EURUSD ErrorStorm: chat *** token *** url ***")
+                    + " text=ZFVG\\sEURUSD\\sErrorStorm:\\schat\\s***\\stoken\\s***\\surl\\s*** queue=1",
+            },
+            a.Sink.Of("alert"));
+        Assert.DoesNotContain(a.Sink.Lines, l => OpsData.ContainsSecret(l.Line));
+    }
+
+    [Fact]
+    [Trait("Req", "OPS-007")]
+    public void Raise_AlertsDisabledWithHeartbeatUrlInText_LogStoresMaskedText()
+    {
+        AlertSetup a = OpsData.Alerts(new OpsParameters { HeartbeatUrl = OpsData.HeartbeatUrl });
+
+        Assert.Equal(AlertRaiseOutcome.Disabled, a.Service.Raise(OpsAlertKind.ErrorStorm, "monitor " + OpsData.HeartbeatUrl + " down", T0));
+
+        Assert.EndsWith(" event=disabled kind=ErrorStorm hash=" + JournalFormat.Hash8("ZFVG EURUSD ErrorStorm: monitor *** down") + " text=ZFVG\\sEURUSD\\sErrorStorm:\\smonitor\\s***\\sdown queue=0", a.Sink.Of("alert").Single(), StringComparison.Ordinal);
+        Assert.DoesNotContain(a.Sink.Lines, l => OpsData.ContainsSecret(l.Line));
     }
 
     [Fact]
@@ -254,7 +299,7 @@ public class AlertServiceTests
         Assert.Empty(a.Transport.Calls);
         Assert.Equal(0, a.Service.QueueLength);
         Assert.Equal(
-            new[] { "2026-01-14T10:00:00Z alert event=disabled kind=KillSwitch hash=" + JournalFormat.Hash8("ZFVG EURUSD KillSwitch: halt") + " queue=0" },
+            new[] { "2026-01-14T10:00:00Z alert event=disabled kind=KillSwitch hash=" + JournalFormat.Hash8("ZFVG EURUSD KillSwitch: halt") + " text=ZFVG\\sEURUSD\\sKillSwitch:\\shalt queue=0" },
             a.Sink.Of("alert"));
     }
 
