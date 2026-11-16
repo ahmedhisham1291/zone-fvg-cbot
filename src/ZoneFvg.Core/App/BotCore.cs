@@ -300,7 +300,7 @@ public sealed class BotCore
             _trades.CancelEntryOrders("halted");
         }
 
-        WeekendDuty(now);
+        WeekendDuty();
         UpdateCalendar(now);
         ApplyState("M15 bar closed at " + Stamp(close), now);
         ResolvePending(guard, now);
@@ -332,7 +332,7 @@ public sealed class BotCore
         if (_machine.State != BotState.Recovering)
         {
             JournalActions("friday-close", _trades.FridayClose(now));
-            WeekendDuty(now);
+            WeekendDuty();
         }
 
         UpdateCalendar(now);
@@ -353,7 +353,7 @@ public sealed class BotCore
         JournalActions("protection", _trades.EnsureProtection());
         if (_machine.State != BotState.Recovering)
         {
-            WeekendDuty(now);
+            WeekendDuty();
         }
 
         RecordTrades(now);
@@ -609,20 +609,16 @@ public sealed class BotCore
 
     // ------------------------------------------------------------------ duties
 
-    private void WeekendDuty(DateTime now)
+    private void WeekendDuty()
     {
-        bool exposure = _safety.HasSymbolExposure();
-        if (_safety.InWeekendWindow(now) && exposure)
-        {
-            _weekendClosePending = true;
-        }
-
+        // Set by recovery after a start or reconnect in the weekend window (owner decision of 2026-11-16);
+        // the Friday close of a bot that keeps running is EXE-013.
         if (!_weekendClosePending)
         {
             return;
         }
 
-        if (!exposure)
+        if (!_safety.HasSymbolExposure())
         {
             _weekendClosePending = false;
             return;

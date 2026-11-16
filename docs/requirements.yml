@@ -340,7 +340,7 @@ requirements:
     wp: WP07
     spec: "4.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Kill switch. Peak = highest end-of-trade balance since RiskEpochDate,
       from history, and not less than the balance at RiskEpochDate. If
@@ -364,7 +364,7 @@ requirements:
     wp: WP07
     spec: "4.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Circuit breakers. Entries per symbol per CE(S)T day <= 2 and per account
       per day <= 6, counted from broker history and open orders. Order
@@ -682,7 +682,7 @@ requirements:
     wp: WP07
     spec: "8.5"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Bot states are Recovering, Running, Blocked and Halted with the
       transitions of spec 8.5. New orders are possible only in Running.
@@ -691,7 +691,7 @@ requirements:
     wp: WP07
     spec: "8.1, 8.4"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       The same recovery procedure runs at start and after every reconnect, and
       it is safe to run it repeatedly.
@@ -710,7 +710,7 @@ requirements:
     wp: WP07
     spec: "8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Recovery rebuilds the signal layer by replaying stored bars with trading
       disabled. Signals produced during replay are recorded as not executable.
@@ -719,7 +719,7 @@ requirements:
     wp: WP07
     spec: "8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Bot positions found at the broker are adopted by label: matched to
       their zone, plan read from the comment, stop loss and take profit
@@ -729,7 +729,7 @@ requirements:
     wp: WP07
     spec: "8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       A pending bot order found at the broker is kept only if it has a stop,
       a target and an expiry and its zone is known and not Invalid; otherwise
@@ -739,7 +739,7 @@ requirements:
     wp: WP07
     spec: "8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       A labelled position whose zone is unknown is kept with its existing
       stop and target, counted in all risk totals, included in Friday close,
@@ -749,7 +749,7 @@ requirements:
     wp: WP07
     spec: "8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Trades that opened or closed while the bot was away are added to the
       journal from broker history, exactly once.
@@ -758,7 +758,7 @@ requirements:
     wp: WP07
     spec: "8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Catch-up duties. If recovery finishes after Friday close with bot
       positions open they are closed immediately; if a risk limit is breached
@@ -768,7 +768,7 @@ requirements:
     wp: WP07
     spec: "8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Each recovery produces a report (downtime, positions adopted, orders
       kept and cancelled, strangers, active zones, state entered) that is
@@ -778,7 +778,7 @@ requirements:
     wp: WP07
     spec: "8.5"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       The bot never stops its own process. Every event handler catches
       exceptions, journals them and increments the error counter of RSK-010.
@@ -787,7 +787,7 @@ requirements:
     wp: WP07
     spec: "8.4"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       All time used for decisions comes from the broker port's server time or
       from bar times. The machine clock is never read.
@@ -796,7 +796,7 @@ requirements:
     wp: WP07
     spec: "5.3, 12.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Fault scenarios 1 to 11, 13 and 14 of spec 12.3 pass as automated
       FakeBroker scenarios with zero duplicate orders and zero positions left
