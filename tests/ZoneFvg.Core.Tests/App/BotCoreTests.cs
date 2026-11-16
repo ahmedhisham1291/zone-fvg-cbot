@@ -308,8 +308,15 @@ public class BotCoreTests
     [Trait("Req", "REC-012")]
     public void CoreAssembly_ContainsNoCallToTheMachineClockOrStopwatch()
     {
-        IReadOnlyList<string> found = ClockScan.Find(typeof(BotCore).Assembly);
+        // The coverage run injects its own tracker types (namespace Coverlet.*) into the Core assembly; they are
+        // not compiled from Core sources and are left out. Every type from the Core sources is scanned.
+        Type[] coreTypes = typeof(BotCore).Assembly.GetTypes()
+            .Where(type => type.Namespace == null || !type.Namespace.StartsWith("Coverlet", StringComparison.Ordinal))
+            .ToArray();
+        IReadOnlyList<string> found = ClockScan.Find(coreTypes);
 
+        Assert.Contains(coreTypes, type => type == typeof(BotCore));
+        Assert.True(coreTypes.Length > 100, "only " + coreTypes.Length + " types scanned");
         Assert.Empty(found);
     }
 
