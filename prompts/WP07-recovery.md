@@ -11,6 +11,17 @@ REC-001, REC-002, REC-003, REC-004, REC-005, REC-006, REC-007, REC-008,
 REC-009, REC-010, REC-011, REC-012, REC-013, RSK-006, RSK-008, RSK-010.
 
 RSK-006, RSK-008 and RSK-010 were started in WP04, which built the decisions.
+Owner decisions of 2026-11-16 (architecture section 10) that WP07 builds:
+- Weekend restart: if the bot starts on Saturday, on Sunday, or on Friday
+  after FridayCloseUtc while it still holds a bot position or pending entry
+  order, it cancels the orders and closes the positions at the first moment
+  the market accepts requests again. Test: start on Saturday with an open
+  position; the close request is sent on the first event after the reopen,
+  not before; a pending entry is cancelled.
+- `NewsEnabled`: when false, the news checks are skipped and the calendar
+  is not fetched. Live and challenge configurations must keep it true; the
+  start-up summary shows its value. Test both values.
+
 RSK-010 now requires the request limit to be checked before a request is
 sent; change the WP04 counter accordingly, tests first. When the risk snapshot
 cannot be built or history is incomplete, `BotCore` still runs
