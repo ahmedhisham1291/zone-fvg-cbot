@@ -94,12 +94,12 @@ def check_project_references(errors: list[str]) -> None:
             errors.append(f"{csproj.relative_to(ROOT)}: Core project must not reference cTrader packages")
         if re.search(r"<ProjectReference", text):
             errors.append(f"{csproj.relative_to(ROOT)}: Core project must not reference other projects")
-        if not re.search(r"<TargetFramework>\s*net6\.0\s*</TargetFramework>", text):
-            errors.append(f"{csproj.relative_to(ROOT)}: Core must target net6.0 (PLT-004)")
+        if not re.search(r"<TargetFramework>\s*net8\.0\s*</TargetFramework>", text):
+            errors.append(f"{csproj.relative_to(ROOT)}: Core must target net8.0 (PLT-004)")
     for csproj in BOT.glob("*.csproj"):
         text = csproj.read_text(encoding="utf-8")
-        if not re.search(r"<TargetFramework>\s*net6\.0\s*</TargetFramework>", text):
-            errors.append(f"{csproj.relative_to(ROOT)}: Bot must target net6.0 (PLT-004)")
+        if not re.search(r"<TargetFramework>\s*net8\.0\s*</TargetFramework>", text):
+            errors.append(f"{csproj.relative_to(ROOT)}: Bot must target net8.0 (PLT-004)")
 
 
 def check_bot_declaration(errors: list[str]) -> None:

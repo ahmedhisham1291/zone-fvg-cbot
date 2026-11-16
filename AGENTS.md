@@ -81,7 +81,8 @@ pull request. Never claim a command passed without running it.
 
 ## Coding standards
 
-- C# 10, `net6.0`, nullable enabled, warnings are errors in Core and tests.
+- C# 10, `net8.0` (cTrader CLI runs only cBots built for .NET 8; owner decision
+  2026-11-16), nullable enabled, warnings are errors in Core and tests.
 - Prices are `double`. Compare with the helpers in `PriceMath` (to be created
   in WP01), never with raw `==` after arithmetic.
 - Immutable records for data (`Bar`, `Zone` snapshots, `Signal`, `NewsEvent`).

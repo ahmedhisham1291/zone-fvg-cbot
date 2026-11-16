@@ -7,7 +7,7 @@ packages. Changing a contract here needs the human's approval.
 
 ```
 +--------------------------------------------------------------+
-| ZoneFvg.Bot  (cTrader adapter, net6.0, references cAlgo)     |
+| ZoneFvg.Bot  (cTrader adapter, net8.0, references cAlgo)     |
 |   ZoneFvgBot : Robot          wiring of events only          |
 |   CTraderBroker : IBroker     orders, positions, history     |
 |   CTraderBars                 closed-bar feed per timeframe  |
@@ -17,7 +17,7 @@ packages. Changing a contract here needs the human's approval.
 +------------------------------|-------------------------------+
                                | ports (interfaces in Core)
 +------------------------------v-------------------------------+
-| ZoneFvg.Core  (pure C#, net6.0, no cAlgo, no IO, no clock)   |
+| ZoneFvg.Core  (pure C#, net8.0, no cAlgo, no IO, no clock)   |
 |   Domain/       Bar, TimeFrame, Zone, Fvg, Signal, enums     |
 |   Indicators/   Atr, Ema, SwingDetector                      |
 |   Signals/      ZoneDetector, ZoneBook, FvgDetector,         |
@@ -244,4 +244,7 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-16 | Emergency guard frequency | Checked on every one-minute timer event as well as at M15 closes | Owner decision |
 | 2026-11-16 | Request-limit halt | Lasts until the owner restarts the bot (spec 8.5 gives no exit) | Owner decision |
 | 2026-11-16 | cTrader adapter (WP08) | Decisions 1 to 11 of pull request #23 are accepted: stop and target sent as prices; pip value from live conversion rates; commission per side doubled (over-stated), unknown commission type blocks orders; HTTP waits with a hard timeout instead of background sending (replaces the earlier "send in the background"); a bar counts as closed once its nominal close time has passed, one remembered time per timeframe; local storage per instance, to be checked in WP11; backtests without Telegram, heartbeat or news until the embedded history is filled; the error mapping; market open = trading enabled and session open; DayResetZone accepts only Europe/Prague. Chart drawing gets read-only core snapshots in a follow-up | Owner decision on pull request #23 |
+| 2026-11-16 | .NET 8 | Core and Bot target net8.0 (C# 10 unchanged), because cTrader CLI runs only cBots built for .NET 8 | Found in WP11; owner decision |
+| 2026-11-16 | Chart drawing (PLT-005) | The five display choices of pull request #25 are accepted | Owner decision |
+| 2026-11-16 | Deployment (WP11) | The decisions of pull request #26 are accepted: cTrader CLI image pinned to 5.9.11, stored state checked at first VPS start (follow-up if lost), logs saved before updates, manual Saturday reboots, fault tests 6 and 13 covered by automated tests, 2 vCPU / 4 GB server, MaxSpreadPips 1.5. A "pause new entries" switch is added in a later package | Owner decision |
 | 2026-11-14 | Terminal zones | Used, Invalid and Expired zones leave the book at once and are reported once. Their ids are remembered, so a repeated id is still discarded | `Zones` holds non-terminal zones only (section 3). A Used zone has no further effect on signals |

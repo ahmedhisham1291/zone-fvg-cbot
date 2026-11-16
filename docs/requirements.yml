@@ -906,7 +906,8 @@ requirements:
     verify: build
     status: implemented
     text: >-
-      ZoneFvg.Core and ZoneFvg.Bot target net6.0 with C# language version 10.
+      ZoneFvg.Core and ZoneFvg.Bot target net8.0 with C# language version 10
+      (owner decision 2026-11-16: cTrader CLI runs only cBots built for .NET 8).
 
   - id: PLT-005
     wp: WP08
