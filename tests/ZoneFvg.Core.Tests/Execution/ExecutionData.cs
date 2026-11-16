@@ -209,7 +209,7 @@ public sealed class ExecutionHarness
     {
         int before = Events.Skips.Count;
         PreTradeResult result = Evaluate(signal, state, zones);
-        string why = result.Skip == null ? string.Empty : result.Skip.Reason + ": " + result.Skip.Detail;
+        string why = result.Skip is null ? string.Empty : result.Skip.Reason + ": " + result.Skip.Detail;
         Assert.True(result.IsAllowed, "expected an order but the signal was skipped with " + why);
         Assert.Equal(before, Events.Skips.Count);
         return result.Order!;
