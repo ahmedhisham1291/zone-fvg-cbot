@@ -151,6 +151,12 @@ public sealed class FakeBroker : IBroker
         return id;
     }
 
+    /// <summary>Adds a closed trade to the history directly, for example one closed before the scenario starts (WP07).</summary>
+    public void AddClosedTrade(ClosedTradeInfo trade)
+    {
+        _history.Add(trade);
+    }
+
     /// <summary>Scripts a fault for the next request of the kind. Faults of one kind are used in the order they were scripted.</summary>
     public void Script(BrokerCall call, BrokerFault fault, string code = "Scripted", double fraction = 0.0)
     {
