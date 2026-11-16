@@ -183,6 +183,24 @@ public sealed class AccountGuard
         return new GuardStatus(nowUtc, emergency, killSwitch, budget, problem);
     }
 
+    /// <summary>
+    /// The risk snapshot at the server time, or null when the broker data cannot be used
+    /// (architecture section 10, "Bad broker data"); for the daily summary (OPS-003).
+    /// </summary>
+    /// <param name="nowUtc">Server time, kind UTC.</param>
+    /// <returns>The snapshot, or null.</returns>
+    public RiskSnapshot? TrySnapshot(DateTime nowUtc)
+    {
+        try
+        {
+            return BuildSnapshot(nowUtc, _broker.GetAccount());
+        }
+        catch (Exception exception) when (IsDataProblem(exception))
+        {
+            return null;
+        }
+    }
+
     private RiskSnapshot BuildSnapshot(DateTime nowUtc, AccountSnapshot account)
     {
         DateTime since = HistoryStartUtc(_parameters, nowUtc);

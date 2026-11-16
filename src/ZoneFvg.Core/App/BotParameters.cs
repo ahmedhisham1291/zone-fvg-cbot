@@ -1,6 +1,7 @@
 using System;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.News;
+using ZoneFvg.Core.Ops;
 using ZoneFvg.Core.Recovery;
 using ZoneFvg.Core.Risk;
 using ZoneFvg.Core.Signals;
@@ -27,6 +28,9 @@ public sealed record BotParameters
 
     /// <summary>News parameters, including NewsEnabled (NWS requirements, owner decision of 2026-11-16).</summary>
     public NewsParameters News { get; init; } = new NewsParameters();
+
+    /// <summary>Operations parameters: Telegram, heartbeat and phase profit target (OPS requirements). Empty secrets in backtests.</summary>
+    public OpsParameters Ops { get; init; } = new OpsParameters();
 
     /// <summary>Address of the Forex Factory weekly export. Needed outside backtests while NewsEnabled is true.</summary>
     public string NewsFeedUrl { get; init; } = string.Empty;
@@ -57,7 +61,7 @@ public sealed record BotParameters
             throw new ArgumentException("The symbol must not contain '|'.", nameof(Symbol));
         }
 
-        if (Signal == null || Execution == null || Risk == null || News == null)
+        if (Signal == null || Execution == null || Risk == null || News == null || Ops == null)
         {
             throw new ArgumentNullException(nameof(Signal), "Every parameter group must be set.");
         }
@@ -66,6 +70,7 @@ public sealed record BotParameters
         Execution.Validate();
         Risk.Validate();
         News.Validate();
+        Ops.Validate();
         MonthDay.ParseList(MarketHolidays);
         if (!isBacktest && News.NewsEnabled && string.IsNullOrWhiteSpace(NewsFeedUrl))
         {

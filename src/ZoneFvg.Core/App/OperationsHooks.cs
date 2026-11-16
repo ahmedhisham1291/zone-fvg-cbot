@@ -21,6 +21,12 @@ public enum BotAlertKind
     /// <summary>A labelled position whose zone or parameters are unknown is kept as a stranger (REC-007).</summary>
     Stranger,
 
+    /// <summary>A bot position opened (spec 11).</summary>
+    TradeOpened,
+
+    /// <summary>A bot position closed (spec 11, OPS-002).</summary>
+    TradeClosed,
+
     /// <summary>The bot state changed (REC-001).</summary>
     StateChanged,
 
@@ -64,27 +70,28 @@ public enum BotAlertKind
 public sealed record BotAlert(BotAlertKind Kind, AlertKind? ExecutionKind, string Symbol, string Message, DateTime AtUtc);
 
 /// <summary>
-/// Operations hooks called by <see cref="BotCore"/> (prompt WP07: "Hooks are interfaces here; WP09
-/// supplies the implementations"): alerts, the heartbeat and the inactivity check. Every alert is
-/// also journaled by the core. The heartbeat is called on every timer tick in every state.
+/// An observer of <see cref="BotCore"/>'s alerts and timer duties. The work itself is done by WP09's
+/// <c>Operations</c>, which <see cref="BotCore"/> builds and calls; this observer sees the same events
+/// (every alert as a <see cref="BotAlert"/>, the heartbeat and the inactivity check in every state)
+/// and lets tests check them. The public constructor uses an observer that does nothing.
 /// </summary>
 public interface IOperationsHooks
 {
-    /// <summary>Sends an alert (spec 11). Best effort; must not block (OPS-004).</summary>
+    /// <summary>Sees an alert (spec 11) after it was handed to WP09's alert service or journal.</summary>
     /// <param name="alert">The alert.</param>
     void Alert(BotAlert alert);
 
-    /// <summary>Heartbeat, alert sending and daily summary pump, called once a minute in every state (OPS-003 to OPS-005).</summary>
+    /// <summary>Sees the one-minute timer, called in every state before WP09's heartbeat and alert pump (OPS-005).</summary>
     /// <param name="serverTimeUtc">Server time, kind UTC.</param>
     /// <param name="state">Current bot state.</param>
     void Heartbeat(DateTime serverTimeUtc, BotState state);
 
-    /// <summary>Inactivity check, called once a minute in every state (OPS-006).</summary>
+    /// <summary>Sees the inactivity check, called once a minute in every state (OPS-006).</summary>
     /// <param name="serverTimeUtc">Server time, kind UTC.</param>
     void Inactivity(DateTime serverTimeUtc);
 }
 
-/// <summary>Hooks that do nothing, used until WP09's implementations are connected. Alerts are still journaled by the core.</summary>
+/// <summary>The observer of the public constructor: it does nothing; WP09's <c>Operations</c> does the work.</summary>
 internal sealed class NoOperationsHooks : IOperationsHooks
 {
     public void Alert(BotAlert alert)

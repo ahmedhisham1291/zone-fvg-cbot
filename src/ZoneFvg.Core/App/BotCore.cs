@@ -6,6 +6,7 @@ using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.News;
+using ZoneFvg.Core.Ops;
 using ZoneFvg.Core.Recovery;
 using ZoneFvg.Core.Risk;
 using ZoneFvg.Core.Signals;
@@ -36,6 +37,11 @@ public sealed class BotCore
     /// </summary>
     internal const string BudgetExhaustedKey = "risk.budgetExhaustedDay";
 
+    /// <summary>Key-value store key of the start times of the last eight days, for the daily summary (OPS-003).</summary>
+    internal const string StartsKey = "app.starts";
+
+    private const double InactivityHistoryDays = 30.0;
+
     private static readonly TimeSpan RecoveryRetryInterval = TimeSpan.FromMinutes(15.0);
     private static readonly DateTime FallbackTimeUtc = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -46,8 +52,9 @@ public sealed class BotCore
 
     private readonly IBroker _broker;
     private readonly IKeyValueStore _store;
-    private readonly IJournalSink _journal;
+    private readonly Operations _ops;
     private readonly IOperationsHooks _hooks;
+    private readonly DateTime _startedUtc;
     private readonly bool _isBacktest;
     private readonly string _symbol;
     private readonly bool _newsEnabled;
@@ -86,7 +93,6 @@ public sealed class BotCore
     private bool _hasFed;
     private DateTime _lastFedCloseUtc;
     private int _lastFedRank;
-    private int _unjournaledErrors;
 
     /// <summary>
     /// Creates the core of one instance (docs/architecture.md section 3). Validates every
@@ -112,8 +118,11 @@ public sealed class BotCore
         parameters.Validate(isBacktest);
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _journal = journal ?? throw new ArgumentNullException(nameof(journal));
+        ArgumentNullException.ThrowIfNull(journal);
         _hooks = hooks ?? throw new ArgumentNullException(nameof(hooks));
+        _startedUtc = broker.ServerTimeUtc;
+        _lastKnownServerTimeUtc = _startedUtc;
+        _ops = new Operations(parameters.Ops, parameters.Risk, parameters.Symbol, broker, http, journal, _startedUtc);
         _isBacktest = isBacktest;
         _symbol = parameters.Symbol;
         _newsEnabled = parameters.News.NewsEnabled;
@@ -130,8 +139,9 @@ public sealed class BotCore
         _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events);
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
         _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
-        _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, journal);
-        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, journal, _requests, _events, EnterStateAfterRecovery, _marketHolidays);
+        var tradeEvents = new CoreTradeEvents(this);
+        _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, tradeEvents);
+        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays);
     }
 
     /// <summary>The current state (REC-001).</summary>
@@ -159,7 +169,7 @@ public sealed class BotCore
     internal bool DataGap => _dataGap;
 
     /// <summary>Errors whose journal line could not be written (REC-011).</summary>
-    internal int UnjournaledErrors => _unjournaledErrors;
+    internal int UnjournaledErrors => _ops.Journal.WriteFailures;
 
     /// <summary>
     /// Start (spec 9.3): journals the start-up summary, loads the news calendar when NewsEnabled is
@@ -245,9 +255,20 @@ public sealed class BotCore
         _history = history;
         _disconnected = false;
         DateTime now = Now();
-        Write("start", "event=" + reason + " symbol=" + _symbol + " version=" + BuildInfo.Version + " hash=" + _parameterHash
-            + " news=" + (_newsEnabled ? "enabled" : "disabled") + " backtest=" + (_isBacktest ? "yes" : "no")
-            + " risk-epoch=" + _risk.RiskEpochDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        Write(
+            "start",
+            ("event", reason),
+            ("symbol", _symbol),
+            ("version", BuildInfo.Version),
+            ("hash", _parameterHash),
+            ("news", _newsEnabled ? "enabled" : "disabled"),
+            ("backtest", _isBacktest ? "yes" : "no"),
+            ("riskEpoch", _risk.RiskEpochDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+            ("holidays", string.Join(",", _marketHolidays)));
+        if (reason == "start")
+        {
+            RecordStart(now);
+        }
         if (_newsEnabled)
         {
             RefreshNews(now);
@@ -261,7 +282,7 @@ public sealed class BotCore
     {
         _disconnected = true;
         DateTime now = Now();
-        Write("connection", "event=disconnected");
+        Write("connection", ("event", "disconnected"));
         ApplyState("disconnected", now);
     }
 
@@ -284,11 +305,12 @@ public sealed class BotCore
 
         if (_hasFed && !(close > _lastFedCloseUtc || (close == _lastFedCloseUtc && rank > _lastFedRank)))
         {
-            Write("bar", "event=ignored timeframe=" + timeFrame + " open=" + Stamp(bar.OpenTimeUtc) + " reason=already processed");
+            Write("bar", ("event", "ignored"), ("timeframe", timeFrame.ToString()), ("open", Stamp(bar.OpenTimeUtc)), ("reason", "already processed"));
             return;
         }
 
         CheckLiveGap(timeFrame, bar, now);
+        IReadOnlyList<Zone> zonesBefore = _engine.Zones;
         IReadOnlyList<Signal> signals = _engine.OnBarClosed(timeFrame, bar, false);
         _lastBars[rank] = bar;
         _hasFed = true;
@@ -314,7 +336,7 @@ public sealed class BotCore
         UpdateCalendar(now);
         ApplyState("M15 bar closed at " + Stamp(close), now);
         ResolvePending(guard, now);
-        PlaceSignals(signals, guard, now);
+        PlaceSignals(signals, zonesBefore, guard, now);
         CheckRequestLimit(now);
         TouchLastSeen(now);
     }
@@ -323,11 +345,26 @@ public sealed class BotCore
     {
         DateTime now = Now();
         _hooks.Heartbeat(now, _machine.State);
-        if (_disconnected)
+        try
         {
-            return;
-        }
+            if (!_disconnected)
+            {
+                ConnectedTimerDuties(now);
+            }
 
+            // In every state (WP09): the daily summary and the inactivity check, whose alerts go out in the pump below.
+            _ops.Summary.Pump(now, () => SummaryInput(now));
+            CheckInactivity(now);
+        }
+        finally
+        {
+            // Heartbeat and alert sending in every state, also after an exception above (OPS-004, OPS-005).
+            _ops.OnTimer(now, _machine.State);
+        }
+    }
+
+    private void ConnectedTimerDuties(DateTime now)
+    {
         if (_newsEnabled)
         {
             RefreshNews(now);
@@ -349,9 +386,73 @@ public sealed class BotCore
 
         UpdateCalendar(now);
         ApplyState("timer", now);
-        _hooks.Inactivity(now);
         CheckRequestLimit(now);
         TouchLastSeen(now);
+    }
+
+    private DailySummaryInput SummaryInput(DateTime now)
+    {
+        NewsStatus? calendar = _newsEnabled ? _news.StatusAt(now) : null;
+        return new DailySummaryInput(_guard.TrySnapshot(now), calendar, now - _startedUtc, StartsInPreviousDay(now));
+    }
+
+    private void CheckInactivity(DateTime now)
+    {
+        // At least 30 days of history, so the 21-day warning has data (OPS-006, WP09).
+        DateTime since = now.AddDays(-InactivityHistoryDays);
+        _hooks.Inactivity(now);
+        try
+        {
+            _ops.Inactivity.Check(now, _broker.GetHistory(since), since, _broker.GetPositions());
+        }
+        catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
+        {
+            Write("ops", ("event", "inactivity-unavailable"), ("reason", exception.GetType().Name + ": " + OneLine(exception.Message)));
+        }
+    }
+
+    private void RecordStart(DateTime now)
+    {
+        // Start times of the last eight days, for the restarts in the daily summary (OPS-003).
+        var starts = new List<string>();
+        string? stored = _store.Get(StartsKey);
+        if (!string.IsNullOrEmpty(stored))
+        {
+            foreach (string token in stored.Split(','))
+            {
+                if (DateTime.TryParseExact(token, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime time)
+                    && time.Kind == DateTimeKind.Utc && time > now.AddDays(-8.0) && time <= now)
+                {
+                    starts.Add(token);
+                }
+            }
+        }
+
+        starts.Add(now.ToString("o", CultureInfo.InvariantCulture));
+        _store.Set(StartsKey, string.Join(",", starts));
+    }
+
+    private int? StartsInPreviousDay(DateTime now)
+    {
+        DateTime today = CestClock.StartOfCestDayUtc(now);
+        DateTime previous = CestClock.StartOfCestDayUtc(today.AddTicks(-1));
+        string? stored = _store.Get(StartsKey);
+        if (stored == null)
+        {
+            return null;
+        }
+
+        int count = 0;
+        foreach (string token in stored.Split(','))
+        {
+            if (DateTime.TryParseExact(token, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime time)
+                && time.Kind == DateTimeKind.Utc && time >= previous && time < today)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private void TradeEvent()
@@ -382,7 +483,7 @@ public sealed class BotCore
         {
             // Broker history that cannot be read is a data problem, not a programming error: journaled, and the
             // trades are journaled at a later event (REC-008, architecture section 10 "Bad broker data").
-            Write("trade", "event=journal-unavailable reason=" + exception.GetType().Name + ": " + OneLine(exception.Message));
+            Write("trade", ("event", "journal-unavailable"), ("reason", exception.GetType().Name + ": " + OneLine(exception.Message)));
         }
     }
 
@@ -399,20 +500,32 @@ public sealed class BotCore
         _lastRecoveryAttemptUtc = now;
         RecoveryReport report = _recovery.Run(_history!);
         LastReport = report;
-        Write("recovery", "reason=" + reason + " " + report.Text);
+        _ops.Journal.Recovery(new RecoveryJournalEntry(
+            now,
+            _symbol,
+            reason,
+            report.PositionsAdopted.Count,
+            report.OrdersKept.Count,
+            report.OrdersCancelled.Count,
+            report.Strangers.Count,
+            report.ActiveZones.Count,
+            report.Downtime,
+            report.State));
+        Write("report", ("trigger", reason), ("text", report.Text));
+        OpsAlertKind recovered = reason == "start" ? OpsAlertKind.Started : OpsAlertKind.Recovered;
         if (!report.DataComplete)
         {
             if (!_dataAlertSent)
             {
                 _dataAlertSent = true;
-                Alert(BotAlertKind.DataIncomplete, "recovery waits for data: " + string.Join("; ", report.DataProblems), now);
+                Alert(BotAlertKind.DataIncomplete, "recovery waits for data: " + string.Join("; ", report.DataProblems), now, null, recovered);
             }
 
             return;
         }
 
         _dataAlertSent = false;
-        Alert(BotAlertKind.RecoveryReport, report.Text, now);
+        Alert(BotAlertKind.RecoveryReport, report.Text, now, null, recovered);
         if (report.Strangers.Count > 0)
         {
             Alert(BotAlertKind.Stranger, "kept with their stop and target: " + string.Join(", ", report.Strangers), now);
@@ -452,6 +565,16 @@ public sealed class BotCore
 
         _recentM15.Clear();
         _recentM15.AddRange(findings.RecentM15);
+        if (findings.Replayed.Count > 0)
+        {
+            SymbolInfo? info = SymbolOrNull();
+            NewsStatus? news = NewsStatusFor(now);
+            foreach (ReplayedSignal replayed in findings.Replayed)
+            {
+                _ops.Journal.Signal(SignalJournalEntry.Skipped(replayed.Signal, _symbol, replayed.Bias, null, replayed.Skip, info, news));
+            }
+        }
+
         _recoveryPending = false;
         _dataGap = false;
         _weekendClosePending = findings.WeekendClosePending;
@@ -505,7 +628,7 @@ public sealed class BotCore
             return;
         }
 
-        Write("risk", "event=unavailable " + guard.Text);
+        Write("risk", ("event", "unavailable"), ("guards", guard.Text));
         if (!_riskDataAlertSent)
         {
             _riskDataAlertSent = true;
@@ -537,7 +660,7 @@ public sealed class BotCore
         bool readable = DateTime.TryParseExact(text, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime stored) && stored.Kind == DateTimeKind.Utc;
         if (!readable || stored != today)
         {
-            Write("risk", "event=stored-budget-day-ignored value=" + OneLine(text) + (readable ? " reason=other day" : " reason=unreadable"));
+            Write("risk", ("event", "stored-budget-day-ignored"), ("value", OneLine(text)), ("reason", readable ? "other day" : "unreadable"));
             return;
         }
 
@@ -629,7 +752,7 @@ public sealed class BotCore
         if (_budgetBlockedDayUtc.HasValue && CestClock.StartOfCestDayUtc(now) > _budgetBlockedDayUtc.Value)
         {
             _budgetBlockedDayUtc = null;
-            Write("risk", "event=daily-budget-reset day=" + Stamp(CestClock.StartOfCestDayUtc(now)));
+            Write("risk", ("event", "daily-budget-reset"), ("day", Stamp(CestClock.StartOfCestDayUtc(now))));
         }
     }
 
@@ -652,7 +775,7 @@ public sealed class BotCore
         }
 
         string detail = timeFrame + " bars missing between " + Stamp(previous.OpenTimeUtc) + " and " + Stamp(bar.OpenTimeUtc);
-        Write("bar", "event=gap " + detail);
+        Write("bar", ("event", "gap"), ("detail", detail));
         if (!_dataGap)
         {
             _dataGap = true;
@@ -697,7 +820,7 @@ public sealed class BotCore
 
         foreach (PlaceResult result in _orders.ResolvePending(_recentM15))
         {
-            Write("order", "event=resolved label=" + result.Label + " outcome=" + result.Outcome + " detail=" + result.Detail);
+            Write("order", ("event", "resolved"), ("label", result.Label), ("outcome", result.Outcome.ToString()), ("detail", result.Detail));
             if (result.Outcome == PlaceOutcome.RequestLimitReached)
             {
                 EnterHalt(HaltCause.RequestLimit, "request limit: " + result.Detail, now);
@@ -705,40 +828,78 @@ public sealed class BotCore
         }
     }
 
-    private void PlaceSignals(IReadOnlyList<Signal> signals, GuardStatus guard, DateTime now)
+    private void PlaceSignals(IReadOnlyList<Signal> signals, IReadOnlyList<Zone> zonesBefore, GuardStatus guard, DateTime now)
     {
         foreach (Signal signal in SignalOrder.ForEvaluation(signals))
         {
-            if (!guard.EntriesAllowed)
-            {
-                string why = "risk data unavailable: " + (guard.DataProblem ?? "a guard could not be computed");
-                _events.Skipped(new SkipRecord(_symbol, signal.ZoneId, SkipReason.BrokerDataInvalid, 0.0, 0.0, why, now));
-                continue;
-            }
-
-            var context = new PreTradeContext(_symbol, _machine.State, _engine!.Zones, _orders.HasUnresolved(_symbol));
-            PreTradeResult result = _filters.Evaluate(signal, context);
-            if (!result.IsAllowed)
-            {
-                continue;
-            }
-
-            CircuitBreakerDecision check = _requests.CheckBeforeRequest(now);
-            if (check.Halt)
-            {
-                // RSK-010: the request that would exceed the limit is never sent; the instance halts.
-                _events.Skipped(new SkipRecord(_symbol, signal.ZoneId, SkipReason.RequestLimitReached, check.LastHourCount, check.HourLimit, check.Detail, now));
-                EnterHalt(HaltCause.RequestLimit, "request limit: " + check.Detail, now);
-                continue;
-            }
-
-            PlaceResult placed = _orders.TryPlace(result.Order!);
-            Write("order", "event=placement label=" + placed.Label + " outcome=" + placed.Outcome + " detail=" + placed.Detail);
-            if (placed.Outcome == PlaceOutcome.RequestLimitReached)
-            {
-                EnterHalt(HaltCause.RequestLimit, "request limit: " + placed.Detail, now);
-            }
+            Zone? zone = zonesBefore.FirstOrDefault(z => string.Equals(z.Id, signal.ZoneId, StringComparison.Ordinal));
+            SkipRecord? skip = PlaceSignal(signal, guard, now, out PlannedOrder? order);
+            SymbolInfo? info = SymbolOrNull();
+            NewsStatus? news = NewsStatusFor(now);
+            Bias bias = _engine!.Bias;
+            SignalJournalEntry entry = skip != null
+                ? SignalJournalEntry.Skipped(signal, _symbol, bias, zone, skip, info, news)
+                : SignalJournalEntry.Taken(order!, bias, zone, info, news);
+            _ops.Journal.Signal(entry);
         }
+    }
+
+    // One signal (OPS-001): returns its skip record, or null when it became an order.
+    private SkipRecord? PlaceSignal(Signal signal, GuardStatus guard, DateTime now, out PlannedOrder? order)
+    {
+        order = null;
+        if (!guard.EntriesAllowed)
+        {
+            string why = "risk data unavailable: " + (guard.DataProblem ?? "a guard could not be computed");
+            var skip = new SkipRecord(_symbol, signal.ZoneId, SkipReason.BrokerDataInvalid, 0.0, 0.0, why, now);
+            _events.Skipped(skip);
+            return skip;
+        }
+
+        var context = new PreTradeContext(_symbol, _machine.State, _engine!.Zones, _orders.HasUnresolved(_symbol));
+        PreTradeResult result = _filters.Evaluate(signal, context);
+        if (!result.IsAllowed)
+        {
+            return result.Skip;
+        }
+
+        CircuitBreakerDecision check = _requests.CheckBeforeRequest(now);
+        if (check.Halt)
+        {
+            // RSK-010: the request that would exceed the limit is never sent; the instance halts.
+            var skip = new SkipRecord(_symbol, signal.ZoneId, SkipReason.RequestLimitReached, check.LastHourCount, check.HourLimit, check.Detail, now);
+            _events.Skipped(skip);
+            EnterHalt(HaltCause.RequestLimit, "request limit: " + check.Detail, now);
+            return skip;
+        }
+
+        order = result.Order!;
+        PlaceResult placed = _orders.TryPlace(order);
+        Write("order", ("event", "placement"), ("label", placed.Label), ("outcome", placed.Outcome.ToString()), ("detail", placed.Detail));
+        if (placed.Outcome == PlaceOutcome.RequestLimitReached)
+        {
+            EnterHalt(HaltCause.RequestLimit, "request limit: " + placed.Detail, now);
+        }
+
+        return null;
+    }
+
+    private SymbolInfo? SymbolOrNull()
+    {
+        try
+        {
+            return _broker.GetSymbol(_symbol);
+        }
+        catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
+        {
+            Write("ops", ("event", "symbol-unavailable"), ("reason", exception.GetType().Name + ": " + OneLine(exception.Message)));
+            return null;
+        }
+    }
+
+    private NewsStatus? NewsStatusFor(DateTime now)
+    {
+        return _newsEnabled ? _news.StatusAt(now) : null;
     }
 
     private void CheckRequestLimit(DateTime now)
@@ -755,7 +916,7 @@ public sealed class BotCore
         NewsUpdate update = _news.Refresh(now);
         foreach (NewsFeedReport report in update.Reports)
         {
-            Write("news", "source=" + report.Source + " outcome=" + report.Outcome + " detail=" + report.Detail);
+            Write("news", ("source", report.Source), ("outcome", report.Outcome.ToString()), ("detail", report.Detail));
             if (report.Outcome == NewsFeedOutcome.DownloadAccepted)
             {
                 _newsSourcesDown.Remove(report.Source);
@@ -767,19 +928,21 @@ public sealed class BotCore
             }
         }
 
+        // Calendar unavailable and malformed downloads are raised by WP09 (OpsEvents.NewsUpdated).
+        _ops.Events.NewsUpdated(update, now);
         if (update.AlertRaised)
         {
-            Alert(BotAlertKind.CalendarUnavailable, "news calendar unavailable: no new entries until a feed returns", now);
+            _hooks.Alert(new BotAlert(BotAlertKind.CalendarUnavailable, null, _symbol, "news calendar unavailable: no new entries until a feed returns", now));
         }
 
         if (update.MalformedDownloadAlert)
         {
-            Alert(BotAlertKind.NewsFeedMalformed, "a news download contained a malformed event and was rejected", now);
+            _hooks.Alert(new BotAlert(BotAlertKind.NewsFeedMalformed, null, _symbol, "a news download contained a malformed event and was rejected", now));
         }
 
         if (update.Recovered)
         {
-            Write("news", "event=calendar-available");
+            Write("news", ("event", "calendar-available"));
         }
     }
 
@@ -813,12 +976,12 @@ public sealed class BotCore
 
     private void RecordError(string handler, Exception exception)
     {
-        // Never throws: this is the last line of defence of every handler (REC-011).
+        // Never throws: this is the last line of defence of every handler (REC-011). WP09's journal never throws.
         DateTime now = SafeNow();
         CircuitBreakerDecision decision = _errors.Record(now);
+        _ops.Journal.Error(now, handler, exception);
         string text = "handler=" + handler + " type=" + exception.GetType().Name + " message=" + OneLine(exception.Message)
             + " errors-last-hour=" + decision.LastHourCount.ToString(CultureInfo.InvariantCulture);
-        TryWrite("error", text);
         TryAlert(BotAlertKind.Error, text, now);
         if (!decision.Halt)
         {
@@ -832,7 +995,7 @@ public sealed class BotCore
         catch (Exception haltException)
         {
             // The state is Halted already (the machine changes before the cancels); the failed cancels are journaled.
-            TryWrite("error", "handler=halt type=" + haltException.GetType().Name + " message=" + OneLine(haltException.Message));
+            _ops.Journal.Error(now, "halt", haltException);
         }
     }
 
@@ -858,14 +1021,15 @@ public sealed class BotCore
         {
             // Used only while recording another error: the time falls back to the last one known, and the
             // failure is journaled with it.
-            TryWrite("error", "handler=time type=" + exception.GetType().Name + " message=" + OneLine(exception.Message));
-            return _lastKnownServerTimeUtc ?? FallbackTimeUtc;
+            DateTime fallback = _lastKnownServerTimeUtc ?? FallbackTimeUtc;
+            _ops.Journal.Error(fallback, "time", exception);
+            return fallback;
         }
     }
 
     private void Record(StateTransition transition)
     {
-        Write("state", "from=" + transition.From + " to=" + transition.To + " reason=" + transition.Reason);
+        _ops.Journal.State(transition.AtUtc, transition.From, transition.To, transition.Reason);
         Alert(BotAlertKind.StateChanged, transition.From + " -> " + transition.To + ": " + transition.Reason, transition.AtUtc);
     }
 
@@ -873,15 +1037,23 @@ public sealed class BotCore
     {
         foreach (TradeAction action in actions)
         {
-            Write("action", "duty=" + what + " id=" + action.Id.ToString(CultureInfo.InvariantCulture) + " outcome=" + action.Outcome + " detail=" + action.Detail);
+            Write("action", ("duty", what), ("id", action.Id.ToString(CultureInfo.InvariantCulture)), ("outcome", action.Outcome.ToString()), ("detail", action.Detail));
         }
     }
 
-    private void Alert(BotAlertKind kind, string message, DateTime now, AlertKind? executionKind = null)
+    private void Alert(BotAlertKind kind, string message, DateTime now, AlertKind? executionKind = null, OpsAlertKind? opsKind = null)
     {
-        var alert = new BotAlert(kind, executionKind, _symbol, message, now);
-        Write("alert", "kind=" + kind + (executionKind.HasValue ? "/" + executionKind.Value : string.Empty) + " message=" + message);
-        _hooks.Alert(alert);
+        _hooks.Alert(new BotAlert(kind, executionKind, _symbol, message, now));
+        OpsAlertKind? target = opsKind ?? OpsKindFor(kind);
+        if (target.HasValue)
+        {
+            _ops.Alerts.Raise(target.Value, message, now);
+        }
+        else
+        {
+            // No Telegram kind in WP09's list (spec 11); the notice is journaled.
+            Write("notice", ("kind", kind.ToString()), ("message", message));
+        }
     }
 
     private void TryAlert(BotAlertKind kind, string message, DateTime now)
@@ -892,25 +1064,39 @@ public sealed class BotCore
         }
         catch (Exception exception)
         {
-            TryWrite("error", "handler=alert type=" + exception.GetType().Name + " message=" + OneLine(exception.Message));
+            _ops.Journal.Error(now, "alert", exception);
         }
     }
 
-    private void Write(string category, string line)
+    private void Write(string category, params (string Key, string? Value)[] fields)
     {
-        _journal.Write(category, line);
+        _ops.Journal.Write(_lastKnownServerTimeUtc ?? FallbackTimeUtc, category, fields);
     }
 
-    private void TryWrite(string category, string line)
+    private static OpsAlertKind? OpsKindFor(BotAlertKind kind)
     {
-        try
+        switch (kind)
         {
-            _journal.Write(category, line);
-        }
-        catch (Exception)
-        {
-            // The journal itself failed while an error was being recorded; it is counted, not lost silently.
-            _unjournaledErrors++;
+            case BotAlertKind.StateChanged:
+                return OpsAlertKind.StateChanged;
+            case BotAlertKind.KillSwitch:
+                return OpsAlertKind.KillSwitch;
+            case BotAlertKind.EmergencyGuard:
+                return OpsAlertKind.EmergencyGuard;
+            case BotAlertKind.DailyLimit:
+                return OpsAlertKind.DailyLimit;
+            case BotAlertKind.CircuitBreaker:
+                return OpsAlertKind.CircuitBreaker;
+            case BotAlertKind.ErrorStorm:
+                return OpsAlertKind.ErrorStorm;
+            case BotAlertKind.NewsFeedDown:
+                return OpsAlertKind.NewsFeedDown;
+            case BotAlertKind.TradeOpened:
+                return OpsAlertKind.TradeOpened;
+            case BotAlertKind.TradeClosed:
+                return OpsAlertKind.TradeClosed;
+            default:
+                return null;
         }
     }
 
@@ -939,7 +1125,10 @@ public sealed class BotCore
         return value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Connects the execution layer's skip records and alerts to the journal and the alert hook (EXE-014, spec 11).</summary>
+    /// <summary>
+    /// The execution hook: forwards skip records and alerts to WP09's <see cref="OpsEvents"/>
+    /// (journal and Telegram, OPS-001, OPS-004) and tells the observer hook of each alert.
+    /// </summary>
     private sealed class CoreEvents : IExecutionEvents
     {
         private readonly BotCore _core;
@@ -951,17 +1140,63 @@ public sealed class BotCore
 
         public void Skipped(SkipRecord skip)
         {
-            _core.Write(
-                "skip",
-                "zone=" + skip.ZoneId + " reason=" + skip.Reason
-                + " measured=" + skip.Measured.ToString("R", CultureInfo.InvariantCulture)
-                + " limit=" + skip.Limit.ToString("R", CultureInfo.InvariantCulture)
-                + " at=" + Stamp(skip.AtUtc) + " detail=" + skip.Detail);
+            _core._ops.Events.Skipped(skip);
         }
 
         public void Alert(ExecutionAlert alert)
         {
-            _core.Alert(BotAlertKind.Execution, alert.Message, _core.SafeNow(), alert.Kind);
+            _core._ops.Events.Alert(alert);
+            _core._hooks.Alert(new BotAlert(BotAlertKind.Execution, alert.Kind, _core._symbol, alert.Message, _core.SafeNow()));
+        }
+    }
+
+    /// <summary>
+    /// Trade events found by the trade journal (REC-008), each exactly once: an opening is journaled and
+    /// alerted as TradeOpened; a closing goes to WP09's trade journal (OPS-002) and is alerted as TradeClosed.
+    /// </summary>
+    private sealed class CoreTradeEvents : ITradeEvents
+    {
+        private readonly BotCore _core;
+
+        internal CoreTradeEvents(BotCore core)
+        {
+            _core = core;
+        }
+
+        public void Opened(PositionInfo position, DateTime atUtc)
+        {
+            _core.Write(
+                "position",
+                ("event", "opened"),
+                ("symbol", position.Symbol),
+                ("position", Number(position.Id)),
+                ("label", position.Label),
+                ("side", position.Side.ToString()),
+                ("volume", Number(position.VolumeUnits)),
+                ("entry", Number(position.EntryPrice)),
+                ("stop", position.StopLoss.HasValue ? Number(position.StopLoss.Value) : null),
+                ("target", position.TakeProfit.HasValue ? Number(position.TakeProfit.Value) : null),
+                ("opened", position.OpenTimeUtc.ToString("o", CultureInfo.InvariantCulture)));
+            string text = "position " + Number(position.Id) + " " + position.Side + " " + Number(position.VolumeUnits) + " at " + Number(position.EntryPrice);
+            _core.Alert(BotAlertKind.TradeOpened, text, atUtc);
+        }
+
+        public void Closed(ClosedTradeInfo trade, OpenedTradePlan? plan, DateTime atUtc)
+        {
+            double? pipSize = _core.SymbolOrNull()?.PipSize;
+            _core._ops.Journal.Trade(new TradeJournalEntry(trade, plan?.Comment, plan?.Side, plan?.EntryPrice, pipSize, TradeExitReason.Unknown, null, null));
+            string text = "position " + Number(trade.PositionId) + " closed, net " + trade.NetProfit.ToString("0.00", CultureInfo.InvariantCulture);
+            _core.Alert(BotAlertKind.TradeClosed, text, atUtc);
+        }
+
+        private static string Number(double value)
+        {
+            return value.ToString("R", CultureInfo.InvariantCulture);
+        }
+
+        private static string Number(long value)
+        {
+            return value.ToString(CultureInfo.InvariantCulture);
         }
     }
 }

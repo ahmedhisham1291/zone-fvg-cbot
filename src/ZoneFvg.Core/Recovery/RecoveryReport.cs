@@ -7,6 +7,12 @@ using ZoneFvg.Core.Signals;
 
 namespace ZoneFvg.Core.Recovery;
 
+/// <summary>A signal produced during the replay, with the bias at that moment and its skip record (REC-004, OPS-001).</summary>
+/// <param name="Signal">The signal, marked FromReplay.</param>
+/// <param name="Bias">D1 bias when the signal was confirmed.</param>
+/// <param name="Skip">The skip record with reason SignalFromReplay.</param>
+public sealed record ReplayedSignal(Signal Signal, Bias Bias, SkipRecord Skip);
+
 /// <summary>
 /// What recovery found, handed to the bot before it enters its next state (REC-001, REC-009,
 /// spec 8.3 step 10).
@@ -15,8 +21,9 @@ public sealed class RecoveryFindings
 {
     private readonly Bar?[] _lastBars;
 
-    internal RecoveryFindings(DateTime atUtc, bool dataComplete, IReadOnlyList<string> dataProblems, SignalEngine? engine, Bar?[] lastBars, IReadOnlyList<Bar> recentM15, GuardStatus? guard, bool weekendClosePending, IReadOnlyList<string> strangers)
+    internal RecoveryFindings(DateTime atUtc, bool dataComplete, IReadOnlyList<string> dataProblems, SignalEngine? engine, Bar?[] lastBars, IReadOnlyList<Bar> recentM15, GuardStatus? guard, bool weekendClosePending, IReadOnlyList<string> strangers, IReadOnlyList<ReplayedSignal> replayed)
     {
+        Replayed = replayed;
         RecentM15 = recentM15;
         AtUtc = atUtc;
         DataComplete = dataComplete;
@@ -39,6 +46,9 @@ public sealed class RecoveryFindings
 
     /// <summary>The rebuilt signal engine, or null when the data was incomplete (REC-004).</summary>
     public SignalEngine? Engine { get; }
+
+    /// <summary>The signals produced during the replay, in order; none was executed (REC-004).</summary>
+    public IReadOnlyList<ReplayedSignal> Replayed { get; }
 
     /// <summary>The newest replayed M15 bars, oldest first, for resolving unclear placements (EXE-009).</summary>
     public IReadOnlyList<Bar> RecentM15 { get; }

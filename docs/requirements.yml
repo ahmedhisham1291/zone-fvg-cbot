@@ -316,7 +316,7 @@ requirements:
     wp: WP07
     spec: "4.2, 15.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Daily risk budget. Let M be the balance at 00:00 CE(S)T of the current
       day and W the worst-case equity if every open bot position and pending
@@ -700,7 +700,7 @@ requirements:
     wp: WP07
     spec: "8.3, 8.4"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Recovery waits for connection and sufficient bar history, detects gaps
       in each bar series, and stays in Recovering with an alert if data cannot

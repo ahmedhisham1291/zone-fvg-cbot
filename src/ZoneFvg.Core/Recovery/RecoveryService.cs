@@ -61,7 +61,7 @@ public sealed class RecoveryService
     /// <param name="newsEnabled">The value of NewsEnabled, for the report.</param>
     /// <param name="broker">Broker port.</param>
     /// <param name="store">Key-value store (downtime and journaled trades).</param>
-    /// <param name="journal">Journal port (REC-008).</param>
+    /// <param name="tradeEvents">Receiver of the trade events found by the journal backfill (REC-008).</param>
     /// <param name="counter">Request counter of this instance (RSK-010).</param>
     /// <param name="events">Hook for skip records and alerts.</param>
     /// <param name="enterState">Called at step 10 with the findings; enters the next state and returns it.</param>
@@ -77,7 +77,7 @@ public sealed class RecoveryService
         bool newsEnabled,
         IBroker broker,
         IKeyValueStore store,
-        IJournalSink journal,
+        ITradeEvents tradeEvents,
         RequestCounter counter,
         IExecutionEvents events,
         Func<RecoveryFindings, BotState> enterState,
@@ -104,7 +104,7 @@ public sealed class RecoveryService
         _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
         _guard = new AccountGuard(symbol, riskParameters, broker);
         _safety = new SafetyActions(symbol, executionParameters, broker, counter, events);
-        _journal = new TradeJournal(symbol, riskParameters, broker, store, journal);
+        _journal = new TradeJournal(symbol, riskParameters, broker, store, tradeEvents);
     }
 
     /// <summary>
@@ -141,7 +141,7 @@ public sealed class RecoveryService
         {
             // Spec 8.3 step 1: stay in Recovering. Protection repair is still required (prompt WP07).
             IReadOnlyList<TradeAction> repaired = _broker.IsConnected ? _trades.EnsureProtection() : Array.Empty<TradeAction>();
-            var incomplete = new RecoveryFindings(now, false, data.Problems, null, new Bar?[3], Array.Empty<Bar>(), null, false, Array.Empty<string>());
+            var incomplete = new RecoveryFindings(now, false, data.Problems, null, new Bar?[3], Array.Empty<Bar>(), null, false, Array.Empty<string>(), Array.Empty<ReplayedSignal>());
             BotState waiting = _enterState(incomplete);
             return new RecoveryReport
             {
@@ -167,7 +167,7 @@ public sealed class RecoveryService
         CatchUpStep catchUp = CatchUpDuties(now, guard);
         IReadOnlyList<Bar> m15 = data.Bars[TimeFrame.M15];
         IReadOnlyList<Bar> recent = m15.Skip(Math.Max(0, m15.Count - RecentM15Count)).ToList().AsReadOnly();
-        var findings = new RecoveryFindings(now, true, Array.Empty<string>(), replay.Engine, data.LastBars, recent, guard, catchUp.WeekendClosePending, strangers);
+        var findings = new RecoveryFindings(now, true, Array.Empty<string>(), replay.Engine, data.LastBars, recent, guard, catchUp.WeekendClosePending, strangers, replay.Signals);
         BotState state = ReportAndResume(findings);
         return new RecoveryReport
         {
@@ -176,7 +176,7 @@ public sealed class RecoveryService
             Downtime = downtime,
             DataComplete = true,
             ActiveZones = replay.Engine.Zones.Select(zone => zone.Id).ToList().AsReadOnly(),
-            ReplaySignals = replay.SignalCount,
+            ReplaySignals = replay.Signals.Count,
             PositionsAdopted = adopt.Adopted,
             Strangers = strangers,
             WithoutTakeProfit = adopt.WithoutTakeProfit,
@@ -247,7 +247,7 @@ public sealed class RecoveryService
 
         var engine = new SignalEngine(_signalParameters);
         var known = new SortedSet<string>(StringComparer.Ordinal);
-        int count = 0;
+        var replayed = new List<ReplayedSignal>();
         IEnumerable<(TimeFrame TimeFrame, Bar Bar)> ordered = feed
             .OrderBy(item => BarIntakeOrder.CloseTimeUtc(item.TimeFrame, item.Bar))
             .ThenBy(item => BarIntakeOrder.Rank(item.TimeFrame));
@@ -255,15 +255,16 @@ public sealed class RecoveryService
         {
             foreach (Signal signal in engine.OnBarClosed(timeFrame, bar, true))
             {
-                count++;
                 known.Add(signal.ZoneId);
                 string detail = "replayed signal confirmed at " + Stamp(signal.ConfirmationCloseUtc) + " is not executable";
-                _events.Skipped(new SkipRecord(_symbol, signal.ZoneId, SkipReason.SignalFromReplay, 0.0, 0.0, detail, now));
+                var skip = new SkipRecord(_symbol, signal.ZoneId, SkipReason.SignalFromReplay, 0.0, 0.0, detail, now);
+                _events.Skipped(skip);
+                replayed.Add(new ReplayedSignal(signal, engine.Bias, skip));
             }
         }
 
         known.UnionWith(engine.Zones.Select(zone => zone.Id));
-        return new ReplayStep(engine, known, count);
+        return new ReplayStep(engine, known, replayed.AsReadOnly());
     }
 
     // Step 3: the bot's positions and pending orders on this symbol, from the broker only.
@@ -351,7 +352,9 @@ public sealed class RecoveryService
     {
         try
         {
-            return new JournalStep(_journal.Record(now).Known, null);
+            TradeJournalResult result = _journal.Record(now);
+            string? ignored = result.Ignored.Count == 0 ? null : "unreadable stored entries ignored: " + string.Join(",", result.Ignored);
+            return new JournalStep(result.Known, ignored);
         }
         catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
         {
@@ -492,7 +495,7 @@ public sealed class RecoveryService
 
     private sealed record DataStep(bool Complete, IReadOnlyList<string> Problems, Dictionary<TimeFrame, IReadOnlyList<Bar>> Bars, Bar?[] LastBars);
 
-    private sealed record ReplayStep(SignalEngine Engine, SortedSet<string> KnownZones, int SignalCount);
+    private sealed record ReplayStep(SignalEngine Engine, SortedSet<string> KnownZones, IReadOnlyList<ReplayedSignal> Signals);
 
     private sealed record BrokerStep(IReadOnlyList<PositionInfo> Positions, IReadOnlyList<PendingOrderInfo> Orders);
 
