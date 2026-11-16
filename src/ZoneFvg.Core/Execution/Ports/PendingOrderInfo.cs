@@ -58,4 +58,11 @@ public sealed record PendingOrderInfo(
 
     /// <summary>Time the order was created, in UTC (RSK-010).</summary>
     public DateTime CreatedTimeUtc { get; init; } = CreatedTimeUtc;
+
+    /// <summary>
+    /// Time at which the broker cancels the order if unfilled, in UTC, or null when the order has
+    /// no expiry. Read back after placement and compared with the request (EXE-010). Not a
+    /// constructor parameter, so records built without it keep compiling; null means "no expiry".
+    /// </summary>
+    public DateTime? ExpiryUtc { get; init; }
 }
