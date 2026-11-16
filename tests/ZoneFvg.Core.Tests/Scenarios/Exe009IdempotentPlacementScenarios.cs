@@ -17,7 +17,9 @@ public class Exe009IdempotentPlacementScenarios
 
     private static Bar NextBar(double high, double low)
     {
-        return ExecutionData.M15(ExecutionData.Now, 1.1005, high, low, 1.1005);
+        // Open and close in the middle of the range, so any high and low form a valid bar.
+        double middle = (high + low) / 2.0;
+        return ExecutionData.M15(ExecutionData.Now, middle, high, low, middle);
     }
 
     [Fact]
