@@ -226,7 +226,7 @@ public static class AcceptanceReport
     /// <param name="trades">The trades.</param>
     /// <returns>The share as a fraction.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="trades"/> is null.</exception>
-    public static double LargestSymbolShare(IReadOnlyList<TradeRecord> trades)
+    internal static double LargestSymbolShare(IReadOnlyList<TradeRecord> trades)
     {
         return LargestShare(trades, out _);
     }

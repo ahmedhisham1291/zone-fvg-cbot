@@ -103,7 +103,7 @@ public sealed record DailySummaryReport(
 /// Produces the daily summary once per CE(S)T day (OPS-003, spec 11): at the first
 /// <see cref="Pump"/> in a CE(S)T day later than the day of the last summary (or of the start),
 /// it summarises the day that has just ended, journals it (category <c>summary</c>) and raises it
-/// as a <see cref="OpsAlertKind.DailySummary"/> alert. No summary is produced in the day the
+/// as a <see cref="AlertKind.DailySummary"/> alert. No summary is produced in the day the
 /// service starts. Never throws.
 /// </summary>
 public sealed class DailySummary
@@ -312,6 +312,6 @@ public sealed class DailySummary
             ("uptime", JournalFormat.Duration(r.Uptime)),
             ("restarts", r.Restarts.HasValue ? JournalFormat.Integer(r.Restarts.Value) : JournalFormat.NotAvailable),
         });
-        _alerts.Raise(OpsAlertKind.DailySummary, r.Text, now);
+        _alerts.Raise(AlertKind.DailySummary, r.Text, now);
     }
 }

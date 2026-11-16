@@ -18,7 +18,7 @@ namespace ZoneFvg.Core.Signals;
 public sealed record ImpulseLeg(ZoneType Type, int FirstIndex, int LastIndex, double Atr)
 {
     /// <summary>Number of bars in the leg, from 1 to MaxImpulseBars (SIG-007).</summary>
-    public int BarCount => LastIndex - FirstIndex + 1;
+    internal int BarCount => LastIndex - FirstIndex + 1;
 
     /// <summary>
     /// Finds the impulse leg that ends at the newest bar of <paramref name="h4Bars"/> (SIG-007).

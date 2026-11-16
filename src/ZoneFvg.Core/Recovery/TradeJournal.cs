@@ -5,6 +5,7 @@ using System.Linq;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Risk;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Recovery;
 
@@ -280,10 +281,5 @@ public sealed class TradeJournal
     private bool IsBotOn(string label, string symbol)
     {
         return RiskEngine.IsBotLabel(label) && string.Equals(symbol, _symbol, StringComparison.Ordinal);
-    }
-
-    private static string Text(long value)
-    {
-        return value.ToString(CultureInfo.InvariantCulture);
     }
 }

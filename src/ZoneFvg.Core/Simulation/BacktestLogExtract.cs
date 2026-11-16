@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Simulation;
 
@@ -126,11 +127,6 @@ public static class BacktestLogExtract
         }
 
         return BacktestLogResult.Valid(text.ToString(), rows.Count);
-    }
-
-    private static string Text(int value)
-    {
-        return value.ToString(CultureInfo.InvariantCulture);
     }
 }
 

@@ -43,7 +43,7 @@ public static class PriceGrid
     /// <summary>Smallest price step of a symbol with this pip size: 10 to the power of minus <see cref="Digits"/> (EXE-010).</summary>
     /// <param name="pipSize">Pip size.</param>
     /// <returns>The price step, for example 0.00001 for EURUSD.</returns>
-    public static double Tick(double pipSize)
+    internal static double Tick(double pipSize)
     {
         return Math.Pow(10.0, -Digits(pipSize));
     }

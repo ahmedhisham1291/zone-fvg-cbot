@@ -64,7 +64,7 @@ public class OpsSecretScenarioTests
 
         // Errors and alerts that carry every secret.
         ops.Journal.Error(start, "OnTimer", new InvalidOperationException("heartbeat " + OpsData.HeartbeatUrl + " down", new ArgumentException("bot" + OpsData.Token)));
-        ops.Alerts.Raise(OpsAlertKind.ErrorStorm, "chat " + OpsData.ChatId + " token " + OpsData.Token + " url " + OpsData.HeartbeatUrl, start);
+        ops.Alerts.Raise(AlertKind.ErrorStorm, "chat " + OpsData.ChatId + " token " + OpsData.Token + " url " + OpsData.HeartbeatUrl, start);
         ops.Journal.State(start, BotState.Running, BotState.Halted, "error storm at " + OpsData.HeartbeatUrl);
         ops.Events.NewsUpdated(NewsTestData.LiveService(new MemoryStore(), new FakeTransport(NewsTestData.Failed())).Refresh(start), start);
 

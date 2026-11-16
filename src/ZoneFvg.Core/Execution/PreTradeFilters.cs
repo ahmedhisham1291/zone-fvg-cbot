@@ -7,6 +7,7 @@ using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.News;
 using ZoneFvg.Core.Risk;
 using ZoneFvg.Core.Signals;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Execution;
 
@@ -71,7 +72,7 @@ public sealed class PreTradeFilters
     }
 
     /// <summary>The parameter hash written into every comment (EXE-008).</summary>
-    public string ParameterHashValue => _parameterHash;
+    internal string ParameterHashValue => _parameterHash;
 
     /// <summary>
     /// Applies every pre-trade check to the signal (see the class remarks for the order) and
@@ -228,9 +229,9 @@ public sealed class PreTradeFilters
             case NewsBlockReason.CalendarUnavailable:
                 return c.Skip(SkipReason.NewsCalendarUnavailable, 0.0, 0.0, "news calendar unavailable");
             case NewsBlockReason.InsideWindow:
-                return c.Skip(SkipReason.NewsWindow, 0.0, 0.0, "inside a news window at " + Text(c.Now));
+                return c.Skip(SkipReason.NewsWindow, 0.0, 0.0, "inside a news window at " + Second(c.Now));
             default:
-                string bar = decision.BarOpenUtc.HasValue ? Text(decision.BarOpenUtc.Value) : "unknown";
+                string bar = decision.BarOpenUtc.HasValue ? Second(decision.BarOpenUtc.Value) : "unknown";
                 return c.Skip(SkipReason.NewsFvgBar, 0.0, 0.0, "FVG bar opening " + bar + " overlaps a news window");
         }
     }
@@ -331,7 +332,7 @@ public sealed class PreTradeFilters
         TimeSpan life = c.Expiry - c.Now;
         if (life < TimeSpan.FromMinutes(ExecutionParameters.MinOrderLifeMinutes))
         {
-            return c.Skip(SkipReason.ExpiryTooShort, life.TotalMinutes, ExecutionParameters.MinOrderLifeMinutes, "order life " + Text(life.TotalMinutes) + " minutes to the news window at " + Text(c.Expiry));
+            return c.Skip(SkipReason.ExpiryTooShort, life.TotalMinutes, ExecutionParameters.MinOrderLifeMinutes, "order life " + Text(life.TotalMinutes) + " minutes to the news window at " + Second(c.Expiry));
         }
 
         return null;
@@ -473,21 +474,6 @@ public sealed class PreTradeFilters
     private static bool IsPrice(double value)
     {
         return double.IsFinite(value) && value > 0.0;
-    }
-
-    private static string Text(double value)
-    {
-        return value.ToString("R", CultureInfo.InvariantCulture);
-    }
-
-    private static string Text(TimeSpan value)
-    {
-        return value.ToString("c", CultureInfo.InvariantCulture);
-    }
-
-    private static string Text(DateTime value)
-    {
-        return value.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
     /// <summary>The values gathered while one signal is checked. Lives for one call only.</summary>

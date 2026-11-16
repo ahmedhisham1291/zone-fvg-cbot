@@ -7,6 +7,7 @@ using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Risk;
 using ZoneFvg.Core.Signals;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Recovery;
 
@@ -256,7 +257,7 @@ public sealed class RecoveryService
             foreach (Signal signal in engine.OnBarClosed(timeFrame, bar, true))
             {
                 known.Add(signal.ZoneId);
-                string detail = "replayed signal confirmed at " + Stamp(signal.ConfirmationCloseUtc) + " is not executable";
+                string detail = "replayed signal confirmed at " + Minute(signal.ConfirmationCloseUtc) + " is not executable";
                 var skip = new SkipRecord(_symbol, signal.ZoneId, SkipReason.SignalFromReplay, 0.0, 0.0, detail, now);
                 _events.Skipped(skip);
                 replayed.Add(new ReplayedSignal(signal, engine.Bias, skip));
@@ -459,12 +460,12 @@ public sealed class RecoveryService
     private TimeSpan? Downtime(DateTime now)
     {
         string? text = _store.Get(LastSeenKey);
-        if (text == null || !DateTime.TryParseExact(text, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime lastSeen))
+        if (!TryParseUtc(text, out DateTime lastSeen))
         {
             return null;
         }
 
-        return lastSeen.Kind == DateTimeKind.Utc && lastSeen <= now ? now - lastSeen : null;
+        return lastSeen <= now ? now - lastSeen : null;
     }
 
     private DateTime ServerTime()
@@ -481,16 +482,6 @@ public sealed class RecoveryService
     private static IReadOnlyList<string> Describe(IReadOnlyList<TradeAction> actions)
     {
         return actions.Select(action => Text(action.Id) + " " + action.Outcome + " (" + action.Detail + ")").ToList().AsReadOnly();
-    }
-
-    private static string Text(long value)
-    {
-        return value.ToString(CultureInfo.InvariantCulture);
-    }
-
-    private static string Stamp(DateTime value)
-    {
-        return value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     }
 
     private sealed record DataStep(bool Complete, IReadOnlyList<string> Problems, Dictionary<TimeFrame, IReadOnlyList<Bar>> Bars, Bar?[] LastBars);

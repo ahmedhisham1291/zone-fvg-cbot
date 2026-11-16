@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
 
 namespace ZoneFvg.Core.Ops;
+
 
 /// <summary>Result of one <see cref="InactivityMonitor.Check"/> (OPS-006).</summary>
 /// <param name="LastTradeUtc">Open time of the account's most recent trade; the history start when no trade was found.</param>
@@ -108,7 +110,7 @@ public sealed class InactivityMonitor
             ("known", latest.HasValue ? "true" : "false"),
             ("step", JournalFormat.Integer(step)),
         });
-        _alerts.Raise(OpsAlertKind.Inactivity, text, serverTimeUtc);
+        _alerts.Raise(AlertKind.Inactivity, text, serverTimeUtc);
         return new InactivityStatus(last, latest.HasValue, inactive, true);
     }
 }

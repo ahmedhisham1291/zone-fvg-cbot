@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
 
 namespace ZoneFvg.Core.Ops;
+
 
 /// <summary>What <see cref="AlertService.Raise"/> did with an alert (OPS-004).</summary>
 public enum AlertRaiseOutcome
@@ -90,7 +92,7 @@ public sealed class AlertService
     public bool Enabled => _parameters.AlertsEnabled;
 
     /// <summary>Alerts waiting to be sent.</summary>
-    public int QueueLength => _queue.Count;
+    internal int QueueLength => _queue.Count;
 
     /// <summary>Alerts sent with success.</summary>
     public int Sent { get; private set; }
@@ -111,7 +113,7 @@ public sealed class AlertService
     public DateTime? NextAttemptUtc { get; private set; }
 
     /// <summary>The texts waiting in the queue, oldest first (OPS-004). For reports and tests.</summary>
-    public IReadOnlyList<string> PendingTexts => _queue.Select(q => q.Text).ToArray();
+    internal IReadOnlyList<string> PendingTexts => _queue.Select(q => q.Text).ToArray();
 
     /// <summary>
     /// The text sent for an alert (OPS-004, OPS-007): <c>ZFVG &lt;instance&gt; &lt;kind&gt;: &lt;text&gt;</c>,
@@ -120,7 +122,7 @@ public sealed class AlertService
     /// <param name="kind">The alert kind.</param>
     /// <param name="text">The alert text, possibly null.</param>
     /// <returns>The message text.</returns>
-    public string Format(OpsAlertKind kind, string? text)
+    public string Format(AlertKind kind, string? text)
     {
         string message = _masker.Apply("ZFVG " + _instance + " " + kind + ": " + (text ?? string.Empty));
         if (message.Length > OpsParameters.MaxAlertLength)
@@ -141,13 +143,15 @@ public sealed class AlertService
     /// <summary>
     /// Queues an alert (OPS-004). Never throws and never calls the transport. With alerts disabled
     /// the alert is journaled only; an identical alert within the collapse window is counted and
-    /// journaled only; with a full queue the oldest alert is dropped.
+    /// journaled only; with a full queue the oldest alert is dropped. The kind is sent as its
+    /// Telegram kind (<see cref="AlertKinds.Telegram"/>); a journal-only kind is journaled as an
+    /// error and gives <see cref="AlertRaiseOutcome.Failed"/>.
     /// </summary>
     /// <param name="kind">The alert kind.</param>
     /// <param name="text">The alert text, possibly null.</param>
     /// <param name="atUtc">Server time, kind UTC.</param>
     /// <returns>What happened to the alert.</returns>
-    public AlertRaiseOutcome Raise(OpsAlertKind kind, string? text, DateTime atUtc)
+    public AlertRaiseOutcome Raise(AlertKind kind, string? text, DateTime atUtc)
     {
         try
         {
@@ -181,8 +185,10 @@ public sealed class AlertService
         }
     }
 
-    private AlertRaiseOutcome RaiseCore(OpsAlertKind kind, string? text, DateTime atUtc)
+    private AlertRaiseOutcome RaiseCore(AlertKind raised, string? text, DateTime atUtc)
     {
+        // The Telegram table decides the kind sent; a journal-only kind is a programming error (caught in Raise).
+        AlertKind kind = AlertKinds.Telegram(raised) ?? throw new ArgumentOutOfRangeException(nameof(raised), "The alert kind " + raised + " is journal only.");
         string message = Format(kind, text);
         string hash = JournalFormat.Hash8(message);
         if (!Enabled)
@@ -296,7 +302,7 @@ public sealed class AlertService
             ("error", error));
     }
 
-    private void Log(DateTime at, string what, OpsAlertKind kind, string hash, params (string Key, string? Value)[] extra)
+    private void Log(DateTime at, string what, AlertKind kind, string hash, params (string Key, string? Value)[] extra)
     {
         var fields = new List<(string Key, string? Value)>
         {
@@ -309,5 +315,5 @@ public sealed class AlertService
         _journal.Write(at, "alert", fields);
     }
 
-    private sealed record QueuedAlert(OpsAlertKind Kind, string Text, string Hash, string Url);
+    private sealed record QueuedAlert(AlertKind Kind, string Text, string Hash, string Url);
 }

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using ZoneFvg.Core.Domain;
 
 namespace ZoneFvg.Core.News;
 
@@ -233,7 +234,7 @@ internal static class NewsCache
             return "the field \"" + name + "\" is missing or not a string.";
         }
 
-        if (!DateTime.TryParseExact(text, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime parsed) || parsed.Kind != DateTimeKind.Utc)
+        if (!Invariant.TryParseUtc(text, out DateTime parsed))
         {
             return "the field \"" + name + "\" is not a UTC time in round-trip format.";
         }

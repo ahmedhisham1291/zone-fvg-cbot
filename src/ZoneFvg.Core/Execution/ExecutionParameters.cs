@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Execution;
 
@@ -107,15 +108,5 @@ public sealed record ExecutionParameters
     private static ArgumentOutOfRangeException OutOfRange(string name, string rule, string actual)
     {
         return new ArgumentOutOfRangeException(name, name + " " + rule + " but was " + actual + ".");
-    }
-
-    private static string Text(double value)
-    {
-        return value.ToString("R", CultureInfo.InvariantCulture);
-    }
-
-    private static string Text(TimeSpan value)
-    {
-        return value.ToString("c", CultureInfo.InvariantCulture);
     }
 }

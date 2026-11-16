@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using ZoneFvg.Core.Domain;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Recovery;
 
@@ -105,19 +106,19 @@ public static class BarSeriesCheck
 
             if (bar.OpenTimeUtc + length > nowUtc)
             {
-                return timeFrame + ": bar opening " + Stamp(bar.OpenTimeUtc) + " has not closed at " + Stamp(nowUtc);
+                return timeFrame + ": bar opening " + Minute(bar.OpenTimeUtc) + " has not closed at " + Minute(nowUtc);
             }
 
             if (i > 0 && bars[i - 1] is Bar previous)
             {
                 if (bar.OpenTimeUtc <= previous.OpenTimeUtc)
                 {
-                    return timeFrame + ": bar opening " + Stamp(bar.OpenTimeUtc) + " does not follow " + Stamp(previous.OpenTimeUtc);
+                    return timeFrame + ": bar opening " + Minute(bar.OpenTimeUtc) + " does not follow " + Minute(previous.OpenTimeUtc);
                 }
 
                 if (IsGap(timeFrame, previous, bar, fridayCloseUtc, holidays))
                 {
-                    return timeFrame + ": gap between " + Stamp(previous.OpenTimeUtc) + " and " + Stamp(bar.OpenTimeUtc);
+                    return timeFrame + ": gap between " + Minute(previous.OpenTimeUtc) + " and " + Minute(bar.OpenTimeUtc);
                 }
             }
         }
@@ -127,7 +128,7 @@ public static class BarSeriesCheck
             DateTime lastClose = bars[bars.Count - 1].OpenTimeUtc + length;
             if (OpenMarketTime(lastClose, nowUtc, fridayCloseUtc, holidays) >= length + length)
             {
-                return timeFrame + ": last bar closed " + Stamp(lastClose) + ", not recent at " + Stamp(nowUtc);
+                return timeFrame + ": last bar closed " + Minute(lastClose) + ", not recent at " + Minute(nowUtc);
             }
         }
 
@@ -144,15 +145,5 @@ public static class BarSeriesCheck
         }
 
         return dayStart.DayOfWeek == DayOfWeek.Friday ? dayStart + fridayCloseUtc : dayStart.AddDays(1.0);
-    }
-
-    private static string Text(int value)
-    {
-        return value.ToString(CultureInfo.InvariantCulture);
-    }
-
-    private static string Stamp(DateTime value)
-    {
-        return value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     }
 }

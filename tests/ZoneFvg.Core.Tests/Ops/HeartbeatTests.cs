@@ -153,7 +153,7 @@ public class HeartbeatTests
     {
         var transport = new ScriptedTransport();
         var ops = new Operations(OpsData.WithSecrets, ExecutionData.RiskDefaults, OpsData.Instance, ExecutionHarness.DefaultBroker(), transport, new RecordingSink(), T0);
-        ops.Alerts.Raise(OpsAlertKind.StateChanged, "now " + state, T0);
+        ops.Alerts.Raise(AlertKind.StateChanged, "now " + state, T0);
 
         ops.OnTimer(T0, state);
         ops.OnTimer(T0.AddMinutes(1.0), state);
@@ -171,7 +171,7 @@ public class HeartbeatTests
         var transport = new ScriptedTransport { Default = ScriptedTransport.Failed() };
         var sink = new RecordingSink();
         var ops = new Operations(OpsData.WithSecrets, ExecutionData.RiskDefaults, OpsData.Instance, ExecutionHarness.DefaultBroker(), transport, sink, T0);
-        ops.Alerts.Raise(OpsAlertKind.KillSwitch, "halt", T0);
+        ops.Alerts.Raise(AlertKind.KillSwitch, "halt", T0);
 
         for (int minute = 0; minute < 30; minute++)
         {

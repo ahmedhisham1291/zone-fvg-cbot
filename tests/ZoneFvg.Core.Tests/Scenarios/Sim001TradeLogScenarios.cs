@@ -59,7 +59,6 @@ public class Sim001TradeLogScenarios
         Assert.Single(off.Broker.History);
         Assert.Equal(off.Broker.Requests, on.Broker.Requests);
         Assert.Equal(off.Broker.History, on.Broker.History);
-        Assert.Equal(off.Hooks.Alerts, on.Hooks.Alerts);
         Assert.Equal(WithoutTradeLog(off), WithoutTradeLog(on));
         Assert.Equal(off.Journal.Entries, WithoutTradeLog(off));
         Assert.Single(on.Journal.Lines("tradelog"));

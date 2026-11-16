@@ -84,7 +84,7 @@ public sealed class ZoneBook
     }
 
     /// <summary>Messages about detections that were discarded because their id was already used (SIG-013), oldest first.</summary>
-    public IReadOnlyList<string> Diagnostics => _diagnostics.AsReadOnly();
+    internal IReadOnlyList<string> Diagnostics => _diagnostics.AsReadOnly();
 
     /// <summary>
     /// Adds a newly detected zone (SIG-012, SIG-013). If a zone with the same id was ever added,

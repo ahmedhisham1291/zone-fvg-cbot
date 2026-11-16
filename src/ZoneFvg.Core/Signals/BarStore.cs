@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using ZoneFvg.Core.Domain;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Signals;
 
@@ -101,8 +102,8 @@ public sealed class BarStore
             Bar newest = buffer[buffer.Count - 1];
             if (bar.OpenTimeUtc <= newest.OpenTimeUtc)
             {
-                string rejected = "the " + timeFrame + " bar opening at " + Stamp(bar.OpenTimeUtc) + " UTC";
-                string stored = "the newest stored " + timeFrame + " bar, which opens at " + Stamp(newest.OpenTimeUtc) + " UTC";
+                string rejected = "the " + timeFrame + " bar opening at " + Second(bar.OpenTimeUtc) + " UTC";
+                string stored = "the newest stored " + timeFrame + " bar, which opens at " + Second(newest.OpenTimeUtc) + " UTC";
                 throw new InvalidOperationException("Bar rejected (SIG-004): " + rejected + " is not after " + stored + ".");
             }
         }
@@ -115,7 +116,7 @@ public sealed class BarStore
     /// <param name="n">How many bars back from the newest closed bar. Must be at least 0 and below the stored count.</param>
     /// <returns>The closed bar.</returns>
     /// <exception cref="ArgumentOutOfRangeException">Fewer than n + 1 bars are stored, or n is negative.</exception>
-    public Bar Last(TimeFrame timeFrame, int n)
+    internal Bar Last(TimeFrame timeFrame, int n)
     {
         RingBuffer buffer = BufferFor(timeFrame);
         if (n < 0 || n >= buffer.Count)
@@ -124,11 +125,6 @@ public sealed class BarStore
         }
 
         return buffer[buffer.Count - 1 - n];
-    }
-
-    private static string Stamp(DateTime timeUtc)
-    {
-        return timeUtc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
     private RingBuffer BufferFor(TimeFrame timeFrame)

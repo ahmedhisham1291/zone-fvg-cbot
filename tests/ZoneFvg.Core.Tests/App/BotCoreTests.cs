@@ -4,6 +4,7 @@ using Xunit;
 using ZoneFvg.Core.App;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution;
+using ZoneFvg.Core.Ops;
 using ZoneFvg.Core.Recovery;
 
 namespace ZoneFvg.Core.Tests;
@@ -96,7 +97,7 @@ public class BotCoreTests
     public void Disconnect_StopsRequestsAndBarsUntilReconnectRunsRecovery()
     {
         var h = new BotHarness();
-        BotCore core = h.Start(A);
+        BotCore core = h.Start(A, RecoveryData.WithHeartbeat());
         h.FeedTo(RecoveryData.Confirmation);
         h.FillReferenceOrder(A.AddMinutes(50.0));
         DateTime friday = RecoveryData.At(6, 20, 5);
@@ -112,7 +113,9 @@ public class BotCoreTests
 
         Assert.Equal(BotState.Recovering, core.State);
         Assert.Equal(writes, h.Broker.WriteRequestCount);
-        Assert.Equal((friday, BotState.Recovering), h.Hooks.Heartbeats[^1]);
+        string heartbeat = h.Journal.Lines("heartbeat")[^1];
+        Assert.StartsWith(JournalFormat.Time(friday) + " heartbeat ", heartbeat, StringComparison.Ordinal);
+        Assert.Contains(" state=Recovering ", heartbeat, StringComparison.Ordinal);
 
         core.OnConnected(h.History);
 
@@ -156,8 +159,8 @@ public class BotCoreTests
 
         string line = Assert.Single(h.Journal.Lines("error"));
         Assert.Equal("2026-03-04T08:00:00Z error source=OnTradeEvent error=InvalidOperationException:\\spositions\\nunavailable", line);
-        BotAlert alert = Assert.Single(h.Hooks.Alerts, a => a.Kind == BotAlertKind.Error);
-        Assert.Equal(RecoveryData.Symbol, alert.Symbol);
+        string alert = Assert.Single(h.AlertLines(AlertKind.Error));
+        Assert.Contains(" notice kind=Error message=handler=OnTradeEvent\\stype=InvalidOperationException\\s", alert, StringComparison.Ordinal);
         Assert.Equal(BotState.Running, core.State);
     }
 
@@ -240,7 +243,7 @@ public class BotCoreTests
 
         Assert.Equal(6, h.Journal.Count("error", "source=OnTimer error=InvalidOperationException:\\sno\\sserver\\stime"));
         Assert.Equal(BotState.Halted, core.State);
-        Assert.All(h.Hooks.Alerts.Where(a => a.Kind == BotAlertKind.Error), a => Assert.Equal(A, a.AtUtc));
+        Assert.All(h.AlertLines(AlertKind.Error), line => Assert.StartsWith(JournalFormat.Time(A) + " notice kind=Error ", line, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -292,16 +295,31 @@ public class BotCoreTests
 
     [Fact]
     [Trait("Req", "REC-011")]
-    public void Hooks_HeartbeatInEveryStateAndInactivityWhileConnected()
+    public void Timer_HeartbeatAndInactivityCheckInEveryState()
     {
         var h = new BotHarness();
-        BotCore core = h.Start(A);
+        BotCore core = h.Start(A, RecoveryData.WithHeartbeat());
+        var historyReads = new List<DateTime>();
+        h.Port.History = since =>
+        {
+            historyReads.Add(since);
+            return h.Broker.GetHistory(since);
+        };
         h.Timer(A.AddMinutes(1.0));
         core.OnDisconnected();
-        h.Timer(A.AddMinutes(2.0));
+        h.Timer(A.AddMinutes(6.0));
 
-        Assert.Equal(new[] { (A.AddMinutes(1.0), BotState.Running), (A.AddMinutes(2.0), BotState.Recovering) }, h.Hooks.Heartbeats);
-        Assert.Equal(new[] { A.AddMinutes(1.0), A.AddMinutes(2.0) }, h.Hooks.InactivityChecks);
+        // The heartbeat is called every 5 minutes in every state (OPS-005); the harness's transport fails it, so it is journaled.
+        IReadOnlyList<string> heartbeats = h.Journal.Lines("heartbeat");
+        Assert.Equal(2, heartbeats.Count);
+        Assert.StartsWith(JournalFormat.Time(A.AddMinutes(1.0)) + " heartbeat ", heartbeats[0], StringComparison.Ordinal);
+        Assert.Contains(" state=Running ", heartbeats[0], StringComparison.Ordinal);
+        Assert.StartsWith(JournalFormat.Time(A.AddMinutes(6.0)) + " heartbeat ", heartbeats[1], StringComparison.Ordinal);
+        Assert.Contains(" state=Recovering ", heartbeats[1], StringComparison.Ordinal);
+
+        // The inactivity check reads 30 days of history at every timer event, also while disconnected (OPS-006).
+        Assert.Contains(A.AddMinutes(1.0).AddDays(-30.0), historyReads);
+        Assert.Contains(A.AddMinutes(6.0).AddDays(-30.0), historyReads);
         Assert.Equal(A.AddMinutes(1.0).ToString("o", System.Globalization.CultureInfo.InvariantCulture), h.Store.Values[RecoveryService.LastSeenKey]);
     }
 

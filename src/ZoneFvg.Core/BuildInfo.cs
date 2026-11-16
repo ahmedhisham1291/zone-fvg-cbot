@@ -7,6 +7,6 @@ namespace ZoneFvg.Core
         public const string Version = "0.1.0";
 
         /// <summary>Version tag used in order labels (EXE-008).</summary>
-        public const string LabelVersion = "v1";
+        internal const string LabelVersion = "v1";
     }
 }

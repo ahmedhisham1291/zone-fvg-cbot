@@ -4,6 +4,7 @@ using ZoneFvg.Core.App;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
+using ZoneFvg.Core.Ops;
 using ZoneFvg.Core.Recovery;
 
 namespace ZoneFvg.Core.Tests;
@@ -93,14 +94,14 @@ public class RecoveryScenarios
         Assert.False(core.LastReport!.DataComplete);
         Assert.Equal(new[] { "M15: 1000 bars, 1968 needed" }, core.LastReport.DataProblems);
         Assert.Equal(new[] { (TimeFrame.M15, 3000) }, h.History.MoreRequests);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.DataIncomplete));
+        Assert.Equal(1, h.AlertLines(AlertKind.Started).Count(line => line.Contains("recovery\\swaits\\sfor\\sdata", StringComparison.Ordinal)));
 
         // Bars are ignored while Recovering; a retry after 15 minutes is still incomplete and does not alert again.
         h.FeedTo(A.AddMinutes(15.0));
         h.Timer(A.AddMinutes(15.0));
         Assert.Equal(BotState.Recovering, core.State);
         Assert.Equal(2, h.History.MoreRequests.Count);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.DataIncomplete));
+        Assert.Equal(1, h.AlertLines(AlertKind.Started).Count(line => line.Contains("recovery\\swaits\\sfor\\sdata", StringComparison.Ordinal)));
         Assert.Empty(core.Zones);
 
         // Once more history can be loaded, the next retry completes; the signal of 08:45 is replayed, not executed.
@@ -229,7 +230,7 @@ public class RecoveryScenarios
 
         Assert.Equal(BotState.Blocked, core.State);
         Assert.True(core.DataGap);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.DataGap));
+        Assert.Equal(1, h.Alerts(AlertKind.DataGap));
 
         h.Timer(A.AddMinutes(46.0));
 
@@ -298,8 +299,8 @@ public class RecoveryScenarios
         Assert.Equal(new[] { id }, core.LastReport!.PositionsAdopted);
         Assert.Equal(new[] { Id(id) + " StopRestored (stop 99.482)" }, core.LastReport.Protection);
         Assert.Equal(RecoveryData.Stop, h.ReferencePosition()!.StopLoss);
-        Assert.Equal(1, h.Hooks.Count(AlertKind.StopLossMissing));
-        Assert.Equal(1, h.Hooks.Count(AlertKind.StopLossRestored));
+        Assert.Equal(1, h.Alerts(AlertKind.StopLossMissing));
+        Assert.Equal(1, h.Alerts(AlertKind.StopLossRestored));
         ScenarioAssert.Global(h.Broker);
     }
 
@@ -319,7 +320,7 @@ public class RecoveryScenarios
         Assert.Equal(2, h.Count(BrokerCall.Modify));
         Assert.Equal(1, h.Count(BrokerCall.Close));
         Assert.Equal(new[] { Id(id) + " Closed (stop loss could not be set in 2 attempts)" }, core.LastReport!.Protection);
-        Assert.Equal(1, h.Hooks.Count(AlertKind.PositionClosedWithoutStop));
+        Assert.Equal(1, h.Alerts(AlertKind.PositionClosedWithoutStop));
         ScenarioAssert.Global(h.Broker);
     }
 
@@ -382,7 +383,7 @@ public class RecoveryScenarios
         BotCore core = h.Start(Nine);
 
         Assert.Equal(new[] { Id(id) + " (no expiry, cancel Rejected)" }, core.LastReport!.OrdersCancelled);
-        Assert.Equal(1, h.Hooks.Count(AlertKind.CancelFailed));
+        Assert.Equal(1, h.Alerts(AlertKind.CancelFailed));
         Assert.Single(h.Broker.GetPendingOrders());
     }
 
@@ -400,7 +401,7 @@ public class RecoveryScenarios
 
         Assert.Equal(new[] { Id(id) + " (zone D-20260101-0000 unknown)" }, core.LastReport!.Strangers);
         Assert.Empty(core.LastReport.PositionsAdopted);
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.Stranger));
+        Assert.Equal(1, h.Alerts(AlertKind.Stranger));
         Assert.Equal(0, h.Broker.WriteRequestCount);
         Assert.Equal(BotState.Blocked, core.State);
         Assert.True(core.BudgetBlocked);
@@ -445,8 +446,8 @@ public class RecoveryScenarios
 
         Assert.Equal(1, h.Journal.Count("position", "event=opened"));
         Assert.Equal(1, h.Journal.Count("trade", " trade symbol=USDJPY position="));
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.TradeOpened));
-        Assert.Equal(1, h.Hooks.Count(BotAlertKind.TradeClosed));
+        Assert.Equal(1, h.Alerts(AlertKind.TradeOpened));
+        Assert.Equal(1, h.Alerts(AlertKind.TradeClosed));
     }
 
     // ------------------------------------------------------------------ REC-009
@@ -549,9 +550,9 @@ public class RecoveryScenarios
         Assert.Equal(expected, core.LastReport!.Text);
         Assert.Equal(1, h.Journal.Count("report", "trigger=start text=" + expected.Replace(" ", "\\s", StringComparison.Ordinal)));
         Assert.Equal(1, h.Journal.Count("recovery", " recovery symbol=USDJPY trigger=start adopted=0 kept=0 cancelled=0 strangers=0 zones=0 downtime=NA state=Running"));
-        BotAlert alert = Assert.Single(h.Hooks.Alerts, a => a.Kind == BotAlertKind.RecoveryReport);
-        Assert.Equal(expected, alert.Message);
-        Assert.Equal(Nine, alert.AtUtc);
+        string alert = Assert.Single(h.AlertLines(AlertKind.Started));
+        Assert.StartsWith(JournalFormat.Time(Nine) + " alert event=disabled kind=Started ", alert, StringComparison.Ordinal);
+        Assert.Contains(" text=" + JournalFormat.Escape("ZFVG USDJPY Started: " + expected) + " ", alert, StringComparison.Ordinal);
     }
 
     [Fact]

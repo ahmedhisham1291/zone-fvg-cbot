@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using ZoneFvg.Core.Domain;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Simulation;
 
@@ -270,10 +271,5 @@ public sealed record TradeRecord
         }
 
         return column + " must be " + (wantBelow ? "below" : "above") + " entry for a " + (side == Side.Buy ? "Buy" : "Sell") + " trade, but was " + Text(level) + " with entry " + Text(entry) + ".";
-    }
-
-    private static string Text(double value)
-    {
-        return value.ToString("R", CultureInfo.InvariantCulture);
     }
 }

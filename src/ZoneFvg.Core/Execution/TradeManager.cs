@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Risk;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Execution;
 
@@ -209,15 +210,5 @@ public sealed class TradeManager
             .Where(p => RiskEngine.IsBotLabel(p.Label) && string.Equals(p.Symbol, _symbol, StringComparison.Ordinal))
             .OrderBy(p => p.Id)
             .ToList();
-    }
-
-    private static string Text(double value)
-    {
-        return value.ToString("R", CultureInfo.InvariantCulture);
-    }
-
-    private static string Text(long value)
-    {
-        return value.ToString(CultureInfo.InvariantCulture);
     }
 }

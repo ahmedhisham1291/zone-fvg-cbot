@@ -93,7 +93,7 @@ public sealed class NewsCalendar
     /// <param name="symbol">Symbol name, for example EURUSD.</param>
     /// <returns>The windows.</returns>
     /// <exception cref="ArgumentException">The symbol does not start with six letters.</exception>
-    public IReadOnlyList<NewsWindow> WindowsFor(string symbol)
+    internal IReadOnlyList<NewsWindow> WindowsFor(string symbol)
     {
         return Windows(symbol);
     }
@@ -195,8 +195,8 @@ public sealed class NewsCalendar
             return cached;
         }
 
-        string baseCurrency = pair.Substring(0, 3);
-        string quoteCurrency = pair.Substring(3, 3);
+        string baseCurrency = NewsSymbol.BaseCurrency(pair);
+        string quoteCurrency = NewsSymbol.QuoteCurrency(pair);
         TimeSpan before = TimeSpan.FromMinutes(_beforeMinutes);
         TimeSpan after = TimeSpan.FromMinutes(_afterMinutes);
         var raw = new List<NewsWindow>();
