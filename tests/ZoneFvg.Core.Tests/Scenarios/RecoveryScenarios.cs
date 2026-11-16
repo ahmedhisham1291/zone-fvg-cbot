@@ -147,7 +147,8 @@ public class RecoveryScenarios
     [Trait("Req", "REC-003")]
     public void Recovery_MissingDayThatIsAMarketHoliday_IsNotAGap()
     {
-        // Every M15 bar of Tuesday 2026-03-03 is missing. With 3 March as a holiday the day counts as closed.
+        // Every M15 bar of Tuesday 2026-03-03 is missing, and with them the H4 bars opening at the same times.
+        // With 3 March as a holiday the day counts as closed.
         var h = new BotHarness();
         foreach (Bar bar in h.Bars.M15.Where(bar => bar.OpenTimeUtc.Date == new DateTime(2026, 3, 3)))
         {
@@ -159,7 +160,9 @@ public class RecoveryScenarios
 
         BotCore withoutHoliday = h.Start(A.AddMinutes(1.0));
         Assert.Equal(BotState.Recovering, withoutHoliday.State);
-        Assert.Equal(new[] { "M15: gap between 2026-03-02 23:45 and 2026-03-04 00:00" }, withoutHoliday.LastReport!.DataProblems);
+        Assert.Equal(
+            new[] { "H4: gap between 2026-03-02 20:00 and 2026-03-04 00:00", "M15: gap between 2026-03-02 23:45 and 2026-03-04 00:00" },
+            withoutHoliday.LastReport!.DataProblems);
     }
 
     [Fact]
