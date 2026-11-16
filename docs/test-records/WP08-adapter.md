@@ -178,11 +178,38 @@ Pass / fail: (fill in)
 
 ### 11. Chart drawings (PLT-005; prompt item 2)
 
-Not testable yet: drawing is not connected (decision 3 of pull request WP08).
-With `DrawObjects` = true the start log says `DrawObjects is true, but drawing
-is not connected yet; nothing is drawn`, and the bot runs normally.
+Automatic evidence: the core's snapshots are read-only copies, reading them
+changes no signal, zone, order, journal line or alert, gaps older than 24 hours
+of bar time drop out, and a bot rebuilt by recovery shows the same snapshots as
+one that never stopped (tests tagged PLT-005 in
+`tests/ZoneFvg.Core.Tests/Signals/SignalEngineSnapshotTests.cs` and
+`tests/ZoneFvg.Core.Tests/Scenarios/Plt005ChartSnapshotScenarios.cs`). The
+drawing itself can only be checked on the platform:
 
-Observed: (fill in)
+a. **Live chart.** Start an instance with `DrawObjects` = true on an M15 chart.
+   Expected: green filled rectangles for demand zones and red ones for supply
+   zones, from the zone's activation time to the current time, between its
+   proximal and distal prices (names `ZFVG zone <id>`); blue filled rectangles
+   for the fair value gaps confirmed in the last 24 hours, over their three M15
+   bars (names `ZFVG fvg <yyyyMMddHHmm of c1>`). The ids match the zone ids in
+   the recovery report and the journal. A zone that is used, invalidated or
+   expired disappears at the next bar; a gap disappears 24 hours after its
+   confirming bar closed.
+b. **Ten examples.** Compare at least 10 drawn zones and gaps with the
+   definitions (spec 3.3, SIG-010, SIG-016): edges, times and type. Write the
+   ids checked below.
+c. **No effect on trading.** Run the same one-month visual backtest twice, once
+   with `DrawObjects` = false and once with `DrawObjects` = true. Expected: the
+   trade lists are identical. Also with `DrawObjects` = true in a non-visual
+   backtest the log says `DrawObjects is true, but this run shows no chart;
+   nothing is drawn`.
+d. **Failure is contained.** If any chart call fails, the log shows one line
+   `ZFVG adapter error in chart drawing (drawing switched off for this run)`
+   and the bot keeps trading normally. (Seen only if the platform refuses a
+   drawing; note it if it happens.)
+e. With `DrawObjects` = false (the default) nothing named `ZFVG ...` is drawn.
+
+Observed: (fill in; list the 10 ids checked)
 
 Pass / fail: (fill in)
 
@@ -201,6 +228,6 @@ Pass / fail: (fill in)
 | Requirement | Steps | Owner signature and date |
 |---|---|---|
 | PLT-002 | 12 | |
-| PLT-005 | 11 (after decision 3) | |
+| PLT-005 | 11 | |
 | PLT-006 | 4, 5 | |
 | PLT-009 | 8 | |
