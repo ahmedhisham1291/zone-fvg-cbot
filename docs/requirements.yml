@@ -540,7 +540,7 @@ requirements:
     wp: WP06
     spec: "5.1"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Pre-trade filters. An order is placed only if: time is within
       SessionStartUtc..SessionEndUtc; on Fridays before FridayNoEntryUtc;
