@@ -21,6 +21,13 @@ PLT-002, PLT-003, PLT-005, PLT-006, PLT-007, PLT-009.
 `src/ZoneFvg.Bot/**`, `docs/test-records/WP08-*.md`, and the `status:` lines of
 the requirements above.
 
+Follow-up for chart drawing (owner decision 2026-11-16): additionally
+`src/ZoneFvg.Core/Signals/SignalEngine.cs`, `src/ZoneFvg.Core/App/BotCore.cs`
+and `tests/ZoneFvg.Core.Tests/**`, only to expose read-only snapshots of the
+current zones and of the FVGs confirmed in the last 24 hours per symbol, with
+tests that the snapshots never change engine state and are equal in replay and
+live. No trading behaviour may change.
+
 ## What to build
 
 1. **`ZoneFvgBot : Robot`** with `AccessRights.None` and `TimeZone` UTC
