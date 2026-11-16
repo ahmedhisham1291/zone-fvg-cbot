@@ -52,6 +52,10 @@ jobs:
       - name: Build cBot (.algo)
         run: dotnet build src/ZoneFvg.Bot -c Release --no-restore
 
+      - name: Build simulation tool (tools/sim)
+        if: hashFiles('tools/sim/*.csproj') != ''
+        run: dotnet build tools/sim -c Release
+
       - name: Upload .algo
         uses: actions/upload-artifact@v4
         with:
