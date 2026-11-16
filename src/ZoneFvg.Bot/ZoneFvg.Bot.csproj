@@ -20,8 +20,7 @@
        to the CI log, so the adapter can be checked against the exact package version. Removed
        before the work package is finished. -->
   <Target Name="Wp08DumpApi" AfterTargets="Build">
-    <Exec Command="find &quot;$(NuGetPackageRoot)ctrader.automate&quot; -maxdepth 4 | head -50" />
-    <Exec Command="find &quot;$(NuGetPackageRoot)ctrader.automate&quot; -name '*.xml' | while read f; do echo &quot;== $f&quot;; grep -o 'member name=&quot;[^&quot;]*&quot;' &quot;$f&quot; | grep -E 'API\.(Robot|Algo|Bars|Bar|Server|IServer|Timer|Positions|Position|PendingOrders|PendingOrder|History|HistoricalTrade|TradeResult|ErrorCode|TradeType|ProtectionType|IAccount|Symbol|MarketData|RunningMode|Chart|ChartArea|ChartRectangle|ChartObject|Color|LocalStorage|LocalStorageScope|Http|HttpRequest|HttpResponse|TimeFrame|BarClosedEventArgs|BarOpenedEventArgs|PositionOpenedEventArgs|PositionClosedEventArgs|PositionModifiedEventArgs|PendingOrderCreatedEventArgs|PendingOrderFilledEventArgs|PendingOrderCancelledEventArgs|PendingOrderModifiedEventArgs|TradeOperation|Error|AlgoException|LineStyle|Parameter|ParameterAttribute|RobotAttribute|TimeZones|AccessRights)\.' | sort -u; done" />
+    <Exec Command="python3 Wp08ApiDump.py &quot;$(NuGetPackageRoot)&quot;" WorkingDirectory="$(MSBuildProjectDirectory)" IgnoreStandardErrorWarningFormat="true" />
   </Target>
 
 </Project>
