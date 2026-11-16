@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using ZoneFvg.Core.Domain;
 
 namespace ZoneFvg.Core.Risk;
 
@@ -78,6 +79,28 @@ public sealed record RiskParameters
     public double MaxVolumeUnits { get; init; } = 500000.0;
 
     /// <summary>
+    /// Ladder sizing on or off (RSK-013, spec 4.1). When true the risk percent of each new entry
+    /// comes from <see cref="LadderSizer"/>; when false the fixed <see cref="RiskPercent"/> is used
+    /// (RSK-001). Default true.
+    /// </summary>
+    public bool LadderEnabled { get; init; } = true;
+
+    /// <summary>Risk of one ladder deal in percent of balance, before growth (RSK-013). Default 0.30.</summary>
+    public double LadderDealRiskPercent { get; init; } = 0.30;
+
+    /// <summary>Factor by which a ladder deal grows per consecutive winning trade (RSK-013). Default 1.5924.</summary>
+    public double LadderGrowth { get; init; } = 1.5924;
+
+    /// <summary>
+    /// Weight w1 of the first of the four parts of a ladder deal (RSK-013). The other weights
+    /// follow from it: w2 = w1/2, w3 = (w1+w2)/2, w4 = (w1+w2+w3)/2. Default 0.2962.
+    /// </summary>
+    public double LadderFirstWeight { get; init; } = 0.2962;
+
+    /// <summary>Largest ladder risk of one entry in percent of balance (RSK-013). Default 0.5.</summary>
+    public double MaxRiskPercentPerTrade { get; init; } = 0.5;
+
+    /// <summary>
     /// Checks every value and throws for the first one that is out of range, in the order the
     /// parameters are declared. The message names the parameter, its allowed range and the
     /// rejected value in invariant formatting.
@@ -122,6 +145,33 @@ public sealed record RiskParameters
         {
             throw OutOfRange(nameof(MaxVolumeUnits), "must be a finite number greater than zero", Text(MaxVolumeUnits));
         }
+
+        ValidateSizing();
+    }
+
+    /// <summary>
+    /// Checks only the values that decide the risk percent of a new entry (RSK-001, RSK-013), in
+    /// this order: RiskPercent, LadderDealRiskPercent and MaxRiskPercentPerTrade greater than 0
+    /// and at most 100, LadderGrowth a finite number of at least 1, LadderFirstWeight greater than
+    /// 0 and at most 1 / 3.375, so that the four parts (3.375 x w1 together) never exceed the
+    /// deal. Called by <see cref="Validate"/>.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">A value is out of range. The exception's parameter name is the name of the parameter.</exception>
+    public void ValidateSizing()
+    {
+        RequirePercent(RiskPercent, nameof(RiskPercent));
+        RequirePercent(LadderDealRiskPercent, nameof(LadderDealRiskPercent));
+        if (!double.IsFinite(LadderGrowth) || LadderGrowth < 1.0)
+        {
+            throw OutOfRange(nameof(LadderGrowth), "must be a finite number of at least 1", Text(LadderGrowth));
+        }
+
+        if (!double.IsFinite(LadderFirstWeight) || LadderFirstWeight <= 0.0 || PriceMath.GreaterThan(LadderFirstWeight * 3.375, 1.0, PriceMath.DefaultTolerance))
+        {
+            throw OutOfRange(nameof(LadderFirstWeight), "must be greater than 0 and at most 1 / 3.375", Text(LadderFirstWeight));
+        }
+
+        RequirePercent(MaxRiskPercentPerTrade, nameof(MaxRiskPercentPerTrade));
     }
 
     private static void RequirePercent(double value, string name)

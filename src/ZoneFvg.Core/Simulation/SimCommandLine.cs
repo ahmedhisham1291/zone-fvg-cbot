@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using ZoneFvg.Core.Risk;
 
 namespace ZoneFvg.Core.Simulation;
 
@@ -148,7 +149,15 @@ public static class SimCommandLine
     {
         PortfolioResult portfolio = c.Combined("--log");
         ulong seed = c.Options.Seed();
-        IReadOnlyList<ChallengeSummary> grid = FtmoChallengeSimulator.Grid(portfolio.Trades, FtmoParameters(c.Options), seed);
+        FtmoChallengeParameters parameters = FtmoParameters(c.Options);
+        IReadOnlyList<ChallengeSummary> grid = parameters.Ladder == null
+            ? FtmoChallengeSimulator.Grid(portfolio.Trades, parameters, seed)
+            : new[]
+            {
+                // RSK-013: the ladder sets the risk of each trade, so only the two phases are run.
+                FtmoChallengeSimulator.Simulate(portfolio.Trades, parameters with { ProfitTargetPercent = 10.0 }, seed),
+                FtmoChallengeSimulator.Simulate(portfolio.Trades, parameters with { ProfitTargetPercent = 5.0 }, seed),
+            };
         return SimCommandResult.Ok(FtmoChallengeSimulator.ToMarkdown(grid, seed), Array.Empty<SimOutputFile>());
     }
 
@@ -186,7 +195,23 @@ public static class SimCommandLine
             DailyBudgetPercent = options.Number("--daily-budget", 1.5),
             KillSwitchPercent = options.Number("--kill-switch", 8.0),
             Runs = options.Int("--runs", 5000),
+            Ladder = Sizing(options),
         };
+    }
+
+    private static RiskParameters? Sizing(Options options)
+    {
+        // RSK-013: "ladder" sizes every trade with LadderSizer and its default values; "fixed" (the default) uses --risk.
+        string sizing = options.Single("--sizing") ?? "fixed";
+        switch (sizing)
+        {
+            case "fixed":
+                return null;
+            case "ladder":
+                return new RiskParameters();
+            default:
+                throw new SimInputException(ExitInvalid, "Option --sizing needs fixed or ladder, but was \"" + sizing + "\".");
+        }
     }
 
     /// <summary>The options and the file reader of one command.</summary>
@@ -385,9 +410,10 @@ public static class SimCommandLine
                 + "  --min-days <n>          Minimum trading days (default 4)\n"
                 + "  --kill-switch <pct>     Bot drawdown kill switch (default 8)\n"
                 + "  --runs <n>              Runs per cell (default 5000)\n"
+                + "  --sizing <fixed|ladder> fixed: every trade risks --risk; ladder: RSK-013 ladder sizing, Challenge and Verification only (default fixed)\n"
                 + "  --seed <n>              Seed of the generator (required)\n";
             string[] capOptions = { "--initial-capital", "--max-open-risk", "--max-per-currency", "--daily-budget" };
-            string[] ftmoOptions = { "--initial-capital", "--max-open-risk", "--max-per-currency", "--daily-budget", "--risk", "--daily-loss", "--max-loss", "--min-days", "--kill-switch", "--runs", "--seed" };
+            string[] ftmoOptions = { "--initial-capital", "--max-open-risk", "--max-per-currency", "--daily-budget", "--risk", "--daily-loss", "--max-loss", "--min-days", "--kill-switch", "--runs", "--seed", "--sizing" };
             switch (name)
             {
                 case "extract":
