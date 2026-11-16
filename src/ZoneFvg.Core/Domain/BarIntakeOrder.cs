@@ -4,13 +4,16 @@ using System.Collections.Generic;
 namespace ZoneFvg.Core.Domain;
 
 /// <summary>
-/// The order in which closed bars of different timeframes are passed to the core when they
-/// close at the same instant: D1 first, then H4, then M15 (SIG-004). The higher timeframe is
-/// processed first so that bias and zones are up to date before the M15 bar is evaluated.
+/// The order in which closed bars are passed to the core (SIG-004): by nominal close time
+/// (<see cref="CloseTimeUtc"/>), and among bars with the same nominal close time D1 first, then
+/// H4, then M15. The higher timeframe is processed first so that bias and zones are up to date
+/// before the M15 bar is evaluated.
 /// </summary>
 /// <remarks>
-/// Whoever feeds bars to the core (live events or a replay of history) sorts each group of
-/// same-instant bars with <see cref="Sort"/> before passing them on one by one.
+/// Whoever feeds bars to the core (live events or a replay of history) orders them by
+/// (<see cref="CloseTimeUtc"/>, <see cref="Rank"/>), never by the group in which they arrived
+/// and never by open time (architecture section 10, "Live bar order"). <see cref="Sort"/> orders
+/// bars whose nominal close times are equal.
 /// </remarks>
 public static class BarIntakeOrder
 {

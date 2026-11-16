@@ -273,7 +273,7 @@ requirements:
     wp: WP06
     spec: "4.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Sanity caps. A trade is skipped (reason logged, alert raised) if its
       computed risk exceeds 0.55% of balance, its volume exceeds
@@ -283,7 +283,7 @@ requirements:
     wp: WP06
     spec: "4.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Margin check. A trade is skipped if estimated free margin after the
       trade would be below 50% of equity. The margin estimate comes from the
@@ -530,7 +530,7 @@ requirements:
     wp: WP06
     spec: "3.6, 8.1"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Freshness. A signal may be executed only if its confirmation bar closed
       at most one M15 bar ago and it was produced in live mode. Signals
@@ -540,7 +540,7 @@ requirements:
     wp: WP06
     spec: "5.1"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Pre-trade filters. An order is placed only if: time is within
       SessionStartUtc..SessionEndUtc; on Fridays before FridayNoEntryUtc;
@@ -551,7 +551,7 @@ requirements:
     wp: WP06
     spec: "3.6"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Stop bounds. A signal is skipped if its stop distance is below
       MinStopPips (12) or above MaxStopAtr (2.0) x ATR(H4), where ATR(H4) is
@@ -561,7 +561,7 @@ requirements:
     wp: WP06
     spec: "3.6"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Cost check. A signal is skipped if (spread + round-trip commission
       expressed in pips) exceeds CostToRiskMax (10%) of the stop distance.
@@ -570,7 +570,7 @@ requirements:
     wp: WP06
     spec: "3.4, 3.6"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       A signal is skipped if its FVG height is below MinFvgSpreadMult (3) x
       the current spread.
@@ -579,7 +579,7 @@ requirements:
     wp: WP06
     spec: "3.6"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Room check. A buy signal is skipped if the proximal line of any
       non-terminal supply zone lies between entry and entry + MinRoomR (1.5) x
@@ -589,7 +589,7 @@ requirements:
     wp: WP06
     spec: "3.5"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       For sell orders the current spread is added to the stop distance before
       sizing and placement.
@@ -598,7 +598,7 @@ requirements:
     wp: WP06
     spec: "5.2"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Order format. Entries are limit orders with stop loss, take profit and
       expiry attached at placement. Label = "ZFVG|v1|<symbol>|<zoneId>".
@@ -609,7 +609,7 @@ requirements:
     wp: WP06
     spec: "5.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Idempotent placement. Before sending, the broker is queried for any
       order or position with the zone's label; if one exists nothing is sent.
@@ -623,7 +623,7 @@ requirements:
     wp: WP06
     spec: "5.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       After a successful placement the order is read back and its stop,
       target and expiry are compared with the request; a mismatch cancels the
@@ -633,7 +633,7 @@ requirements:
     wp: WP06
     spec: "5.4"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Post-fill protection. Every bot position must have a stop loss. A
       position found without one gets it set from its comment data; after two
@@ -644,7 +644,7 @@ requirements:
     wp: WP06
     spec: "5.4"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       A partial fill is managed as a normal position. The unfilled remainder
       is left to expire.
@@ -653,7 +653,7 @@ requirements:
     wp: WP06
     spec: "5.5"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Friday close. At or after FridayCloseUtc on a Friday all bot positions
       on the symbol are closed and pending entry orders cancelled.
@@ -662,7 +662,7 @@ requirements:
     wp: WP06
     spec: "3.6"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Every skipped signal is recorded with exactly one reason code from a
       closed enumeration, plus the measured values behind the decision.
@@ -671,7 +671,7 @@ requirements:
     wp: WP06
     spec: "6.1"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Order expiry is the earlier of the normal expiry (EntryExpiryBars after
       placement) and the start of the next news window for the symbol. If

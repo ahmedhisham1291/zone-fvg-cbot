@@ -113,6 +113,9 @@ public class SignalEngineLifecycleTests
         Assert.Equal(new Fvg(Side.Buy, 100.75, 100.6, EngineScenarios.TailOpen(0), EngineScenarios.TailOpen(1), EngineScenarios.TailOpen(2)), signal.Fvg);
         Assert.Equal(EngineScenarios.TailOpen(3), signal.ConfirmationCloseUtc);
         Assert.False(signal.FromReplay);
+
+        // The latest closed H4 bar at m2 is the leg bar: ATR(H4) = (13 x 1.0 + 2.0) / 14 = 15 / 14.
+        AssertNear(15.0 / 14.0, signal.AtrH4);
     }
 
     [Fact]
@@ -143,6 +146,9 @@ public class SignalEngineLifecycleTests
         AssertNear(96.93857142857143, signal.Target);
         AssertNear(99.4, signal.Fvg.Upper);
         AssertNear(99.25, signal.Fvg.Lower);
+
+        // Reflection keeps every bar range, so ATR(H4) is the same 15 / 14 as for the buy.
+        AssertNear(15.0 / 14.0, signal.AtrH4);
     }
 
     // ------------------------------------------------------------------ SIG-018

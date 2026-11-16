@@ -88,23 +88,26 @@ public static class FvgDetector
     /// A sell mirrors this: Entry = Lower + EntryLevelPct / 100 x (Upper - Lower), Stop =
     /// max(distal, extreme since touch) + buffer, Target = Entry - RewardRisk x (Stop - Entry).
     /// The confirmation time is the close of c1: its open time plus 15 minutes. The stop distance
-    /// in price is |Entry - Stop|. Spread is not added here: it is not bar data.
+    /// in price is |Entry - Stop|. Spread is not added here: it is not bar data. The signal carries
+    /// <paramref name="atrH4"/> unchanged in <see cref="Signal.AtrH4"/> (architecture section 10).
     /// </summary>
     /// <param name="zone">The confirmed zone, with its extreme since touch.</param>
     /// <param name="fvg">The gap returned by <see cref="Find"/> for the zone. Its side must match the zone type.</param>
     /// <param name="atrM15">ATR(M15) for the stop buffer. Must be finite and not negative.</param>
+    /// <param name="atrH4">ATR(H4) the engine used for the gap, copied to <see cref="Signal.AtrH4"/> for EXE-003. Must be finite and not negative.</param>
     /// <param name="parameters">Signal parameters. They are validated first.</param>
     /// <param name="fromReplay">Copied to <see cref="Signal.FromReplay"/>.</param>
     /// <returns>The signal.</returns>
     /// <exception cref="ArgumentException">The zone has no extreme since touch, or the gap side does not match the zone type.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">A parameter or the ATR is out of range.</exception>
-    public static Signal BuildSignal(Zone zone, Fvg fvg, double atrM15, SignalParameters parameters, bool fromReplay)
+    /// <exception cref="ArgumentOutOfRangeException">A parameter or an ATR is out of range.</exception>
+    public static Signal BuildSignal(Zone zone, Fvg fvg, double atrM15, double atrH4, SignalParameters parameters, bool fromReplay)
     {
         ArgumentNullException.ThrowIfNull(zone);
         ArgumentNullException.ThrowIfNull(fvg);
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         RequireAtr(atrM15, nameof(atrM15));
+        RequireAtr(atrH4, nameof(atrH4));
         if (zone.ExtremeSinceTouch is null)
         {
             throw new ArgumentException("A signal needs the zone's extreme since the touch.", nameof(zone));
@@ -136,7 +139,7 @@ public static class FvgDetector
         }
 
         DateTime confirmationCloseUtc = fvg.C1OpenUtc + BarIntakeOrder.Length(TimeFrame.M15);
-        return new Signal(zone.Id, expected, entry, stop, target, fvg, confirmationCloseUtc, fromReplay);
+        return new Signal(zone.Id, expected, entry, stop, target, fvg, confirmationCloseUtc, fromReplay, atrH4);
     }
 
     private static Fvg? Bullish(Bar c3, Bar c2, Bar c1, double proximal, double atrM15, double atrH4, double minFvgAtr)

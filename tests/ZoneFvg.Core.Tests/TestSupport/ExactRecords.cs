@@ -43,7 +43,8 @@ public static class ExactRecords
             Time(fvg.C2OpenUtc),
             Time(fvg.C1OpenUtc),
             Time(signal.ConfirmationCloseUtc),
-            signal.FromReplay ? "replay" : "live");
+            signal.FromReplay ? "replay" : "live",
+            Bits(signal.AtrH4));
     }
 
     /// <summary>Keys of every zone, in list order.</summary>

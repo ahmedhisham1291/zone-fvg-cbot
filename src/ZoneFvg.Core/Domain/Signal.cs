@@ -15,6 +15,11 @@ namespace ZoneFvg.Core.Domain;
 /// <param name="Fvg">The fair value gap that confirmed the zone, with the open times of its three bars (SIG-016, SIG-017).</param>
 /// <param name="ConfirmationCloseUtc">UTC close time of c1, the bar that confirmed the gap: its open time plus 15 minutes (SIG-004, SIG-017).</param>
 /// <param name="FromReplay">True when the signal was found while replaying history rather than on a live bar (spec 8.3).</param>
+/// <param name="AtrH4">
+/// The ATR(H4) the engine used for this signal: the latest value at the confirmation close
+/// (architecture section 10). The execution layer bounds the stop distance with it (EXE-003), so
+/// replay and live use the same number.
+/// </param>
 public sealed record Signal(
     string ZoneId,
     Side Side,
@@ -23,4 +28,5 @@ public sealed record Signal(
     double Target,
     Fvg Fvg,
     DateTime ConfirmationCloseUtc,
-    bool FromReplay);
+    bool FromReplay,
+    double AtrH4);
