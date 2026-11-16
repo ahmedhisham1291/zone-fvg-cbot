@@ -78,6 +78,20 @@ public sealed class RequestCounter
     {
         return _window.Evaluate(serverTimeUtc);
     }
+
+    /// <summary>
+    /// The check that runs before a request is sent (RSK-010, owner decision of 2026-11-14): Halt
+    /// is true when one more request at the server time would exceed the hourly or the daily
+    /// limit. Nothing is recorded. When Halt is true the request must not be sent and the instance
+    /// halts. The counts in the decision are the requests already recorded.
+    /// </summary>
+    /// <param name="serverTimeUtc">Server time at which the request would be sent; kind UTC.</param>
+    /// <returns>The decision for one more request.</returns>
+    /// <exception cref="ArgumentException">The time is not UTC.</exception>
+    public CircuitBreakerDecision CheckBeforeRequest(DateTime serverTimeUtc)
+    {
+        return _window.EvaluateNext(serverTimeUtc);
+    }
 }
 
 /// <summary>
@@ -148,6 +162,23 @@ internal sealed class EventWindow
         return Decide(Advance(serverTimeUtc));
     }
 
+    internal CircuitBreakerDecision EvaluateNext(DateTime serverTimeUtc)
+    {
+        DateTime now = Advance(serverTimeUtc);
+        Count(now, out int lastHour, out int today);
+        if (lastHour + 1 > _hourLimit)
+        {
+            return new CircuitBreakerDecision(true, lastHour, today, _hourLimit, _dayLimit, _name + " in the last hour would be " + Text(lastHour + 1) + " above " + Text(_hourLimit));
+        }
+
+        if (_dayLimit.HasValue && today + 1 > _dayLimit.Value)
+        {
+            return new CircuitBreakerDecision(true, lastHour, today, _hourLimit, _dayLimit, _name + " today would be " + Text(today + 1) + " above " + Text(_dayLimit.Value));
+        }
+
+        return new CircuitBreakerDecision(false, lastHour, today, _hourLimit, _dayLimit, string.Empty);
+    }
+
     private DateTime Advance(DateTime serverTimeUtc)
     {
         if (serverTimeUtc.Kind != DateTimeKind.Utc)
@@ -165,18 +196,22 @@ internal sealed class EventWindow
         return latest;
     }
 
-    private CircuitBreakerDecision Decide(DateTime now)
+    private void Count(DateTime now, out int lastHour, out int today)
     {
         DateTime hourStart = now - Hour;
         DateTime dayStart = CestClock.StartOfCestDayUtc(now);
-        int lastHour = 0;
-        int today = 0;
+        lastHour = 0;
+        today = 0;
         foreach (DateTime time in _times)
         {
             lastHour += time > hourStart ? 1 : 0;
             today += time >= dayStart ? 1 : 0;
         }
+    }
 
+    private CircuitBreakerDecision Decide(DateTime now)
+    {
+        Count(now, out int lastHour, out int today);
         if (lastHour > _hourLimit)
         {
             return new CircuitBreakerDecision(true, lastHour, today, _hourLimit, _dayLimit, _name + " in the last hour " + Text(lastHour) + " above " + Text(_hourLimit));
