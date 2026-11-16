@@ -43,7 +43,7 @@ public static class TradeLogCsv
             return TradeLogReadResult.Invalid("The trade log text is null.");
         }
 
-        if (text.Length > 0 && text[0] == '﻿')
+        if (text.Length > 0 && text[0] == '\uFEFF')
         {
             text = text.Substring(1);
         }

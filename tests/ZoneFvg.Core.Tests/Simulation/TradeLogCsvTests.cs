@@ -117,7 +117,7 @@ public class TradeLogCsvTests
     [Trait("Req", "SIM-001")]
     public void Read_CrLfLineEndingsByteOrderMarkAndNoFinalNewline_AreAccepted()
     {
-        TradeLogReadResult result = TradeLogCsv.Read("﻿" + Header + "\r\n" + BuyRow + "\r\n" + SellRow);
+        TradeLogReadResult result = TradeLogCsv.Read("\uFEFF" + Header + "\r\n" + BuyRow + "\r\n" + SellRow);
 
         Assert.True(result.IsValid, result.Error);
         Assert.Equal(2, result.Records.Count);
