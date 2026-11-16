@@ -16,4 +16,9 @@
     <ProjectReference Include="..\ZoneFvg.Core\ZoneFvg.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- News history for backtests, read by ZoneFvgBot and passed to the core as text (spec 6.4). -->
+    <EmbeddedResource Include="News\news-history.csv" LogicalName="ZoneFvg.Bot.news-history.csv" />
+  </ItemGroup>
+
 </Project>
