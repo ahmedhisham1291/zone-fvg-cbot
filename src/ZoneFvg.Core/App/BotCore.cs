@@ -43,6 +43,8 @@ public sealed class BotCore
     private const double InactivityHistoryDays = 30.0;
 
     private static readonly TimeSpan RecoveryRetryInterval = TimeSpan.FromMinutes(15.0);
+    private static readonly IReadOnlyList<Zone> NoZones = Array.AsReadOnly(Array.Empty<Zone>());
+    private static readonly IReadOnlyList<Fvg> NoFvgs = Array.AsReadOnly(Array.Empty<Fvg>());
     private static readonly DateTime FallbackTimeUtc = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     // The news filter is switched off by a calendar that covers 2000 to 2099 with low-impact events
@@ -152,6 +154,20 @@ public sealed class BotCore
 
     /// <summary>The non-terminal zones of the live signal layer; empty before recovery completes (REC-004).</summary>
     internal IReadOnlyList<Zone> Zones => _engine == null ? Array.Empty<Zone>() : _engine.Zones;
+
+    /// <summary>
+    /// Read-only copy of the non-terminal zones of the live signal layer, ordered by id, for chart
+    /// drawing (PLT-005). Empty before the first recovery completes. Reading it changes nothing;
+    /// the copy does not change when later bars arrive.
+    /// </summary>
+    public IReadOnlyList<Zone> ZoneSnapshot => _engine == null ? NoZones : Array.AsReadOnly(_engine.Zones.ToArray());
+
+    /// <summary>
+    /// Read-only copy of the fair value gaps confirmed in the last 24 hours of bar time by the live
+    /// signal layer, for chart drawing (PLT-005; see <see cref="SignalEngine.RecentFvgs"/>). Empty
+    /// before the first recovery completes. Reading it changes nothing.
+    /// </summary>
+    public IReadOnlyList<Fvg> FvgSnapshot => _engine == null ? NoFvgs : _engine.RecentFvgs;
 
     /// <summary>The bias of the live signal layer (REC-004).</summary>
     internal Bias Bias => _engine == null ? Bias.Neutral : _engine.Bias;

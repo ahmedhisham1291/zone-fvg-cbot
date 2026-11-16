@@ -31,10 +31,17 @@ public sealed class SignalEngine
 {
     private static readonly IReadOnlyList<Signal> NoSignals = Array.AsReadOnly(Array.Empty<Signal>());
     private static readonly IReadOnlyList<Zone> NoZones = Array.AsReadOnly(Array.Empty<Zone>());
+    private static readonly IReadOnlyList<Fvg> NoFvgs = Array.AsReadOnly(Array.Empty<Fvg>());
+
+    /// <summary>How long a confirmed gap stays in <see cref="RecentFvgs"/> (PLT-005): 24 hours.</summary>
+    private static readonly TimeSpan RecentFvgWindow = TimeSpan.FromHours(24.0);
 
     private readonly SignalParameters _parameters;
     private readonly BarStore _bars;
     private readonly ZoneBook _book;
+
+    // Display only (PLT-005): written when a gap confirms a zone, never read by any decision.
+    private readonly List<Fvg> _recentFvgs = new List<Fvg>();
     private bool _hasAccepted;
     private DateTime _lastCloseUtc;
     private int _lastRank;
@@ -74,6 +81,18 @@ public sealed class SignalEngine
     public IReadOnlyList<Zone> Zones => IsReady ? _book.Zones : NoZones;
 
     /// <summary>
+    /// Read-only copy of the fair value gaps that confirmed a zone (SIG-016) while the engine was
+    /// ready, whatever the bias, in the order they were confirmed, for chart drawing (PLT-005). A
+    /// gap is listed while its confirmation (the close of c1) is at most 24 hours before the close
+    /// of the last accepted bar. Empty while the engine is not ready (SIG-020).
+    /// </summary>
+    /// <remarks>
+    /// Reading it changes nothing, and no decision of the engine reads the gaps it lists. The
+    /// list is a new read-only copy at every read; it does not change when later bars arrive.
+    /// </remarks>
+    public IReadOnlyList<Fvg> RecentFvgs => IsReady && _recentFvgs.Count > 0 ? Array.AsReadOnly(_recentFvgs.ToArray()) : NoFvgs;
+
+    /// <summary>
     /// Feeds one closed bar (SIG-001, SIG-004) and returns the signals it confirms, ordered by zone
     /// id, at most one per zone (SIG-018); none while the engine is not ready (SIG-020).
     /// </summary>
@@ -100,6 +119,7 @@ public sealed class SignalEngine
         _hasAccepted = true;
         _lastCloseUtc = closeUtc;
         _lastRank = rank;
+        ForgetOldFvgs();
 
         switch (timeFrame)
         {
@@ -187,6 +207,11 @@ public sealed class SignalEngine
             return null;
         }
 
+        if (IsReady)
+        {
+            _recentFvgs.Add(fvg);
+        }
+
         if (!BiasAllows(zone.Type))
         {
             _book.MarkUsed(zone.Id);
@@ -195,6 +220,12 @@ public sealed class SignalEngine
 
         _book.MarkSignalled(zone.Id);
         return FvgDetector.BuildSignal(zone, fvg, atrM15, atrH4, _parameters, replay);
+    }
+
+    private void ForgetOldFvgs()
+    {
+        DateTime lastClose = _lastCloseUtc;
+        _recentFvgs.RemoveAll(fvg => lastClose - (fvg.C1OpenUtc + BarIntakeOrder.Length(TimeFrame.M15)) > RecentFvgWindow);
     }
 
     private bool BiasAllows(ZoneType type)

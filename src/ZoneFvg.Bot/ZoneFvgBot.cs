@@ -30,6 +30,7 @@ namespace cAlgo.Robots
         private BotCore? _core;
         private CTraderBars? _bars;
         private AdapterLog? _log;
+        private ChartPainter? _painter;
 
         // ------------------------------------------------------------------ parameters (spec section 7, PLT-006)
         // Parameter attribute (Name, DefaultValue, Group): https://help.ctrader.com/ctrader-algo/references/Attributes/ParameterAttribute/
@@ -324,6 +325,7 @@ namespace cAlgo.Robots
 
             _bars.PumpOnTimer(_core);
             _core.OnTimer();
+            _painter?.Paint(_core);
         }
 
         /// <summary>An unhandled exception reported by the platform is forwarded to the core (REC-011).</summary>
@@ -361,6 +363,7 @@ namespace cAlgo.Robots
         {
             BotCore core = _core!;
             CTraderBars bars = _bars!;
+            ChartPainter painter = _painter!;
 
             // IServer.Connected / Disconnected (Action): https://help.ctrader.com/ctrader-algo/references/Application/IServer/
             Server.Connected += () =>
@@ -382,7 +385,12 @@ namespace cAlgo.Robots
             PendingOrders.Modified += _ => core.OnTradeEvent();
 
             // Bar-closed events of the D1, H4 and M15 series.
-            bars.OnAnyBarClosed(() => bars.PumpOnBarEvent(core));
+            // Drawing (PLT-005) follows the core's work and only reads its snapshots.
+            bars.OnAnyBarClosed(() =>
+            {
+                bars.PumpOnBarEvent(core);
+                painter.Paint(core);
+            });
 
             // Timer.Start(TimeSpan): https://help.ctrader.com/ctrader-algo/references/Timer/Timer/
             Timer.Start(TimeSpan.FromMinutes(1.0));
@@ -404,15 +412,41 @@ namespace cAlgo.Robots
             // Algo.LocalStorage and Algo.Http: https://help.ctrader.com/ctrader-algo/references/General/Algo/
             var store = new LocalStorageStore(LocalStorage);
             var http = new HttpTransport(Http, log);
-            if (DrawObjects)
-            {
-                // PLT-005: ChartPainter is ready, but the core does not expose zones and gaps yet (see ChartPainter).
-                log.Info("DrawObjects is true, but drawing is not connected yet; nothing is drawn.");
-            }
+            _painter = CreatePainter(broker, isBacktest, log);
 
             log.Info("version " + BuildInfo.Version + ", symbol " + SymbolName + ", backtest " + (isBacktest ? "yes" : "no"));
             LogCosts(broker, log);
             return new BotCore(parameters, broker, store, http, log, isBacktest);
+        }
+
+        private ChartPainter CreatePainter(CTraderBroker broker, bool isBacktest, AdapterLog log)
+        {
+            // PLT-005, spec 9.4: drawings only where a chart is shown, never in a silent backtest or an optimisation.
+            // RunningMode.SilentBacktesting / Optimization: https://help.ctrader.com/ctrader-algo/references/Application/RunningMode/
+            bool shown = !isBacktest || RunningMode == RunningMode.VisualBacktesting;
+            bool enabled = DrawObjects && shown;
+            ChartArea? chart = null;
+            if (enabled)
+            {
+                try
+                {
+                    // Algo.Chart ("the chart where the cBot is launched"; Chart implements ChartArea):
+                    // https://help.ctrader.com/ctrader-algo/references/General/Algo/ and https://help.ctrader.com/ctrader-algo/references/Chart/Chart/
+                    chart = Chart;
+                }
+                catch (Exception exception)
+                {
+                    log.Error("chart access (nothing is drawn)", exception);
+                    enabled = false;
+                }
+            }
+
+            if (DrawObjects && !shown)
+            {
+                log.Info("DrawObjects is true, but this run shows no chart; nothing is drawn.");
+            }
+
+            return new ChartPainter(chart, enabled, () => broker.ServerTimeUtc, log);
         }
 
         private void LogCosts(CTraderBroker broker, AdapterLog log)
