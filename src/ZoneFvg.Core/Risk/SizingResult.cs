@@ -1,7 +1,7 @@
 namespace ZoneFvg.Core.Risk;
 
 /// <summary>
-/// Result of <see cref="PositionSizer.Size"/> (RSK-001, RSK-002): either an allowed volume, or
+/// Result of <see cref="PositionSizer.Size(Execution.Ports.AccountSnapshot, TradePlan, Execution.Ports.SymbolInfo, double)"/> (RSK-001, RSK-002, RSK-013): either an allowed volume, or
 /// a skip with exactly one reason and the measured value that failed.
 /// </summary>
 /// <remarks>
