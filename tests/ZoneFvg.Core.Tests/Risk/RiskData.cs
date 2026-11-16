@@ -30,7 +30,12 @@ public static class RiskData
     /// <summary>00:00 CET on 1 January 2026 = 2025-12-31 23:00 UTC: the instant the epoch date stands for.</summary>
     public static readonly DateTime EpochStart = new(2025, 12, 31, 23, 0, 0, DateTimeKind.Utc);
 
-    public static RiskParameters Parameters => new() { RiskEpochDate = Epoch };
+    /// <summary>
+    /// The default risk parameters with the test epoch, pinned to fixed sizing (LadderEnabled false):
+    /// the tests written before RSK-013 compute their volumes from RiskPercent (RSK-001). The RSK-013
+    /// tests switch the ladder on explicitly.
+    /// </summary>
+    public static RiskParameters Parameters => new() { RiskEpochDate = Epoch, LadderEnabled = false };
 
     public static RiskEngine Engine => new(Parameters);
 
