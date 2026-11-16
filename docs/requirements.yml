@@ -896,7 +896,7 @@ requirements:
     wp: WP08
     spec: "10.3"
     verify: build
-    status: planned
+    status: implemented
     text: >-
       The cBot is declared with AccessRights.None and TimeZone UTC.
 
@@ -931,7 +931,7 @@ requirements:
     wp: WP08
     spec: "10.3"
     verify: build
-    status: planned
+    status: implemented
     text: >-
       CI builds the .algo file and publishes it as a build artifact.
 

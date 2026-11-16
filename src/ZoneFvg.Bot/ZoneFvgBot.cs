@@ -322,7 +322,7 @@ namespace cAlgo.Robots
                 return;
             }
 
-            _bars.Pump(_core);
+            _bars.PumpOnTimer(_core);
             _core.OnTimer();
         }
 
@@ -382,7 +382,7 @@ namespace cAlgo.Robots
             PendingOrders.Modified += _ => core.OnTradeEvent();
 
             // Bar-closed events of the D1, H4 and M15 series.
-            bars.OnAnyBarClosed(() => bars.Pump(core));
+            bars.OnAnyBarClosed(() => bars.PumpOnBarEvent(core));
 
             // Timer.Start(TimeSpan): https://help.ctrader.com/ctrader-algo/references/Timer/Timer/
             Timer.Start(TimeSpan.FromMinutes(1.0));

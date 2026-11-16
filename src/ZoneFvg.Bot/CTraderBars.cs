@@ -20,7 +20,8 @@ namespace ZoneFvg.Bot
     /// or 24 hours, <see cref="BarIntakeOrder.CloseTimeUtc"/>) is at or before the server time. No
     /// tick after that moment can belong to the bar, so this never passes a forming bar, whatever
     /// the series' last index holds when an event fires, and it also releases Friday's last bars
-    /// while the market is closed.</para>
+    /// while the market is closed. From a bar-closed event the server time is used as is; from the
+    /// timer a bar must have closed at least one minute earlier (<see cref="PumpOnTimer"/>).</para>
     /// <para>Bars are passed to the core in (nominal close time, D1/H4/M15 rank) order, never in
     /// the order their events arrive (architecture section 10, "Live bar order"). The only state
     /// kept is the open time of the last bar passed per timeframe, so that each bar is passed once;
@@ -30,6 +31,9 @@ namespace ZoneFvg.Bot
     internal sealed class CTraderBars : IBarHistory
     {
         private const int MaxLoadRounds = 50;
+
+        /// <summary>Delay after a nominal close before the timer passes the bar (see <see cref="PumpOnTimer"/>).</summary>
+        private static readonly TimeSpan TimerSettle = TimeSpan.FromMinutes(1.0);
 
         private readonly Bars _d1;
         private readonly Bars _h4;
@@ -153,13 +157,35 @@ namespace ZoneFvg.Bot
         }
 
         /// <summary>
-        /// Passes every bar that has closed since the last call to the core, ordered by nominal close
-        /// time and then D1, H4, M15 (SIG-004, architecture section 10).
+        /// Called from a bar-closed event: a new bar has just begun with a tick, so every tick before
+        /// that moment has been applied and every bar whose nominal close is at or before the server
+        /// time is complete (SIG-001).
         /// </summary>
         /// <param name="core">The core.</param>
-        public void Pump(BotCore core)
+        public void PumpOnBarEvent(BotCore core)
         {
-            DateTime now = _serverTimeUtc();
+            Pump(core, _serverTimeUtc());
+        }
+
+        /// <summary>
+        /// Called from the one-minute timer, when no new tick may have arrived yet. A bar is passed
+        /// only when its nominal close is at least <see cref="TimerSettle"/> in the past, so that a
+        /// tick from just before the close that is still on its way cannot be missed. Mostly needed
+        /// for the last bars before the weekend, which no new bar follows until the market reopens.
+        /// </summary>
+        /// <param name="core">The core.</param>
+        public void PumpOnTimer(BotCore core)
+        {
+            Pump(core, _serverTimeUtc() - TimerSettle);
+        }
+
+        /// <summary>
+        /// Passes every bar that has closed by <paramref name="closedBy"/> and was not passed before,
+        /// ordered by nominal close time and then D1, H4, M15 (SIG-004, architecture section 10).
+        /// </summary>
+        private void Pump(BotCore core, DateTime closedBy)
+        {
+            DateTime now = closedBy;
             var ready = new List<(DateTime Close, int Rank, CoreTimeFrame TimeFrame, CoreBar Bar)>();
             foreach (CoreTimeFrame timeFrame in BarIntakeOrder.SameInstant)
             {
@@ -214,7 +240,7 @@ namespace ZoneFvg.Bot
             }
 
             _firstPassLogged = true;
-            _log.Info("first live bar after start: " + timeFrame + " open " + Stamp(bar.OpenTimeUtc) + " close " + Stamp(close) + " server time " + Stamp(now));
+            _log.Info("first live bar after start: " + timeFrame + " open " + Stamp(bar.OpenTimeUtc) + " close " + Stamp(close) + " passed for time " + Stamp(now));
         }
 
         private Bars Series(CoreTimeFrame timeFrame)
@@ -253,7 +279,7 @@ namespace ZoneFvg.Bot
 
         private static string Stamp(DateTime utc)
         {
-            return utc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+            return utc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         }
     }
 }

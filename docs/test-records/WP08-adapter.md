@@ -1,0 +1,206 @@
+# WP08 test record: cTrader adapter
+
+Manual verification of PLT-002, PLT-005, PLT-006 and PLT-009, plus the platform
+facts the adapter relies on. The owner runs the steps on cTrader desktop with an
+FTMO Free Trial (or demo) account and fills in the "Observed" and "Pass / fail"
+lines. A requirement is marked `implemented` only after the owner has signed
+this record (docs/test-records/README.md).
+
+| Field | Value |
+|---|---|
+| Date | (fill in) |
+| Run by | (fill in) |
+| cTrader version | (Help > About) |
+| Account | FTMO Free Trial, account type (hedging / netting) |
+| Bot version | `ZoneFvgBot 0.1.0`, commit (fill in) |
+| `.algo` | artifact `ZoneFvgBot-algo` of the CI run of that commit |
+
+## Automatic evidence (no owner action)
+
+| Item | Requirement | Evidence |
+|---|---|---|
+| CI builds the `.algo` and uploads it as artifact `ZoneFvgBot-algo` | PLT-007 | CI run linked in the pull request |
+| `[Robot(AccessRights = AccessRights.None, TimeZone = TimeZones.UTC)]`, checked by `tools/check_architecture.py` | PLT-003 | `repo-checks` job |
+
+## Preparation
+
+1. Download the artifact `ZoneFvgBot-algo` from the CI run, unzip it, and
+   double-click `ZoneFvgBot.algo` (or drag it into cTrader). It appears under
+   Algo > cBots.
+2. Open an EURUSD chart on **M15**. Add an instance of ZoneFvgBot to it.
+3. Parameters for the laptop test: `RiskEpochDate` = today (yyyy-MM-dd),
+   `NewsFeedUrl` = the Forex Factory weekly JSON export address,
+   `TelegramBotToken` and `TelegramChatId` from your Telegram bot (or both
+   empty), `HeartbeatUrl` (or empty). Leave everything else at its default.
+4. Open the Log tab of the instance. Every adapter line starts with
+   `ZFVG adapter`; core journal lines start with a time stamp and a category.
+
+## Steps
+
+### 1. Start, version and recovery (spec 8.3; prompt item 1)
+
+Start the instance.
+
+Expected:
+- `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no`.
+- `ZFVG adapter symbol EURUSD account USD pipSize 0.0001 platformPipValue ... pipValuePerUnit 0.0001 ... roundTripCommissionPerLot ...`.
+- A core `start` journal line with `version=0.1.0` and `hash=` (parameter hash).
+- A recovery report, then the state Running (or Blocked, with the reason, if
+  for example the calendar is not yet loaded).
+- No Telegram token, chat id or heartbeat address appears anywhere in the log.
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 2. First bar after start is closed (SIG-001; prompt item 5)
+
+Wait for the next M15 close after the start.
+
+Expected: one line `ZFVG adapter first live bar after start: M15 open
+HH:mm close HH:mm server time ...`. The open time is the open of the bar that
+has just finished on the chart (not of the new bar), and the close time is at
+or before the server time.
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 3. Bar times and bar order (architecture section 10, "Close time" and "Live bar order")
+
+Look at the chart's D1 and H4 bars (switch the chart timeframe temporarily, or
+read the journal).
+
+Expected: D1 bars open at 00:00 UTC and H4 bars at 00:00, 04:00, ... 20:00 UTC,
+so that a bar's close is its open plus 24 hours or 4 hours. At 00:00 UTC the
+journal shows the D1 bar processed before the H4 bar, and the H4 bar before
+the M15 bar. If D1 bars open at another hour (for example 22:00 UTC), record
+it here: the nominal close-time rule then needs the owner's review.
+
+Observed D1 open hour: (fill in)  H4 open hours: (fill in)
+
+Pass / fail: (fill in)
+
+### 4. Invalid parameter (PLT-006; prompt item 3)
+
+Stop the instance. Set `RiskPercent` = 0 (or `SessionStartUtc` = `7am`, or
+clear `RiskEpochDate`). Start it.
+
+Expected: `ZFVG adapter refused to start: invalid parameter: ...` naming the
+parameter and the reason, then the instance stops. No order is placed.
+Repeat once with the chart on H1: `refused to start: the cBot runs on an M15
+chart only`.
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 5. Parameters and defaults (PLT-006)
+
+Open the instance's parameter panel.
+
+Expected: groups Signal, Execution, Risk, News, Operations; every parameter of
+spec section 7 with its default (BiasEmaPeriod 50, AtrPeriod 14, ...,
+MaxSpreadPips 1.5, NewsEnabled true, NewsBeforeMin/NewsAfterMin 30,
+NewsMaxCacheHours 48, NewsRefreshHours 4, MaxRequestsPerDay 100,
+InitialCapital 100000, DayResetZone Europe/Prague, secrets empty), plus
+MaxRequestsPerHour 20, MaxErrorsPerHour 5, ProfitTargetPercent 10,
+MarketHolidays 12-25,01-01, NewsFeedUrl, DrawObjects false.
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 6. Restart in the middle of a trade (spec 8.3, 12.3)
+
+While a bot pending order or position is open (wait for the bot to place one),
+stop the instance and start it again.
+
+Expected: the recovery report adopts the position or keeps the order; stop
+loss, take profit and expiry are unchanged at the broker; no duplicate order.
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 7. Disconnect (spec 8.4)
+
+Turn Wi-Fi off for about two minutes, then on.
+
+Expected: a `connection` journal line `disconnected`, the state Recovering,
+then after reconnect a recovery report and Running again. No order is sent
+while disconnected. (If the platform restarts the cBot instead of raising the
+connected event, step 1's lines appear again; both are acceptable.)
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 8. Stop handler not needed (PLT-009)
+
+Stop the instance with the Stop button, and once by closing cTrader from the
+task manager (no stop handler runs). Start it again.
+
+Expected: the second start recovers exactly like the first; nothing is
+missing because the stop handler did not run.
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 9. Trade data mapping (decisions 1 and 2 of pull request WP08)
+
+After the first closed demo trade, compare in the History tab and the journal:
+
+- the trade's commission with `roundTripCommissionPerLot` from step 1 times the
+  traded lots;
+- `pipValuePerUnit` with `platformPipValue` (EURUSD: both 0.0001; USDJPY: the
+  first follows the price, the second is fixed at start);
+- the journal's net result with the History tab's net profit (commission and
+  swap included).
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 10. Backtest of one month, twice (prompt items 4 and 6)
+
+Backtest tab, EURUSD M15, one month, starting balance 100000, `NewsEnabled` =
+false (the embedded history holds no events yet), visual mode once and silent
+mode once.
+
+Expected: `backtest yes` in the start line; the run completes with no
+exception; the two runs' trade lists are identical (export both and compare).
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 11. Chart drawings (PLT-005; prompt item 2)
+
+Not testable yet: drawing is not connected (decision 3 of pull request WP08).
+With `DrawObjects` = true the start log says `DrawObjects is true, but drawing
+is not connected yet; nothing is drawn`, and the bot runs normally.
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+### 12. Owner review of the handlers (PLT-002)
+
+Read `src/ZoneFvg.Bot/ZoneFvgBot.cs`, methods `OnStart`, `OnTimer`,
+`OnException`, `OnError`, `OnStop` and `Subscribe`: each handler converts and
+forwards to `BotCore`, with no rule about prices, risk or time.
+
+Observed: (fill in)
+
+Pass / fail: (fill in)
+
+## Sign-off
+
+| Requirement | Steps | Owner signature and date |
+|---|---|---|
+| PLT-002 | 12 | |
+| PLT-005 | 11 (after decision 3) | |
+| PLT-006 | 4, 5 | |
+| PLT-009 | 8 | |
