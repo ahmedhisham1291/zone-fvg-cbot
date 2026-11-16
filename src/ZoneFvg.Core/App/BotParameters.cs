@@ -46,6 +46,14 @@ public sealed record BotParameters
     public string EmbeddedNewsHistory { get; init; } = string.Empty;
 
     /// <summary>
+    /// When true, every closed bot trade is also journaled as one machine-readable
+    /// <c>tradelog</c> line for the backtest trade log (SIM-001, <see cref="TradeLogLine"/>).
+    /// The adapter sets it in backtests only. Journal only: it changes no order and no decision.
+    /// Default false.
+    /// </summary>
+    public bool WriteTradeLog { get; init; }
+
+    /// <summary>
     /// Checks every value and throws for the first problem: the symbol must start with six letters
     /// and contain no '|'; each parameter group and the market holidays must be valid; outside backtests with NewsEnabled
     /// true the feed address must be set.

@@ -6,28 +6,6 @@ using ZoneFvg.Core.Execution.Ports;
 
 namespace ZoneFvg.Core.Ops;
 
-/// <summary>Why a trade ended, as the adapter reports it (OPS-002, spec 11).</summary>
-public enum TradeExitReason
-{
-    /// <summary>The take profit filled at the broker.</summary>
-    TakeProfit,
-
-    /// <summary>The stop loss filled at the broker.</summary>
-    StopLoss,
-
-    /// <summary>The broker closed the position for lack of margin.</summary>
-    StopOut,
-
-    /// <summary>The bot closed the position (Friday close, emergency guard, no stop loss).</summary>
-    ClosedByBot,
-
-    /// <summary>The position was closed by someone else, for example by hand.</summary>
-    ClosedOutside,
-
-    /// <summary>The reason is not known, for example for a trade backfilled after an outage.</summary>
-    Unknown,
-}
-
 /// <summary>
 /// The fields of spec section 11 for one closed trade (OPS-002): requested and filled price,
 /// slippage, exit reason, result in R and in money, commission, swap, duration, and the maximum

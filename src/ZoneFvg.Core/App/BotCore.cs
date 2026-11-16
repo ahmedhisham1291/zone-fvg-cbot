@@ -79,6 +79,7 @@ public sealed class BotCore
     private readonly List<Bar> _recentM15 = new List<Bar>();
     private readonly SortedSet<string> _newsSourcesDown = new SortedSet<string>(StringComparer.Ordinal);
     private readonly IReadOnlyList<MonthDay> _marketHolidays;
+    private readonly bool _writeTradeLog;
 
     private SignalEngine? _engine;
     private IBarHistory? _history;
@@ -95,6 +96,7 @@ public sealed class BotCore
     private bool _hasFed;
     private DateTime _lastFedCloseUtc;
     private int _lastFedRank;
+    private int _tradeLogLines;
 
     /// <summary>
     /// Creates the core of one instance (docs/architecture.md section 3). Validates every
@@ -130,6 +132,7 @@ public sealed class BotCore
         _newsEnabled = parameters.News.NewsEnabled;
         _fridayCloseUtc = parameters.Execution.FridayCloseUtc;
         _marketHolidays = MonthDay.ParseList(parameters.MarketHolidays);
+        _writeTradeLog = parameters.WriteTradeLog;
         _risk = parameters.Risk;
         _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution);
         _news = CreateNews(parameters, store, http, isBacktest);
@@ -971,6 +974,14 @@ public sealed class BotCore
         }
     }
 
+    // SIM-001: one machine-readable line per closed bot trade for the backtest trade log. Journal only.
+    private void WriteTradeLogLine(ClosedTradeInfo trade, OpenedTradePlan? plan)
+    {
+        _tradeLogLines++;
+        TradeLogRow row = TradeLogLine.Build(trade, plan?.Side, plan?.EntryPrice, plan?.Comment);
+        _ops.Journal.Write(trade.CloseTimeUtc, TradeLogLine.Category, TradeLogLine.Fields(_tradeLogLines, row));
+    }
+
     private void TouchLastSeen(DateTime now)
     {
         _store.Set(RecoveryService.LastSeenKey, now.ToString("o", CultureInfo.InvariantCulture));
@@ -1201,6 +1212,11 @@ public sealed class BotCore
         {
             double? pipSize = _core.SymbolOrNull()?.PipSize;
             _core._ops.Journal.Trade(new TradeJournalEntry(trade, plan?.Comment, plan?.Side, plan?.EntryPrice, pipSize, TradeExitReason.Unknown, null, null));
+            if (_core._writeTradeLog)
+            {
+                _core.WriteTradeLogLine(trade, plan);
+            }
+
             string text = "position " + Number(trade.PositionId) + " closed, net " + trade.NetProfit.ToString("0.00", CultureInfo.InvariantCulture);
             _core.Alert(BotAlertKind.TradeClosed, text, atUtc);
         }
