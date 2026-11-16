@@ -42,7 +42,10 @@ public enum AlertRaiseOutcome
 /// A response with a 4xx status other than 429 means Telegram refuses that message for good: it is
 /// removed, journaled and counted, and the pump goes on with the next one.</para>
 /// <para>Journal: the URL contains the token and is never journaled. Each step writes a line of
-/// category <c>alert</c> with the kind and the hash of the text (<see cref="JournalFormat.Hash8"/>).</para>
+/// category <c>alert</c> with the kind and the hash of the text (<see cref="JournalFormat.Hash8"/>).
+/// The lines written when an alert is raised (queued, collapsed, disabled) also hold the full
+/// message text, already masked (owner decision of 2026-11-16, architecture section 10), so the
+/// content is in the log even when Telegram is down or disabled.</para>
 /// </remarks>
 public sealed class AlertService
 {
@@ -184,7 +187,7 @@ public sealed class AlertService
         string hash = JournalFormat.Hash8(message);
         if (!Enabled)
         {
-            Log(atUtc, "disabled", kind, hash);
+            Log(atUtc, "disabled", kind, hash, ("text", message));
             return AlertRaiseOutcome.Disabled;
         }
 
@@ -193,7 +196,7 @@ public sealed class AlertService
         if (_recent.TryGetValue(key, out DateTime last) && atUtc >= last && atUtc - last < window)
         {
             Collapsed++;
-            Log(atUtc, "collapsed", kind, hash);
+            Log(atUtc, "collapsed", kind, hash, ("text", message));
             return AlertRaiseOutcome.Collapsed;
         }
 
@@ -214,7 +217,7 @@ public sealed class AlertService
         }
 
         _queue.Add(new QueuedAlert(kind, message, hash, url));
-        Log(atUtc, "queued", kind, hash);
+        Log(atUtc, "queued", kind, hash, ("text", message));
         return AlertRaiseOutcome.Queued;
     }
 
