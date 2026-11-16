@@ -109,8 +109,26 @@ administrator. Follow the steps in order and do not skip a check.
 
 ## Part A. Stage 1: your laptop (spec 10.5)
 
-Goal: a few days on an FTMO Free Trial with cTrader desktop on Windows, before
-you pay for a server.
+Goal: a few days on an FTMO Free Trial with cTrader desktop on your Mac,
+before you pay for a server.
+
+**Mac notes (the owner uses a Mac):**
+- Use the native **cTrader for Mac** app. It runs cBots built for .NET 6, which
+  is what CI produces (the `.algo` from the `ZoneFvgBot-algo` artifact). Sources:
+  https://community.ctrader.com/forum/announcements/42478/ and
+  https://community.ctrader.com/forum/ctrader-mac/43106/.
+- Import the bot: download and unzip the artifact, rename `src.algo` to
+  `ZoneFvgBot.algo`, then double-click it (or drag it onto the cTrader window,
+  or use Algo > cBots > import). If cTrader asks to install the .NET SDK to
+  build algos, allow it.
+- Keep the Mac awake for the whole test: System Settings > Battery (or Energy)
+  > prevent automatic sleeping when the display is off, keep it on power, and
+  leave the lid open (a closed lid sleeps a Mac unless an external display is
+  attached). As a backup, run `caffeinate -dimsu` in Terminal and leave that
+  window open; it keeps the Mac awake until you press Ctrl+C. Source:
+  https://ss64.com/mac/caffeinate.html (Apple's `man caffeinate`).
+- Pause macOS automatic updates for the test days: System Settings > General
+  > Software Update > Automatic updates, turn off "Install macOS updates".
 
 1. Open an FTMO Free Trial on **cTrader** (spec 15.6: confirm a trial can be
    opened on cTrader; if only MetaTrader is offered, use another cTrader demo
@@ -154,9 +172,10 @@ you pay for a server.
 
 ### 2. First login and system update
 
-From the laptop (Windows 10/11 has an OpenSSH client; check it under
-Settings > Optional features > OpenSSH Client.
-Source: https://learn.microsoft.com/windows-server/administration/openssh/openssh_install_firstuse):
+From the laptop. On a Mac, open **Terminal** (Applications > Utilities); `ssh`,
+`scp` and `ssh-keygen` are built in. (Windows 10/11 also has an OpenSSH client
+under Settings > Optional features > OpenSSH Client. Source:
+https://learn.microsoft.com/windows-server/administration/openssh/openssh_install_firstuse):
 
 ```bash
 ssh root@SERVER_IP
@@ -193,9 +212,16 @@ adduser zfvg sudo
 
 Source: https://ubuntu.com/server/docs/how-to/security/user-management/
 
-3.3 Put your public key on the server for that user. Open the file
-`C:\Users\YOU\.ssh\id_ed25519.pub` on the laptop in Notepad and copy its one
-line. On the server:
+3.3 Put your public key on the server for that user. On a Mac, the simplest
+way is one command in Terminal (it asks for the new user's password once):
+
+```bash
+ssh-copy-id zfvg@SERVER_IP
+```
+
+Then skip to 3.4. Otherwise (Windows), open the file
+`C:\Users\YOU\.ssh\id_ed25519.pub` in Notepad (on a Mac:
+`cat ~/.ssh/id_ed25519.pub` in Terminal) and copy its one line. On the server:
 
 ```bash
 su - zfvg
