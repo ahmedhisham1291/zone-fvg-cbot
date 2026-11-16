@@ -216,6 +216,26 @@ namespace cAlgo.Robots
         [Parameter("MaxVolumeUnits", DefaultValue = 500000.0, Group = "Risk")]
         public double MaxVolumeUnits { get; set; }
 
+        /// <summary>Ladder sizing on; when off the fixed RiskPercent is used (RSK-013).</summary>
+        [Parameter("LadderEnabled", DefaultValue = true, Group = "Risk")]
+        public bool LadderEnabled { get; set; }
+
+        /// <summary>Risk of one ladder deal in percent, before growth (RSK-013).</summary>
+        [Parameter("LadderDealRiskPercent", DefaultValue = 0.30, Group = "Risk")]
+        public double LadderDealRiskPercent { get; set; }
+
+        /// <summary>Growth of a ladder deal per consecutive win (RSK-013).</summary>
+        [Parameter("LadderGrowth", DefaultValue = 1.5924, Group = "Risk")]
+        public double LadderGrowth { get; set; }
+
+        /// <summary>Weight of the first of the four parts of a ladder deal (RSK-013).</summary>
+        [Parameter("LadderFirstWeight", DefaultValue = 0.2962, Group = "Risk")]
+        public double LadderFirstWeight { get; set; }
+
+        /// <summary>Largest ladder risk of one entry in percent (RSK-013).</summary>
+        [Parameter("MaxRiskPercentPerTrade", DefaultValue = 0.5, Group = "Risk")]
+        public double MaxRiskPercentPerTrade { get; set; }
+
         /// <summary>News filter on or off (NWS-001).</summary>
         [Parameter("NewsEnabled", DefaultValue = true, Group = "News")]
         public bool NewsEnabled { get; set; }
@@ -543,6 +563,11 @@ namespace cAlgo.Robots
                 MaxRequestsPerDay = MaxRequestsPerDay,
                 MaxErrorsPerHour = MaxErrorsPerHour,
                 MaxVolumeUnits = MaxVolumeUnits,
+                LadderEnabled = LadderEnabled,
+                LadderDealRiskPercent = LadderDealRiskPercent,
+                LadderGrowth = LadderGrowth,
+                LadderFirstWeight = LadderFirstWeight,
+                MaxRiskPercentPerTrade = MaxRiskPercentPerTrade,
             };
         }
 
