@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Console tool for the simulation commands (WP10, SIM-002 to SIM-005). All logic is in
+       ZoneFvg.Core/Simulation; this project only reads and writes files. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>ZoneFvg.Sim</RootNamespace>
+    <AssemblyName>sim</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ZoneFvg.Core\ZoneFvg.Core.csproj" />
+  </ItemGroup>
+
+</Project>
