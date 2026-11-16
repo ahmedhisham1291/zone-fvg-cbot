@@ -23,7 +23,7 @@ public class AcceptanceReportTests
     private static IReadOnlyList<TradeRecord> Development()
     {
         // R in close order: 2, -1, -1, -1, 2, -1, 2, 2 at risk 500.
-        // Average R = 3 / 8 = 0.375. Gross profit 4 x 1,000 = 4,000; gross loss 4 x 500 = 2,000:
+        // Average R = (4 x 2 - 4 x 1) / 8 = 0.5. Gross profit 4 x 1,000 = 4,000; gross loss 4 x 500 = 2,000:
         // profit factor 2.0. Net by symbol: EURUSD +1,500, GBPUSD +500, AUDUSD -1,000,
         // USDJPY +1,000: 3 of 4 profitable; total 2,000, largest share 1,500 / 2,000 = 75%.
         // At 0.5% compounded: 1.01, then three losses: drawdown 1 - 0.995^3 = 1.4925125%.
@@ -54,7 +54,7 @@ public class AcceptanceReportTests
         IReadOnlyList<TradeRecord> log = Development();
 
         Assert.Equal(2.0, AcceptanceReport.ProfitFactor(log), 12);
-        Assert.Equal(0.375, AcceptanceReport.AverageR(log), 12);
+        Assert.Equal(0.5, AcceptanceReport.AverageR(log), 12);
         Assert.Equal(1.4925125, AcceptanceReport.MaxDrawdownPercentAtRisk(log, 0.5), 12);
         Assert.Equal(2000.0 / 1500.0, AcceptanceReport.ReturnToDrawdown(log, 100000.0), 12);
         Assert.Equal(3, AcceptanceReport.ProfitableSymbols(log));
@@ -66,7 +66,7 @@ public class AcceptanceReportTests
     [Trait("Req", "SIM-005")]
     public void Evaluate_AllInputs_StatesEveryRowOfSpec13Point1()
     {
-        // Holdout R: 2, -1, 2, -1: average 0.5 >= 0.375 / 2; profit factor 2,000 / 1,000 = 2;
+        // Holdout R: 2, -1, 2, -1: average 0.5 >= 0.5 / 2; profit factor 2,000 / 1,000 = 2;
         // drawdown 0.5%; profitable EURUSD and AUDUSD only: 2 of 4.
         // Cost stress: wins +1.8R (900), losses -1.1R (-550): 3,600 / 2,200 = 1.636 > 1.10.
         // Benchmark: -1,000 then +1,500: net 500, drawdown 1,000, ratio 0.5 < 1.333.
@@ -92,9 +92,9 @@ public class AcceptanceReportTests
         Assert.Equal("2.00", Row(result, "Profit factor after costs", "Development").Value);
         Assert.Equal(AcceptanceVerdict.Pass, Row(result, "Profit factor after costs", "Holdout").Verdict);
         Assert.Equal(AcceptanceVerdict.Pass, Row(result, "Average result per trade", "Development").Verdict);
-        Assert.Equal("0.375R", Row(result, "Average result per trade", "Development").Value);
+        Assert.Equal("0.500R", Row(result, "Average result per trade", "Development").Value);
         Assert.Equal(AcceptanceVerdict.Pass, Row(result, "Average result per trade", "Holdout").Verdict);
-        Assert.Equal("0.188R or higher (half the development figure)", Row(result, "Average result per trade", "Holdout").Threshold);
+        Assert.Equal("0.250R or higher (half the development figure)", Row(result, "Average result per trade", "Holdout").Threshold);
         Assert.Equal(AcceptanceVerdict.Pass, Row(result, "Maximum drawdown at 0.5% risk", "Development").Verdict);
         Assert.Equal("1.49%", Row(result, "Maximum drawdown at 0.5% risk", "Development").Value);
         Assert.Equal(AcceptanceVerdict.Pass, Row(result, "Maximum drawdown at 0.5% risk", "Holdout").Verdict);
