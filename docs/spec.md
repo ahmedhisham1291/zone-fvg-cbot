@@ -170,8 +170,15 @@ Every skip is logged with its reason.
 
 ### 4.1 Size per trade
 
+**Owner decision 2026-11-16: ladder sizing (the owner's 4-part plan).** The
+risk percent of each new trade comes from the ladder rule of requirement
+RSK-013 (deal risk 0.30%, split over 4 consecutive trades, grown by 1.5924 per
+consecutive win, never more than 0.5% per trade). The formula below then uses
+that percent instead of a fixed 0.5%. With `LadderEnabled` = false the bot
+uses the fixed `RiskPercent` as before.
+
 ```
-riskAmount  = Account.Balance x 0.5%
+riskAmount  = Account.Balance x riskPercent   (ladder, at most 0.5%)
 volumeUnits = riskAmount / (stopPips x Symbol.PipValue)
 volume      = round DOWN to the symbol's volume step
 ```
