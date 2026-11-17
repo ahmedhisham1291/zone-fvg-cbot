@@ -22,10 +22,11 @@ of consecutive wins and let a deal's four parts always run to the end. Now:
 3. **A win raises the column of the winning entry's position** (F for 5 or
    more), but never past a column that is still 0: the raise moves back to
    the first column after the last non-zero one. C can always be raised.
-4. **Month rule:** once an entry's raw (uncapped) percent is above
+4. **Freeze and reset:** once an entry's raw (uncapped) percent is above
    `MaxRiskPercentPerTrade` (0.5), wins that close after that entry was
-   placed raise nothing until the month ends. At 00:00 CE(S)T on the 1st
-   all columns go back to 0. Open deals keep their sizes.
+   placed raise nothing. Only a new `RiskEpochDate` (set by the owner after a
+   payout or for a new account) resets the columns to 0 and lifts the freeze,
+   because entries before it are not counted. There is no monthly reset.
 
 Unchanged from WP12: entry numbering and counting, a win is net > 0 (1e-9
 tolerance), the tie rule (a close at the same instant as a placement counts
@@ -63,7 +64,7 @@ weakened.
 ## Tests required
 
 Percent of balance with the defaults (deal 0.30, cap 0.5), each trade closed
-before the next is placed, all in one month unless stated. W = win, L = loss.
+before the next is placed. W = win, L = loss.
 Compare with a tolerance of 1e-6.
 
 - **The owner's example**, W W L L L W W L L W, then L L L L L L:
@@ -78,11 +79,10 @@ Compare with a tolerance of 1e-6.
   the later wins raise nothing).
 - **Long losing run:** L x 6: 0.08886, 0.13329, 0.199935, 0.299903,
   0.299903, 0.299903 (5th and 6th at step 0).
-- **Month reset:** three wins in one month, three in the next (first entry
-  placed after 00:00 CE(S)T on the 1st): 0.08886, 0.141501, 0.225326, then
-  0.08886, 0.141501, 0.225326. Include a deal still open across the month
-  boundary keeping its size, the freeze lifting at the new month, and a
-  month boundary in summer time and in winter time.
+- **Reset by RiskEpochDate:** three wins, then a new RiskEpochDate, then
+  three wins: 0.08886, 0.141501, 0.225326, then 0.08886, 0.141501, 0.225326;
+  the freeze lifts with the new RiskEpochDate; a month boundary alone
+  changes nothing (steps and freeze carry across the 1st).
 - **Break-even** is not a win: it does not end deals or raise a step, and
   the next trade's position goes up.
 - **Another instance's win** ends the deals and raises a column; a win that
