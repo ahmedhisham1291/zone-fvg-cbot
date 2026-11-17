@@ -32,8 +32,9 @@ namespace ZoneFvg.Bot
         /// <returns>The stored value, or null.</returns>
         public string? Get(string key)
         {
-            // GetString(string, LocalStorageScope): reads only the given scope.
-            return _storage.GetString(key, Scope);
+            // GetString(string, LocalStorageScope): reads only the given scope. Keys may hold only
+            // Latin letters, digits and inner spaces, so the port key is encoded (StorageKey).
+            return _storage.GetString(StorageKey.Encode(key), Scope);
         }
 
         /// <summary>Stores the value in the Instance scope and flushes it to disk at once (NWS-006, NWS-007).</summary>
@@ -41,7 +42,7 @@ namespace ZoneFvg.Bot
         /// <param name="value">The value.</param>
         public void Set(string key, string value)
         {
-            _storage.SetString(key, value, Scope);
+            _storage.SetString(StorageKey.Encode(key), value, Scope);
             _storage.Flush(Scope);
         }
     }
