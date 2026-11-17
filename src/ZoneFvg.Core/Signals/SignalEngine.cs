@@ -43,6 +43,10 @@ public sealed class SignalEngine
 
     // Display only (PLT-005): written when a gap confirms a zone, never read by any decision.
     private readonly List<Fvg> _recentFvgs = new List<Fvg>();
+
+    // Journal only (OPS-009): what the last accepted bar did to the zones, never read by any decision.
+    private readonly List<ZoneEnd> _ended = new List<ZoneEnd>();
+    private int _created;
     private bool _hasAccepted;
     private DateTime _lastCloseUtc;
     private int _lastRank;
@@ -94,6 +98,13 @@ public sealed class SignalEngine
     public IReadOnlyList<Fvg> RecentFvgs => IsReady && _recentFvgs.Count > 0 ? Array.AsReadOnly(_recentFvgs.ToArray()) : NoFvgs;
 
     /// <summary>
+    /// What the last accepted bar did to the zones (OPS-009): the zones it created and the zones
+    /// that ended, with their reasons, also while the engine is not ready. Journal only: reading
+    /// it changes nothing and no decision of the engine reads it. A new read-only copy at every read.
+    /// </summary>
+    public ZoneActivity LastActivity => _created == 0 && _ended.Count == 0 ? ZoneActivity.None : new ZoneActivity(_created, Array.AsReadOnly(_ended.ToArray()));
+
+    /// <summary>
     /// Feeds one closed bar (SIG-001, SIG-004) and returns the signals it confirms, ordered by zone
     /// id, at most one per zone (SIG-018); none while the engine is not ready (SIG-020).
     /// </summary>
@@ -116,6 +127,8 @@ public sealed class SignalEngine
         DateTime closeUtc = BarIntakeOrder.CloseTimeUtc(timeFrame, bar);
         RequireIntakeOrder(timeFrame, closeUtc, rank);
 
+        _created = 0;
+        _ended.Clear();
         _bars.Add(timeFrame, bar);
         _hasAccepted = true;
         _lastCloseUtc = closeUtc;
@@ -158,15 +171,49 @@ public sealed class SignalEngine
         ZoneDetection detection = ZoneDetector.Detect(h4, swings, _parameters);
         if (detection.Zone is not null)
         {
-            _book.Add(detection.Zone);
+            IReadOnlyList<Zone> before = _book.Zones;
+            if (_book.Add(detection.Zone))
+            {
+                _created++;
+                RecordSuperseded(before);
+            }
         }
 
-        _book.OnH4Closed(bar);
+        Ended(_book.OnH4Closed(bar), ZoneEndReason.Expired);
+    }
+
+    // OPS-009: the zones that were in the book before an Add and are gone after it were superseded (SIG-012).
+    private void RecordSuperseded(IReadOnlyList<Zone> before)
+    {
+        var after = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Zone zone in _book.Zones)
+        {
+            after.Add(zone.Id);
+        }
+
+        foreach (Zone zone in before)
+        {
+            if (!after.Contains(zone.Id))
+            {
+                _ended.Add(new ZoneEnd(zone.Id, ZoneEndReason.Superseded));
+            }
+        }
+    }
+
+    private void Ended(IReadOnlyList<Zone> changed, ZoneEndReason reason)
+    {
+        foreach (Zone zone in changed)
+        {
+            if (zone.State is ZoneState.Invalid or ZoneState.Used or ZoneState.Expired)
+            {
+                _ended.Add(new ZoneEnd(zone.Id, reason));
+            }
+        }
     }
 
     private IReadOnlyList<Signal> OnM15Closed(Bar bar, bool replay)
     {
-        _book.OnM15Closed(bar);
+        Ended(_book.OnM15Closed(bar), ZoneEndReason.Invalid);
         List<Signal>? signals = null;
         IReadOnlyList<TouchedZone> touched = _book.TouchedZones;
         if (touched.Count > 0)
@@ -191,7 +238,7 @@ public sealed class SignalEngine
             }
         }
 
-        _book.EndConfirmationWindows();
+        Ended(_book.EndConfirmationWindows(), ZoneEndReason.NoFvg);
         return signals is null ? NoSignals : signals.AsReadOnly();
     }
 
@@ -216,10 +263,12 @@ public sealed class SignalEngine
         if (!BiasAllows(zone.Type))
         {
             _book.MarkUsed(zone.Id);
+            _ended.Add(new ZoneEnd(zone.Id, ZoneEndReason.BiasMismatch));
             return null;
         }
 
         _book.MarkSignalled(zone.Id);
+        _ended.Add(new ZoneEnd(zone.Id, ZoneEndReason.Signalled));
         return FvgDetector.BuildSignal(zone, fvg, atrM15, atrH4, _parameters, replay);
     }
 

@@ -21,7 +21,11 @@ namespace ZoneFvg.Bot
     /// The painter only reads the core's read-only snapshots (<see cref="BotCore.ZoneSnapshot"/>,
     /// <see cref="BotCore.FvgSnapshot"/>), which never change the core's state. When drawing is
     /// off it does not read them at all. It keeps no copy of them: each paint draws what the
-    /// snapshots hold and removes every other drawing of this cBot.
+    /// snapshots hold and removes every other drawing of this cBot. Because cTrader does not list
+    /// non-interactive drawings in <c>Chart.Objects</c>, the painter remembers the names it drew in
+    /// its previous paint and removes by name every remembered name it does not draw again
+    /// (PLT-005, owner acceptance of 2026-11-17). The names are drawing state only; no trading
+    /// decision reads them.
     /// </remarks>
     internal sealed class ChartPainter
     {
@@ -34,6 +38,9 @@ namespace ZoneFvg.Bot
         private readonly Func<DateTime> _serverTimeUtc;
         private readonly AdapterLog _log;
         private bool _enabled;
+
+        // PLT-005: names drawn in the previous paint, so that a drawing no longer in the snapshots is removed by name.
+        private HashSet<string> _drawn = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>Creates the painter (PLT-005).</summary>
         /// <param name="chart">The cBot's chart, or null when there is none.</param>
@@ -66,7 +73,7 @@ namespace ZoneFvg.Bot
 
             try
             {
-                Draw(_chart, core.ZoneSnapshot, core.FvgSnapshot, _serverTimeUtc());
+                _drawn = Draw(_chart, core.ZoneSnapshot, core.FvgSnapshot, _serverTimeUtc(), _drawn);
             }
             catch (Exception exception)
             {
@@ -75,7 +82,7 @@ namespace ZoneFvg.Bot
             }
         }
 
-        private static void Draw(ChartArea chart, IReadOnlyList<Zone> zones, IReadOnlyList<Fvg> fvgs, DateTime nowUtc)
+        private static HashSet<string> Draw(ChartArea chart, IReadOnlyList<Zone> zones, IReadOnlyList<Fvg> fvgs, DateTime nowUtc, HashSet<string> previous)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (Zone zone in zones)
@@ -99,6 +106,19 @@ namespace ZoneFvg.Bot
                     chart.RemoveObject(name);
                 }
             }
+
+            // Non-interactive drawings are not in Chart.Objects ("If a chart object is not interactive, it will also be
+            // invisible in lists and collections of chart objects."), so the names of the previous paint are removed
+            // by name: https://help.ctrader.com/ctrader-algo/guides/ui-operations/chart-objects/
+            foreach (string name in previous.OrderBy(n => n, StringComparer.Ordinal))
+            {
+                if (!names.Contains(name))
+                {
+                    chart.RemoveObject(name);
+                }
+            }
+
+            return names;
         }
 
         private static string DrawZone(ChartArea chart, Zone zone, DateTime untilUtc)
