@@ -105,6 +105,19 @@ services:
       - audusd-data:/data
       - audusd-logs:/logs
 
+  # Gold (spec v0.9, owner decision D of 2026-11-17, PLT-010). Its parameter file differs from the
+  # forex files only in MaxSpreadPips, MinStopPips, MaxVolumeUnits and HeartbeatUrl.
+  xauusd:
+    <<: *bot
+    environment:
+      <<: *env
+      SYMBOL: XAUUSD
+    volumes:
+      - ./algo/current:/mnt/algo:ro
+      - ./params/xauusd:/mnt/params:ro
+      - xauusd-data:/data
+      - xauusd-logs:/logs
+
 secrets:
   ctrader_password:
     file: ./secrets/ctrader-cli.pwd
@@ -118,3 +131,5 @@ volumes:
   usdjpy-logs:
   audusd-data:
   audusd-logs:
+  xauusd-data:
+  xauusd-logs:

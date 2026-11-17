@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using ZoneFvg.Core.Domain;
 
@@ -59,8 +60,9 @@ public static class AcceptanceReport
         rows.Add(hold == null ? Missing(DrawdownMeasure(inputs.DrawdownRiskPercent), Holdout, "6% or less", "no holdout log") : DrawdownRow(hold, Holdout, inputs.DrawdownRiskPercent));
         rows.Add(ProbabilityRow("Challenge simulation: chance of passing the Challenge phase", inputs.ChallengePassProbability, 0.70, true, "70% or higher"));
         rows.Add(ProbabilityRow("Challenge simulation: chance of breaching an FTMO floor", inputs.ChallengeBreachProbability, 0.10, false, "10% or lower"));
-        rows.Add(ProfitableSymbolsRow(dev, Development));
-        rows.Add(hold == null ? Missing("Profitable symbols", Holdout, "3 of 4", "no holdout log") : ProfitableSymbolsRow(hold, Holdout));
+        int symbols = inputs.DevelopmentSymbolCount ?? SymbolCount(dev);
+        rows.Add(ProfitableSymbolsRow(dev, symbols, Development, symbols));
+        rows.Add(hold == null ? Missing("Profitable symbols", Holdout, ProfitableSymbolsText(symbols), "no holdout log") : ProfitableSymbolsRow(hold, inputs.HoldoutSymbolCount ?? SymbolCount(hold), Holdout, symbols));
         rows.Add(ShareRow(dev));
         rows.Add(StressRow(inputs.DevelopmentCostStress));
         rows.Add(BenchmarkRow(dev, inputs.DevelopmentBenchmark, Development, inputs.InitialCapital));
@@ -209,6 +211,49 @@ public static class AcceptanceReport
         return count;
     }
 
+    /// <summary>
+    /// The profitable-symbols threshold for <paramref name="symbols"/> distinct development symbols
+    /// (SIM-005, owner decision D of 2026-11-17): max(3, N - 1), so 3 of 4 for the four forex pairs
+    /// and 4 of 5 with gold.
+    /// </summary>
+    /// <param name="symbols">N, the number of distinct symbols in the development log.</param>
+    /// <returns>The smallest number of profitable symbols that passes.</returns>
+    public static int ProfitableSymbolsThreshold(int symbols)
+    {
+        return Math.Max(3, symbols - 1);
+    }
+
+    /// <summary>
+    /// The number of symbols a group of trade logs covers (SIM-005, owner answer of 2026-11-17): the
+    /// distinct symbols of their trades, plus one for each log without any trade, whose symbol the
+    /// file does not name. Counted from the logs as given, before combining, so a symbol whose trades
+    /// were all left out still counts (as not profitable).
+    /// </summary>
+    /// <param name="logs">The logs, one per file.</param>
+    /// <returns>N.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="logs"/> or a log in it is null.</exception>
+    public static int SymbolsCovered(IEnumerable<IReadOnlyList<TradeRecord>> logs)
+    {
+        ArgumentNullException.ThrowIfNull(logs);
+        var named = new SortedSet<string>(StringComparer.Ordinal);
+        int withoutTrades = 0;
+        foreach (IReadOnlyList<TradeRecord> log in logs)
+        {
+            ArgumentNullException.ThrowIfNull(log, nameof(logs));
+            if (log.Count == 0)
+            {
+                withoutTrades++;
+            }
+
+            foreach (TradeRecord trade in log)
+            {
+                named.Add(trade.Symbol);
+            }
+        }
+
+        return named.Count + withoutTrades;
+    }
+
     /// <summary>Number of distinct symbols (SIM-005).</summary>
     /// <param name="trades">The trades.</param>
     /// <returns>The count.</returns>
@@ -314,11 +359,26 @@ public static class AcceptanceReport
         return atLeast ? AtLeast(measure, Development, probability.Value, threshold, value, thresholdText) : AtMost(measure, Development, probability.Value, threshold, value, thresholdText);
     }
 
-    private static AcceptanceRow ProfitableSymbolsRow(IReadOnlyList<TradeRecord> trades, string segment)
+    // SIM-005 (owner decision D and answer of 2026-11-17): both segments use the threshold of the N symbols the
+    // development run covers; a covered symbol without trades is not profitable. No symbol at all is a failure,
+    // never "3 of 0".
+    private static AcceptanceRow ProfitableSymbolsRow(IReadOnlyList<TradeRecord> trades, int segmentSymbols, string segment, int developmentSymbols)
     {
+        if (developmentSymbols == 0)
+        {
+            return new AcceptanceRow("Profitable symbols", segment, "no symbol", ProfitableSymbolsText(0), AcceptanceVerdict.Fail);
+        }
+
         int profitable = ProfitableSymbols(trades);
-        string value = SimText.Int(profitable) + " of " + SimText.Int(SymbolCount(trades));
-        return AtLeast("Profitable symbols", segment, profitable, 3.0, value, "3 of 4");
+        string value = SimText.Int(profitable) + " of " + SimText.Int(segmentSymbols);
+        return AtLeast("Profitable symbols", segment, profitable, ProfitableSymbolsThreshold(developmentSymbols), value, ProfitableSymbolsText(developmentSymbols));
+    }
+
+    private static string ProfitableSymbolsText(int developmentSymbols)
+    {
+        return developmentSymbols == 0
+            ? "max(3, N - 1) of N symbols"
+            : SimText.Int(ProfitableSymbolsThreshold(developmentSymbols)) + " of " + SimText.Int(developmentSymbols);
     }
 
     private static AcceptanceRow ShareRow(IReadOnlyList<TradeRecord> trades)
@@ -465,6 +525,16 @@ public sealed record AcceptanceInputs
     /// <summary>Chance of breaching an FTMO floor in the Challenge phase, 0 to 1, or null (SIM-005).</summary>
     public double? ChallengeBreachProbability { get; init; }
 
+    /// <summary>
+    /// N, the number of symbols the development run covers (SIM-005, owner answer of 2026-11-17), for
+    /// example from <see cref="AcceptanceReport.SymbolsCovered"/>; a covered symbol without trades is not
+    /// profitable. Null: the distinct symbols of <see cref="Development"/>.
+    /// </summary>
+    public int? DevelopmentSymbolCount { get; init; }
+
+    /// <summary>The number of symbols the holdout run covers (SIM-005), for its value text. Null: the distinct symbols of <see cref="Holdout"/>.</summary>
+    public int? HoldoutSymbolCount { get; init; }
+
     /// <summary>Starting balance for the return-to-drawdown ratio (SIM-005). Default 100,000.</summary>
     public double InitialCapital { get; init; } = 100000.0;
 
@@ -477,6 +547,8 @@ public sealed record AcceptanceInputs
     {
         RequireProbability(ChallengePassProbability, nameof(ChallengePassProbability));
         RequireProbability(ChallengeBreachProbability, nameof(ChallengeBreachProbability));
+        RequireSymbolCount(DevelopmentSymbolCount, Development, nameof(DevelopmentSymbolCount));
+        RequireSymbolCount(HoldoutSymbolCount, Holdout, nameof(HoldoutSymbolCount));
         if (!double.IsFinite(InitialCapital) || InitialCapital <= 0.0)
         {
             throw new ArgumentOutOfRangeException(nameof(InitialCapital), "InitialCapital must be a finite number greater than zero.");
@@ -485,6 +557,21 @@ public sealed record AcceptanceInputs
         if (!double.IsFinite(DrawdownRiskPercent) || DrawdownRiskPercent <= 0.0 || DrawdownRiskPercent > 100.0)
         {
             throw new ArgumentOutOfRangeException(nameof(DrawdownRiskPercent), "DrawdownRiskPercent must be greater than 0 and at most 100.");
+        }
+    }
+
+    // A given count must be at least one and cover every symbol of the trades.
+    private static void RequireSymbolCount(int? count, IReadOnlyList<TradeRecord>? trades, string name)
+    {
+        if (!count.HasValue)
+        {
+            return;
+        }
+
+        int named = trades == null ? 0 : AcceptanceReport.SymbolCount(trades);
+        if (count.Value < 1 || count.Value < named)
+        {
+            throw new ArgumentOutOfRangeException(name, name + " must be at least 1 and at least the " + named.ToString(CultureInfo.InvariantCulture) + " symbols of the trades, but was " + count.Value.ToString(CultureInfo.InvariantCulture) + ".");
         }
     }
 

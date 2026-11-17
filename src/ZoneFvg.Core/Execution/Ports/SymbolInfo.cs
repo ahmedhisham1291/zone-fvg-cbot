@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace ZoneFvg.Core.Execution.Ports;
 
 /// <summary>
@@ -73,4 +76,11 @@ public sealed record SymbolInfo(
     /// record without it is refused as BrokerDataInvalid.
     /// </summary>
     public double TickSize { get; init; }
+
+    /// <summary>
+    /// The symbol's weekly trading sessions, UTC, from cTrader <c>Symbol.MarketHours.Sessions</c>
+    /// (REC-016). Time outside them is closed time for the gap and recency check. Default empty:
+    /// no session reported, and the check uses the weekend closure and holidays alone.
+    /// </summary>
+    public IReadOnlyList<TradingSession> Sessions { get; init; } = Array.Empty<TradingSession>();
 }

@@ -140,14 +140,18 @@ public sealed class RecoveryService
     /// and returns its report. Never places an entry order.
     /// </summary>
     /// <param name="history">Closed-bar history port.</param>
+    /// <param name="sessions">
+    /// The symbol's weekly trading sessions, read from the broker by the caller for this run and not
+    /// stored (REC-016); time outside them is not a gap. Null or empty means none.
+    /// </param>
     /// <returns>The report, with the state entered.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="history"/> is null.</exception>
-    public RecoveryReport Run(IBarHistory history)
+    public RecoveryReport Run(IBarHistory history, IReadOnlyList<TradingSession>? sessions = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         DateTime now = ServerTime();
         TimeSpan? downtime = Downtime(now);
-        DataStep data = WaitForConnectionAndData(history, now);
+        DataStep data = WaitForConnectionAndData(history, now, sessions);
         if (!data.Complete)
         {
             // Spec 8.3 step 1: stay in Recovering. Protection repair is still required (prompt WP07).
@@ -209,7 +213,7 @@ public sealed class RecoveryService
     // Step 1 (REC-003, owner decision A of 2026-11-17): connection, bar counts against the warm-up
     // requirement, missing, unclosed or disordered bars and recency fail recovery; a gap that is still
     // there after the one reload is the broker's data and is accepted.
-    private DataStep WaitForConnectionAndData(IBarHistory history, DateTime now)
+    private DataStep WaitForConnectionAndData(IBarHistory history, DateTime now, IReadOnlyList<TradingSession>? sessions)
     {
         if (!_broker.IsConnected)
         {
@@ -222,21 +226,21 @@ public sealed class RecoveryService
         foreach (TimeFrame timeFrame in BarIntakeOrder.SameInstant)
         {
             IReadOnlyList<Bar> series = history.ClosedBars(timeFrame, LoadCount(timeFrame));
-            if (Problem(timeFrame, series, now) != null || Gaps(timeFrame, series).Count > 0)
+            if (Problem(timeFrame, series, now, sessions) != null || Gaps(timeFrame, series, sessions).Count > 0)
             {
                 // Request more once, then read again (prompt WP07).
                 history.RequestMore(timeFrame, LoadCount(timeFrame));
                 series = history.ClosedBars(timeFrame, LoadCount(timeFrame));
             }
 
-            string? problem = Problem(timeFrame, series, now);
+            string? problem = Problem(timeFrame, series, now, sessions);
             if (problem != null)
             {
                 problems.Add(problem);
             }
             else
             {
-                IReadOnlyList<BarGap> gaps = Gaps(timeFrame, series);
+                IReadOnlyList<BarGap> gaps = Gaps(timeFrame, series, sessions);
                 if (gaps.Count > 0)
                 {
                     IReadOnlyList<BarGap> newest = gaps.Reverse().Take(AcceptedGapList.Listed).ToList().AsReadOnly();
@@ -437,15 +441,15 @@ public sealed class RecoveryService
         return _enterState(findings);
     }
 
-    // REC-003 (owner decision A): every problem except a gap.
-    private string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? series, DateTime now)
+    // REC-003 (owner decision A): every problem except a gap; REC-016: time outside the sessions is closed.
+    private string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? series, DateTime now, IReadOnlyList<TradingSession>? sessions)
     {
-        return BarSeriesCheck.ProblemOtherThanGap(timeFrame, series, _warmup[timeFrame], now, _executionParameters.FridayCloseUtc, _marketHolidays);
+        return BarSeriesCheck.ProblemOtherThanGap(timeFrame, series, _warmup[timeFrame], now, _executionParameters.FridayCloseUtc, _marketHolidays, sessions);
     }
 
-    private IReadOnlyList<BarGap> Gaps(TimeFrame timeFrame, IReadOnlyList<Bar>? series)
+    private IReadOnlyList<BarGap> Gaps(TimeFrame timeFrame, IReadOnlyList<Bar>? series, IReadOnlyList<TradingSession>? sessions)
     {
-        return BarSeriesCheck.Gaps(timeFrame, series, _executionParameters.FridayCloseUtc, _marketHolidays);
+        return BarSeriesCheck.Gaps(timeFrame, series, _executionParameters.FridayCloseUtc, _marketHolidays, sessions);
     }
 
     private string? StrangerReason(string label, string comment, SortedSet<string> knownZones)
