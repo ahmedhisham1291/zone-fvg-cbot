@@ -17,12 +17,13 @@ public class Rec015DutiesWhileRecoveringScenarios
 {
     private static readonly DateTime Nine = RecoveryData.Activation.AddHours(1.0);
 
-    private static (BotHarness Harness, long Position, long Order) StuckWithTrades(DateTime start, double balance = 100000.0)
+    private static (BotHarness Harness, long Position, long Order) StuckWithTrades(DateTime start, double balance = 100000.0, bool orderExpires = true)
     {
         var h = new BotHarness(broker: BotHarness.NewBroker(start, ExecutionData.Account(balance, balance, balance)));
         h.History.Available[TimeFrame.D1] = 10;
         long position = h.Broker.AddPosition(RecoveryData.Symbol, Side.Buy, RecoveryData.Volume, RecoveryData.Entry, RecoveryData.Stop, RecoveryData.Target, RecoveryData.Label, RecoveryData.Comment());
-        long order = h.Broker.AddOrder(RecoveryData.Symbol, Side.Sell, 1000.0, 101.5, 102.0, 100.0, start.AddHours(4.0), "ZFVG|v1|USDJPY|S-20260101-0000", RecoveryData.Comment());
+        DateTime? expiry = orderExpires ? start.AddHours(4.0) : null;
+        long order = h.Broker.AddOrder(RecoveryData.Symbol, Side.Sell, 1000.0, 101.5, 102.0, 100.0, expiry, "ZFVG|v1|USDJPY|S-20260101-0000", RecoveryData.Comment());
         h.Start(start);
         Assert.Equal(BotState.Recovering, h.Core.State);
         Assert.Equal(0, h.Broker.WriteRequestCount);
@@ -57,7 +58,8 @@ public class Rec015DutiesWhileRecoveringScenarios
     public void FridayClose_RecoveryStuckMarketClosed_DeferredThenDoneAtTheReopenOnATimerOrTradeEvent(bool timer)
     {
         // EXE-016 while Recovering: no request against the closed market; the close waits for the reopen.
-        (BotHarness h, long position, long order) = StuckWithTrades(RecoveryData.At(6, 19, 30));
+        // The pending entry has no expiry, so it is still at the broker on Sunday.
+        (BotHarness h, long position, long order) = StuckWithTrades(RecoveryData.At(6, 19, 30), orderExpires: false);
         h.Broker.SetSymbol(RecoveryData.UsdJpy(marketOpen: false));
 
         h.Timer(RecoveryData.At(6, 20, 0));
