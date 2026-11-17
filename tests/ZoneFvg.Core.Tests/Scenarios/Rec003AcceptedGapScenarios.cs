@@ -152,7 +152,7 @@ public class Rec003AcceptedGapScenarios
     [Trait("Req", "REC-003")]
     public void Recovery_LastM15BarClosed29Minutes59SecondsAgo_IsRecent()
     {
-        var h = new BotHarness();
+        var h = new BotHarness(broker: BotHarness.NewBroker(A.AddSeconds(-1.0)));
         h.History.Missing.Add(A.AddMinutes(-30.0));
 
         BotCore core = h.Start(A.AddSeconds(-1.0));
@@ -167,7 +167,7 @@ public class Rec003AcceptedGapScenarios
     {
         // The M15 bar opening 07:15 never arrives and is not in the broker's history either.
         DateTime seven = A.AddHours(-1.0);
-        var h = new BotHarness();
+        var h = new BotHarness(broker: BotHarness.NewBroker(seven));
         h.History.Missing.Add(A.AddMinutes(-45.0));
         BotCore core = h.Start(seven);
         h.FeedTo(A.AddMinutes(-45.0));

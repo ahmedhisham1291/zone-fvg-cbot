@@ -415,13 +415,20 @@ public sealed class PreTradeFilters
             return c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, exception.Message);
         }
 
-        RiskCheckResult result = _risk.CheckNewTradeWithWaiver(snapshot, new PlannedTrade(c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, volume, margin), _dailyBudgetRecordOnly, out RiskCheckResult? waived);
+        var trade = new PlannedTrade(c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, volume, margin);
+        RiskCheckResult result = _risk.CheckNewTrade(snapshot, trade);
+        if (_dailyBudgetRecordOnly && result.Reason == RiskReason.DailyBudgetExceeded)
+        {
+            // REC-014, backtests only: the budget does not refuse the trade; the checks after it still do.
+            c.WaivedDailyBudget = result.Detail;
+            result = _risk.CheckNewTradeWithoutDailyBudget(snapshot, trade);
+        }
+
         if (!result.IsAllowed)
         {
             return c.Skip(SkipReasons.FromRisk(result.Reason), result.Measured, result.Limit, result.Detail);
         }
 
-        c.WaivedDailyBudget = waived?.Detail;
         return null;
     }
 
