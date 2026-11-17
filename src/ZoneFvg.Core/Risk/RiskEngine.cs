@@ -104,14 +104,43 @@ public sealed class RiskEngine
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public RiskCheckResult CheckNewTrade(RiskSnapshot snapshot, PlannedTrade trade)
     {
+        return CheckNewTradeWithWaiver(snapshot, trade, false, out RiskCheckResult? _);
+    }
+
+    /// <summary>
+    /// <see cref="CheckNewTrade"/> with the backtest mode of REC-014
+    /// (owner decision C of 2026-11-17). With <paramref name="dailyBudgetRecordOnly"/> false this is
+    /// exactly the live check. With it true (backtests only) a trade above the daily risk budget
+    /// (RSK-006) is not refused: the failed budget check is returned in
+    /// <paramref name="waivedDailyBudget"/> and the checks after it still run. Every other check
+    /// refuses as before, and no computed value changes.
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <param name="trade">The sized trade with the broker's margin estimate.</param>
+    /// <param name="dailyBudgetRecordOnly">True only in a backtest with BacktestHaltsLogOnly.</param>
+    /// <param name="waivedDailyBudget">The budget failure that was not applied, or null.</param>
+    /// <returns>Allowed, or the first failing reason with the measured value and the limit.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public RiskCheckResult CheckNewTradeWithWaiver(RiskSnapshot snapshot, PlannedTrade trade, bool dailyBudgetRecordOnly, out RiskCheckResult? waivedDailyBudget)
+    {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(trade);
 
+        waivedDailyBudget = null;
         RiskCheckResult? failure = CheckInputs(snapshot, trade);
         failure ??= CheckMargin(snapshot, trade);
         failure ??= CheckOpenRisk(snapshot, trade);
         failure ??= CheckCurrencyExposure(snapshot, trade);
-        failure ??= CheckDailyBudget(snapshot, trade);
+        if (failure == null)
+        {
+            failure = CheckDailyBudget(snapshot, trade);
+            if (failure != null && dailyBudgetRecordOnly)
+            {
+                waivedDailyBudget = failure;
+                failure = null;
+            }
+        }
+
         failure ??= CheckEntryCounts(snapshot, trade);
         return failure ?? new RiskCheckResult(RiskReason.None, 0.0, 0.0, string.Empty);
     }

@@ -43,6 +43,7 @@ public sealed class PreTradeFilters
     private readonly NewsService _news;
     private readonly IExecutionEvents _events;
     private readonly string _parameterHash;
+    private readonly bool _dailyBudgetRecordOnly;
 
     /// <summary>Creates the filters. All parameter sets are validated here (EXE-002 to EXE-006, EXE-015).</summary>
     /// <param name="parameters">Execution parameters.</param>
@@ -51,9 +52,14 @@ public sealed class PreTradeFilters
     /// <param name="broker">Broker port: the source of time, symbol data, positions, orders, history and margin.</param>
     /// <param name="news">News service for NWS-008, NWS-009 and the next window start (EXE-015).</param>
     /// <param name="events">Hook for skip records and alerts (EXE-014, RSK-002).</param>
+    /// <param name="dailyBudgetRecordOnly">
+    /// REC-014, backtests only: when true a trade above the daily risk budget (RSK-006) is not
+    /// refused; <see cref="EvaluateWithWaiver"/> reports it instead.
+    /// Default false (live).
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events)
+    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(signalParameters);
@@ -69,6 +75,7 @@ public sealed class PreTradeFilters
         _news = news ?? throw new ArgumentNullException(nameof(news));
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _parameterHash = ParameterHash.Compute(signalParameters, parameters);
+        _dailyBudgetRecordOnly = dailyBudgetRecordOnly;
     }
 
     /// <summary>The parameter hash written into every comment (EXE-008).</summary>
@@ -86,6 +93,25 @@ public sealed class PreTradeFilters
     /// <exception cref="ArgumentException">The symbol is not a six-letter pair name (news rules).</exception>
     public PreTradeResult Evaluate(Signal signal, PreTradeContext context)
     {
+        return EvaluateWithWaiver(signal, context, out string? _);
+    }
+
+    /// <summary>
+    /// <see cref="Evaluate"/> that also reports a daily budget check that
+    /// was not applied because of the backtest mode of REC-014 (owner decision C of 2026-11-17).
+    /// </summary>
+    /// <param name="signal">The signal.</param>
+    /// <param name="context">Symbol, bot state, zones and whether a placement is unresolved.</param>
+    /// <param name="waivedDailyBudget">
+    /// When the order is allowed although it is above the daily risk budget (backtests only), the
+    /// budget check's text; otherwise null.
+    /// </param>
+    /// <returns>The planned order, or the skip.</returns>
+    /// <exception cref="ArgumentNullException">An argument or the zone list is null.</exception>
+    /// <exception cref="ArgumentException">The symbol is not a six-letter pair name (news rules).</exception>
+    public PreTradeResult EvaluateWithWaiver(Signal signal, PreTradeContext context, out string? waivedDailyBudget)
+    {
+        waivedDailyBudget = null;
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(context.Zones);
@@ -114,6 +140,7 @@ public sealed class PreTradeFilters
             return PreTradeResult.Skipped(skip);
         }
 
+        waivedDailyBudget = c.WaivedDailyBudget;
         return PreTradeResult.Allowed(Build(c));
     }
 
@@ -388,12 +415,13 @@ public sealed class PreTradeFilters
             return c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, exception.Message);
         }
 
-        RiskCheckResult result = _risk.CheckNewTrade(snapshot, new PlannedTrade(c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, volume, margin));
+        RiskCheckResult result = _risk.CheckNewTradeWithWaiver(snapshot, new PlannedTrade(c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, volume, margin), _dailyBudgetRecordOnly, out RiskCheckResult? waived);
         if (!result.IsAllowed)
         {
             return c.Skip(SkipReasons.FromRisk(result.Reason), result.Measured, result.Limit, result.Detail);
         }
 
+        c.WaivedDailyBudget = waived?.Detail;
         return null;
     }
 
@@ -517,6 +545,8 @@ public sealed class PreTradeFilters
         internal double StopPips { get; set; }
 
         internal DateTime Expiry { get; set; }
+
+        internal string? WaivedDailyBudget { get; set; }
 
         internal SkipRecord Skip(SkipReason reason, double measured, double limit, string detail)
         {

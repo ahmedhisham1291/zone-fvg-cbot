@@ -28,6 +28,8 @@ namespace ZoneFvg.Core.App;
 /// lost; Halted after the kill switch, the emergency guard, the request limit or an error storm;
 /// Blocked while the calendar is unavailable, the daily budget is exhausted (until the next CE(S)T
 /// day) or a bar series has a gap; otherwise Running. Only Running places entries.</para>
+/// <para>In a backtest with <see cref="BotParameters.BacktestHaltsLogOnly"/> (REC-014) the halts and
+/// the daily budget block are only journaled as would-halt or would-block; live this never applies.</para>
 /// </remarks>
 public sealed class BotCore
 {
@@ -45,6 +47,11 @@ public sealed class BotCore
 
     // OPS-002: M15 bars read for the moves of one closed trade, at most 30 days. A longer trade gets NA.
     private const int MaxExcursionBars = 2880;
+
+    // REC-014 journal values.
+    private const string WouldHalt = "would-halt";
+    private const string WouldBlock = "would-block";
+    private const string DailyBudgetCause = "DailyBudget";
 
     private static readonly TimeSpan RecoveryRetryInterval = TimeSpan.FromMinutes(15.0);
     private static readonly IReadOnlyList<Zone> NoZones = Array.AsReadOnly(Array.Empty<Zone>());
@@ -83,6 +90,10 @@ public sealed class BotCore
     private readonly SortedSet<string> _newsSourcesDown = new SortedSet<string>(StringComparer.Ordinal);
     private readonly IReadOnlyList<MonthDay> _marketHolidays;
     private readonly bool _writeTradeLog;
+    private readonly bool _haltsLogOnly;
+
+    // REC-014: per "event cause", the CE(S)T day of the last would-halt or would-block line.
+    private readonly SortedDictionary<string, DateTime> _recordedDays = new SortedDictionary<string, DateTime>(StringComparer.Ordinal);
 
     private SignalEngine? _engine;
     private IBarHistory? _history;
@@ -130,20 +141,21 @@ public sealed class BotCore
         _fridayCloseUtc = parameters.Execution.FridayCloseUtc;
         _marketHolidays = MonthDay.ParseList(parameters.MarketHolidays);
         _writeTradeLog = parameters.WriteTradeLog;
+        _haltsLogOnly = parameters.BacktestHaltsLogOnly;
         _risk = parameters.Risk;
         _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution);
         _news = CreateNews(parameters, store, http, isBacktest);
         _requests = new RequestCounter(parameters.Risk);
         _errors = new ErrorCounter(parameters.Risk);
         _events = new CoreEvents(this);
-        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events);
-        _orders = new OrderManager(broker, _requests, _events);
+        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly);
+        _orders = new OrderManager(broker, _requests, _events, _haltsLogOnly);
         _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events);
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
         _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
         var tradeEvents = new CoreTradeEvents(this);
         _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, tradeEvents);
-        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays);
+        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly);
     }
 
     /// <summary>The current state (REC-001).</summary>
@@ -224,8 +236,9 @@ public sealed class BotCore
     }
 
     /// <summary>
-    /// Once a minute (spec 9.3): while connected, news refresh, recovery retry, Friday close
-    /// (EXE-013), weekend close (REC-009) and state update; then in every state the daily summary,
+    /// Once a minute (spec 9.3): while connected, news refresh, recovery retry, and in every
+    /// connected state, Recovering included (REC-015), the emergency guard (RSK-009), Friday close
+    /// (EXE-013) and weekend close (REC-009); then the state update; then in every state the daily summary,
     /// the inactivity check, the heartbeat and alert sending (OPS-003 to OPS-006).
     /// </summary>
     public void OnTimer()
@@ -391,13 +404,13 @@ public sealed class BotCore
         }
 
         ClearExpiredCauses(now);
-        if (_machine.State != BotState.Recovering)
-        {
-            // The emergency guard is checked every minute as well as at M15 closes (owner decision of 2026-11-16).
-            CheckEmergencyGuard(now);
-            JournalActions("friday-close", _trades.FridayClose(now));
-            WeekendDuty();
-        }
+
+        // In every connected state, Recovering included (REC-015, owner decision B of 2026-11-17): these duties
+        // read only broker data. The emergency guard is checked every minute as well as at M15 closes (owner
+        // decision of 2026-11-16).
+        CheckEmergencyGuard(now);
+        JournalActions("friday-close", _trades.FridayClose(now));
+        WeekendDuty();
 
         UpdateCalendar(now);
         ApplyState("timer", now);
@@ -476,11 +489,9 @@ public sealed class BotCore
 
         DateTime now = Now();
         JournalActions("protection", _trades.EnsureProtection());
-        if (_machine.State != BotState.Recovering)
-        {
-            WeekendDuty();
-        }
 
+        // In every connected state, Recovering included (REC-015).
+        WeekendDuty();
         RecordTrades(now);
         CheckRequestLimit(now);
     }
@@ -524,6 +535,12 @@ public sealed class BotCore
             report.Downtime,
             report.State));
         Write("report", ("trigger", reason), ("text", report.Text));
+        foreach (AcceptedGapList gaps in report.AcceptedGaps)
+        {
+            // REC-003 (owner decision A of 2026-11-17): one line per timeframe with gaps kept after the reload.
+            Write("recovery", ("event", "gaps-accepted"), ("timeframe", gaps.TimeFrame.ToString()), ("count", Text(gaps.Count)), ("newest", gaps.NewestText));
+        }
+
         AlertKind recovered = reason == "start" ? AlertKind.Started : AlertKind.Recovered;
         if (!report.DataComplete)
         {
@@ -606,19 +623,23 @@ public sealed class BotCore
     {
         if (guard.EmergencyFires)
         {
-            if (!fromRecovery)
+            string detail = "emergency guard: " + guard.Text;
+            if (!HaltRecordedOnly(HaltCause.EmergencyGuard, detail, now))
             {
-                JournalActions("emergency", _safety.CloseAllBotTrades("emergency guard"));
-            }
+                if (!fromRecovery)
+                {
+                    JournalActions("emergency", _safety.CloseAllBotTrades("emergency guard"));
+                }
 
-            EnterHalt(HaltCause.EmergencyGuard, "emergency guard: " + guard.Text, now);
+                EnterHalt(HaltCause.EmergencyGuard, detail, now);
+            }
         }
         else if (guard.KillSwitchFires)
         {
             EnterHalt(HaltCause.KillSwitch, "kill switch: " + guard.Text, now);
         }
 
-        if (guard.BudgetExhausted)
+        if (guard.BudgetExhausted && !RecordedOnly(WouldBlock, DailyBudgetCause, "daily risk budget exhausted: " + guard.Text, now))
         {
             if (!fromRecovery)
             {
@@ -653,8 +674,12 @@ public sealed class BotCore
         GuardStatus guard = _guard.Evaluate(now);
         if (guard.EmergencyFires)
         {
-            JournalActions("emergency", _safety.CloseAllBotTrades("emergency guard"));
-            EnterHalt(HaltCause.EmergencyGuard, "emergency guard: " + guard.Text, now);
+            string detail = "emergency guard: " + guard.Text;
+            if (!HaltRecordedOnly(HaltCause.EmergencyGuard, detail, now))
+            {
+                JournalActions("emergency", _safety.CloseAllBotTrades("emergency guard"));
+                EnterHalt(HaltCause.EmergencyGuard, detail, now);
+            }
         }
     }
 
@@ -676,7 +701,7 @@ public sealed class BotCore
             return;
         }
 
-        if (_budgetBlockedDayUtc == today)
+        if (_budgetBlockedDayUtc == today || RecordedOnly(WouldBlock, DailyBudgetCause, "daily risk budget was exhausted earlier today", now))
         {
             return;
         }
@@ -688,6 +713,11 @@ public sealed class BotCore
 
     private void EnterHalt(HaltCause cause, string detail, DateTime now)
     {
+        if (HaltRecordedOnly(cause, detail, now))
+        {
+            return;
+        }
+
         bool known = _machine.HaltCauses.Contains(cause);
         StateTransition? transition = _machine.Halt(cause, detail, now);
         if (transition != null)
@@ -702,6 +732,34 @@ public sealed class BotCore
 
         // Spec 8.5: in Halted the pending orders are cancelled.
         JournalActions("halt", _trades.CancelEntryOrders("halted: " + cause));
+    }
+
+    // REC-014 (owner decision C of 2026-11-17): the one decision point for halts and the daily budget block.
+    // Live, and in tests without the flag, it returns false and the caller applies the halt or block. With
+    // BacktestHaltsLogOnly (backtests only, refused live by BotParameters.Validate) it writes
+    // "risk event=<would-halt|would-block> cause=<cause> detail=<text>" the first time the cause fires in a
+    // CE(S)T day and returns true: the caller then does nothing else.
+    private bool RecordedOnly(string eventName, string cause, string detail, DateTime now)
+    {
+        if (!_haltsLogOnly)
+        {
+            return false;
+        }
+
+        string key = eventName + " " + cause;
+        DateTime day = CestClock.StartOfCestDayUtc(now);
+        if (!_recordedDays.TryGetValue(key, out DateTime last) || last != day)
+        {
+            _recordedDays[key] = day;
+            Write("risk", ("event", eventName), ("cause", cause), ("detail", detail));
+        }
+
+        return true;
+    }
+
+    private bool HaltRecordedOnly(HaltCause cause, string detail, DateTime now)
+    {
+        return RecordedOnly(WouldHalt, cause.ToString(), detail, now);
     }
 
     private void ApplyState(string reason, DateTime now)
@@ -869,14 +927,20 @@ public sealed class BotCore
         }
 
         var context = new PreTradeContext(_symbol, _machine.State, _engine!.Zones, _orders.HasUnresolved(_symbol));
-        PreTradeResult result = _filters.Evaluate(signal, context);
+        PreTradeResult result = _filters.EvaluateWithWaiver(signal, context, out string? waivedBudget);
         if (!result.IsAllowed)
         {
             return result.Skip;
         }
 
+        if (waivedBudget != null)
+        {
+            // REC-014: only possible with BacktestHaltsLogOnly; the trade is placed and the block recorded.
+            RecordedOnly(WouldBlock, DailyBudgetCause, "daily risk budget: " + waivedBudget, now);
+        }
+
         CircuitBreakerDecision check = _requests.CheckBeforeRequest(now);
-        if (check.Halt)
+        if (check.Halt && !HaltRecordedOnly(HaltCause.RequestLimit, "request limit: " + check.Detail, now))
         {
             // RSK-010: the request that would exceed the limit is never sent; the instance halts.
             var skip = new SkipRecord(_symbol, signal.ZoneId, SkipReason.RequestLimitReached, check.LastHourCount, check.HourLimit, check.Detail, now);

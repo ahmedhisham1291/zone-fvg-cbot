@@ -54,15 +54,31 @@ public sealed record BotParameters
     public bool WriteTradeLog { get; init; }
 
     /// <summary>
+    /// REC-014 (owner decision C of 2026-11-17), backtests only: when true the kill switch, the
+    /// emergency guard, the error limit, the request limit and the daily budget are only written
+    /// to the journal as <c>would-halt</c> or <c>would-block</c>, once per cause and CE(S)T day,
+    /// and the bot keeps trading. The adapter sets it exactly when the run is a backtest; there is
+    /// no cBot parameter. <see cref="Validate"/> refuses it outside a backtest. Default false.
+    /// </summary>
+    public bool BacktestHaltsLogOnly { get; init; }
+
+    /// <summary>
     /// Checks every value and throws for the first problem: the symbol must start with six letters
     /// and contain no '|'; each parameter group and the market holidays must be valid; outside backtests with NewsEnabled
-    /// true the feed address must be set.
+    /// true the feed address must be set; <see cref="BacktestHaltsLogOnly"/> may be true only in a
+    /// backtest (REC-014).
     /// </summary>
     /// <param name="isBacktest">True in a backtest.</param>
     /// <exception cref="ArgumentNullException">A parameter group is null.</exception>
     /// <exception cref="ArgumentException">A value is invalid.</exception>
     public void Validate(bool isBacktest)
     {
+        if (BacktestHaltsLogOnly && !isBacktest)
+        {
+            // REC-014: halts are recorded instead of applied in backtests only, never live.
+            throw new ArgumentException("BacktestHaltsLogOnly may be true only in a backtest (REC-014).", nameof(BacktestHaltsLogOnly));
+        }
+
         NewsSymbol.Pair(Symbol);
         if (Symbol.IndexOf('|') >= 0)
         {
