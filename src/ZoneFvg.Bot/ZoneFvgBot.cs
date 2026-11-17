@@ -301,8 +301,9 @@ namespace cAlgo.Robots
 
         /// <summary>
         /// Start (spec 9.3): checks the chart timeframe, builds and validates the parameters, creates
-        /// the adapters and the core, subscribes to events, starts the one-minute timer and runs the
-        /// core's start recovery. Any failure before the core exists stops the cBot with a message.
+        /// the adapters and the core, runs the start checks of RSK-014, subscribes to events, starts
+        /// the one-minute timer and runs the core's start recovery. Any failure before that stops the
+        /// cBot with a message.
         /// </summary>
         protected override void OnStart()
         {
@@ -328,6 +329,15 @@ namespace cAlgo.Robots
             catch (ArgumentException exception)
             {
                 Refuse("invalid parameter: " + exception.Message);
+                return;
+            }
+
+            // RSK-014: start checks before the first recovery; a refusal stops the cBot before any event is subscribed.
+            string? refusal = StartChecks.Check(parameters, _broker!, isBacktest);
+            if (refusal != null)
+            {
+                _core = null;
+                Refuse(refusal);
                 return;
             }
 

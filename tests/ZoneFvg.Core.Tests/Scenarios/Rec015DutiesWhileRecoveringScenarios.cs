@@ -9,8 +9,8 @@ namespace ZoneFvg.Core.Tests;
 /// <summary>
 /// REC-015 (owner decision B of 2026-11-17): while connected, the FTMO emergency guard and Friday
 /// close run on every timer event in every state, Recovering included, and a pending weekend close
-/// runs at timer and trade events in every state. A halt entered in Recovering stays after recovery
-/// completes. While disconnected nothing is sent. Recovery is kept stuck with only 10 D1 bars.
+/// runs at timer and trade events in every state, also one deferred by EXE-016 because the market
+/// was closed at the Friday close. A halt entered in Recovering stays after recovery completes. While disconnected nothing is sent. Recovery is kept stuck with only 10 D1 bars.
 /// 2026-03-06 is a Friday; InitialCapital 100,000.
 /// </summary>
 public class Rec015DutiesWhileRecoveringScenarios
@@ -46,6 +46,46 @@ public class Rec015DutiesWhileRecoveringScenarios
         Assert.DoesNotContain(h.Broker.GetPositions(), p => p.Id == position);
         Assert.DoesNotContain(h.Broker.GetPendingOrders(), o => o.Id == order);
         Assert.All(h.Broker.Requests, request => Assert.Equal(RecoveryData.At(6, 20, 0), request.AtUtc));
+        Assert.Equal(BotState.Recovering, h.Core.State);
+        ScenarioAssert.Global(h.Broker);
+    }
+
+    [Theory]
+    [Trait("Req", "REC-015")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FridayClose_RecoveryStuckMarketClosed_DeferredThenDoneAtTheReopenOnATimerOrTradeEvent(bool timer)
+    {
+        // EXE-016 while Recovering: no request against the closed market; the close waits for the reopen.
+        (BotHarness h, long position, long order) = StuckWithTrades(RecoveryData.At(6, 19, 30));
+        h.Broker.SetSymbol(RecoveryData.UsdJpy(marketOpen: false));
+
+        h.Timer(RecoveryData.At(6, 20, 0));
+        h.Timer(RecoveryData.At(6, 20, 1));
+        h.Timer(RecoveryData.At(7, 10, 0));
+
+        Assert.Equal(0, h.Broker.WriteRequestCount);
+        Assert.True(h.Core.WeekendClosePending);
+        Assert.Equal(1, h.Journal.Count("friday-close", "friday-close event=deferred reason=market-closed"));
+        Assert.Equal(BotState.Recovering, h.Core.State);
+
+        DateTime reopen = RecoveryData.At(8, 22, 0);
+        h.Broker.SetSymbol(RecoveryData.UsdJpy(marketOpen: true));
+        if (timer)
+        {
+            h.Timer(reopen);
+        }
+        else
+        {
+            h.Broker.AdvanceTo(reopen);
+            h.Core.OnTradeEvent();
+        }
+
+        Assert.Equal(new[] { BrokerCall.Cancel, BrokerCall.Close }, h.Broker.Requests.Select(r => r.Call));
+        Assert.All(h.Broker.Requests, request => Assert.Equal(reopen, request.AtUtc));
+        Assert.DoesNotContain(h.Broker.GetPositions(), p => p.Id == position);
+        Assert.DoesNotContain(h.Broker.GetPendingOrders(), o => o.Id == order);
+        Assert.False(h.Core.WeekendClosePending);
         Assert.Equal(BotState.Recovering, h.Core.State);
         ScenarioAssert.Global(h.Broker);
     }

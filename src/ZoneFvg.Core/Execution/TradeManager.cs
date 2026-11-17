@@ -121,12 +121,7 @@ public sealed class TradeManager
     /// <exception cref="ArgumentException">The time is not UTC.</exception>
     public IReadOnlyList<TradeAction> FridayClose(DateTime serverTimeUtc)
     {
-        if (serverTimeUtc.Kind != DateTimeKind.Utc)
-        {
-            throw new ArgumentException("The server time must be a UTC time (kind UTC).", nameof(serverTimeUtc));
-        }
-
-        if (serverTimeUtc.DayOfWeek != DayOfWeek.Friday || serverTimeUtc.TimeOfDay < _parameters.FridayCloseUtc)
+        if (!FridayCloseDue(serverTimeUtc))
         {
             return Array.Empty<TradeAction>();
         }
@@ -138,6 +133,23 @@ public sealed class TradeManager
         }
 
         return actions.AsReadOnly();
+    }
+
+    /// <summary>
+    /// True when the Friday close is due (EXE-013, EXE-016): a Friday at or after FridayCloseUtc.
+    /// Sends nothing.
+    /// </summary>
+    /// <param name="serverTimeUtc">Server time, kind UTC.</param>
+    /// <returns>True when <see cref="FridayClose"/> would act on the broker's bot trades.</returns>
+    /// <exception cref="ArgumentException">The time is not UTC.</exception>
+    public bool FridayCloseDue(DateTime serverTimeUtc)
+    {
+        if (serverTimeUtc.Kind != DateTimeKind.Utc)
+        {
+            throw new ArgumentException("The server time must be a UTC time (kind UTC).", nameof(serverTimeUtc));
+        }
+
+        return serverTimeUtc.DayOfWeek == DayOfWeek.Friday && serverTimeUtc.TimeOfDay >= _parameters.FridayCloseUtc;
     }
 
     /// <summary>Cancels every bot pending order on the symbol, for the risk and news rules and the Friday close (EXE-013, RSK-006).</summary>

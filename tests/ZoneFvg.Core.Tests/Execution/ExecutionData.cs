@@ -54,7 +54,7 @@ public static class ExecutionData
 
     public static SymbolInfo EurUsd(double spread = 0.0001, double commissionPerUnit = 0.0, double maxVolume = 10000000.0, bool marketOpen = true)
     {
-        return new SymbolInfo(Symbol, "EUR", "USD", 0.0001, 0.0001, 1000.0, 1000.0, maxVolume, spread, marketOpen, commissionPerUnit);
+        return new SymbolInfo(Symbol, "EUR", "USD", 0.0001, 0.0001, 1000.0, 1000.0, maxVolume, spread, marketOpen, commissionPerUnit) { Digits = 5, TickSize = 0.00001 };
     }
 
     public static AccountSnapshot Account(double balance = 100000.0, double equity = 100000.0, double freeMargin = 100000.0)

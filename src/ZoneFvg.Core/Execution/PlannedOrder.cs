@@ -20,7 +20,7 @@ namespace ZoneFvg.Core.Execution;
 /// <param name="RiskMoney">Money lost at the stop with this volume, without commission (RSK-001).</param>
 /// <param name="StopPips">Stop distance in pips.</param>
 /// <param name="ExpiryUtc">Order expiry, kind UTC (EXE-015).</param>
-/// <param name="PriceDigits">Price digits of the symbol (<see cref="PriceGrid.Digits"/>).</param>
+/// <param name="PriceDigits">Price digits of the symbol from the broker (<see cref="SymbolInfo.Digits"/>, EXE-017).</param>
 /// <param name="Label">Order label (EXE-008).</param>
 /// <param name="Comment">Order comment (EXE-008).</param>
 /// <param name="PlannedAtUtc">Server time at which the filters passed, kind UTC.</param>
@@ -40,6 +40,13 @@ public sealed record PlannedOrder(
     string Comment,
     DateTime PlannedAtUtc)
 {
+    /// <summary>
+    /// Tick size of the symbol from the broker (<see cref="SymbolInfo.TickSize"/>, EXE-017). The
+    /// read-back of EXE-010 accepts a stop and target within half of it. Default 0, which accepts
+    /// no difference at all.
+    /// </summary>
+    public double TickSize { get; init; }
+
     /// <summary>The request that places this order (EXE-008).</summary>
     /// <returns>A limit order request with stop loss, take profit, expiry, label and comment.</returns>
     public LimitOrderRequest ToRequest()

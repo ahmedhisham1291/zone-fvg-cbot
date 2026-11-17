@@ -26,7 +26,7 @@ public static class OrderComment
 
     /// <summary>Builds the comment of a plan (EXE-008).</summary>
     /// <param name="plan">The plan; prices finite and greater than zero, risk money finite and not negative, hash 8 lowercase hex characters.</param>
-    /// <param name="digits">Price digits of the symbol, 0 to 10 (<see cref="PriceGrid.Digits"/>).</param>
+    /// <param name="digits">Price digits of the symbol, 0 to 10 (<see cref="Ports.SymbolInfo.Digits"/>, EXE-017).</param>
     /// <returns>The comment.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="plan"/> is null.</exception>
     /// <exception cref="ArgumentException">A value is out of range, or the comment would be longer than <see cref="MaxLength"/>.</exception>

@@ -442,7 +442,7 @@ requirements:
     wp: WP22
     spec: "4.2, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Start checks (fail closed; owner acceptance of 2026-11-17). Before its
       first recovery the bot refuses to start, with a Log line that names
@@ -766,7 +766,7 @@ requirements:
     wp: WP22
     spec: "5.5, 8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Friday close against a closed market (owner acceptance of
       2026-11-17). When Friday close (EXE-013) is due and the broker reports
@@ -780,7 +780,7 @@ requirements:
     wp: WP22
     spec: "5.2, 5.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Price grid from the broker (owner acceptance of 2026-11-17). Entry,
       stop and target are rounded, half away from zero, to a whole multiple
@@ -965,7 +965,7 @@ requirements:
     wp: WP23
     spec: "8.5, 5.5, 4.2"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Duties in every connected state (owner decision B of 2026-11-17).
       While the broker is connected, the FTMO emergency guard (RSK-009) is
