@@ -115,7 +115,7 @@ public class Rsk013LadderScenarios
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void BreakEvenTrade_EndsTheRunOfWins()
+    public void BreakEvenTrade_IsNotAWin_TheNextEntryTakesTheNextColumn()
     {
         var h = Harness();
         AddClosed(h.Broker, 5, 100.0, "A");
@@ -124,12 +124,62 @@ public class Rsk013LadderScenarios
 
         PlannedOrder order = h.OrderOf(ExecutionData.Buy());
 
-        // New deal s = 0 (C broke even); the deals of entries C, B and A were started after 2, 1 and 0 wins:
-        // 0.30 x (0.2962 + 0.1481 g^2 + 0.22215 g + 0.333225) = 0.407616% -> 203,807.9 units -> 203,000.
+        // WP18: A and B won (C = 2); C broke even at position 1 with step 2 and its deal goes on. The new
+        // entry is position 2 (D = 0): 0.30 x 0.2962 + 0.30 g^2 x 0.1481 = 0.201523% -> 100,761.4 units -> 100,000.
         double g = 1.5924;
-        double percent = 0.30 * (0.2962 + (0.1481 * g * g) + (0.22215 * g) + 0.333225);
-        Assert.Equal(203000.0, order.VolumeUnits);
-        Assert.Equal(203000.0, Math.Floor(100000.0 * percent / 100.0 / 0.002 / 1000.0) * 1000.0);
+        double percent = (0.30 * 0.2962) + (0.30 * g * g * 0.1481);
+        Assert.Equal(100000.0, order.VolumeUnits);
+        Assert.Equal(100000.0, Math.Floor(100000.0 * percent / 100.0 / 0.002 / 1000.0) * 1000.0);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-013")]
+    public void OtherInstancesWinsAndPendingDeal_SizeTheEntry()
+    {
+        // GBPUSD won twice (C = 2); the AUDUSD instance then placed an entry (position 1, step 2) that is
+        // still pending. The EURUSD signal is position 2 at step 0 and carries part 2 of the AUDUSD deal:
+        // 0.08886 + 0.30 g^2 x 0.1481 = 0.201523% -> 100,000 units, risk 200.00.
+        FakeBroker broker = ExecutionHarness.DefaultBroker(now: ExecutionData.At(7, 12, 0));
+        broker.SetSymbol(RiskData.GbpUsd);
+        broker.SetSymbol(RiskData.AudUsd);
+        AddClosed(broker, 5, 100.0, "A");
+        AddClosed(broker, 6, 100.0, "B");
+        broker.AddOrder("AUDUSD", Side.Buy, 50000.0, 0.65, 0.648, 0.654, ExecutionData.At(14, 12, 0), "ZFVG|v1|AUDUSD|D-20260107-1200", "e=;s=;t=");
+        broker.AdvanceTo(ExecutionData.Now);
+        var h = new ExecutionHarness(broker, risk: LadderOn);
+
+        PlannedOrder order = h.OrderOf(ExecutionData.Buy());
+
+        Assert.Equal(100000.0, order.VolumeUnits);
+        Assert.Equal(200.0, order.RiskMoney, 6);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-013")]
+    public void WinsBeforeRiskEpochDate_AreNotCounted_AMonthBoundaryAloneChangesNothing()
+    {
+        // Three GBPUSD wins on 2 to 4 December (C = 3). With RiskEpochDate 1 December they still count on
+        // 14 January: position 1, step 3, 0.358809% -> 179,404 units -> 179,000. With RiskEpochDate
+        // 1 January (the owner's reset after a payout) they are not counted: 0.08886% -> 44,000.
+        var december = new ExecutionHarness(risk: LadderOn with { RiskEpochDate = new DateTime(2025, 12, 1, 0, 0, 0, DateTimeKind.Utc) });
+        var newEpoch = new ExecutionHarness(risk: LadderOn);
+        foreach (ExecutionHarness h in new[] { december, newEpoch })
+        {
+            h.Broker.SetSymbol(RiskData.GbpUsd);
+            for (int day = 2; day <= 4; day++)
+            {
+                DateTime open = new(2025, 12, day, 10, 0, 0, DateTimeKind.Utc);
+                h.Broker.AddClosedTrade(new ClosedTradeInfo(day, "GBPUSD", "ZFVG|v1|GBPUSD|M" + day.ToString(System.Globalization.CultureInfo.InvariantCulture), open, open.AddHours(2.0), 100.0, 0.0, 0.0, 100100.0));
+            }
+        }
+
+        PlannedOrder carried = december.OrderOf(ExecutionData.Buy());
+        PlannedOrder reset = newEpoch.OrderOf(ExecutionData.Buy());
+
+        Assert.Equal(179000.0, carried.VolumeUnits);
+        Assert.Equal(358.0, carried.RiskMoney, 6);
+        Assert.Equal(44000.0, reset.VolumeUnits);
+        Assert.Equal(88.0, reset.RiskMoney, 6);
     }
 
     [Fact]

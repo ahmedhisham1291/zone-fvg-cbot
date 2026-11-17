@@ -9,7 +9,7 @@ namespace ZoneFvg.Core.Tests;
 /// <summary>
 /// RSK-013 in the challenge simulator: with <see cref="FtmoChallengeParameters.Ladder"/> set,
 /// every simulated trade is sized with the same <see cref="LadderSizer"/> the bot uses, so its
-/// risk equals <see cref="LadderSizer.NextRiskPercent"/> of the trades taken before it, each
+/// risk equals <see cref="LadderSizer.NextRiskPercent(System.Collections.Generic.IReadOnlyList{LadderEntry}, System.DateTime)"/> of the trades taken before it, each
 /// counted as closed when it closed at or before the new trade's open.
 /// </summary>
 public class LadderSimulationTests
@@ -87,6 +87,66 @@ public class LadderSimulationTests
 
         Assert.Equal(6, path.TradesTaken);
         Assert.Equal(Reference(trades), path.FinalBalance, 6);
+    }
+
+    /// <summary>Sequential trades, one a day from <paramref name="first"/> at 10:00 to 12:00 UTC: +1R for W, -1R for L.</summary>
+    private static TradeRecord[] Daily(string pattern, DateTime first)
+    {
+        var trades = new TradeRecord[pattern.Length];
+        for (int i = 0; i < pattern.Length; i++)
+        {
+            DateTime open = first.AddDays(i).AddHours(10.0);
+            trades[i] = Trade("EURUSD", open, open.AddHours(2.0), pattern[i] == 'W' ? 1.0 : -1.0);
+        }
+
+        return trades;
+    }
+
+    private static double Compounded(string pattern, double[] percents)
+    {
+        double balance = 100000.0;
+        for (int i = 0; i < pattern.Length; i++)
+        {
+            balance += (pattern[i] == 'W' ? 1.0 : -1.0) * balance * percents[i] / 100.0;
+        }
+
+        return balance;
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-013")]
+    public void RunPath_OwnersExample_RisksTheOwnersPercents()
+    {
+        // WP18: the owner's ten trades, W W L L L W W L L W (88.86, 141.50, 225.33, ... on 100,000).
+        const string pattern = "WWLLLWWLLW";
+        double[] percents =
+        {
+            0.08886, 0.141500664, 0.2253256573536, 0.2015228286768, 0.3022842430152,
+            0.4534263645228, 0.2253256573536, 0.35880857676987266, 0.3209049523849363, 0.42871676457740454,
+        };
+        TradeRecord[] trades = Daily(pattern, Utc(2026, 1, 5, 0, 0));
+
+        ChallengePath path = FtmoChallengeSimulator.RunPath(trades, CestClock.StartOfCestDayUtc(trades[0].OpenTimeUtc), WithLadder);
+
+        Assert.Equal(10, path.TradesTaken);
+        Assert.Equal(Compounded(pattern, percents), path.FinalBalance, 1e-6);
+        Assert.Equal(Reference(trades), path.FinalBalance, 1e-6);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-013")]
+    public void RunPath_MonthBoundaryInThePath_ChangesNothing()
+    {
+        // WP18: three wins at the end of January, three at the start of February: no monthly reset, so the
+        // steps go on rising (C = 3, then 4) and the 5th trade's raw 0.571 freezes them.
+        const string pattern = "WWWWWW";
+        double[] percents = { 0.08886, 0.141500664, 0.2253256573536, 0.35880857676987266, 0.5, 0.5 };
+        TradeRecord[] trades = Daily(pattern, Utc(2026, 1, 29, 0, 0));
+
+        ChallengePath path = FtmoChallengeSimulator.RunPath(trades, CestClock.StartOfCestDayUtc(trades[0].OpenTimeUtc), WithLadder);
+
+        Assert.Equal(6, path.TradesTaken);
+        Assert.Equal(Compounded(pattern, percents), path.FinalBalance, 1e-6);
     }
 
     [Fact]
