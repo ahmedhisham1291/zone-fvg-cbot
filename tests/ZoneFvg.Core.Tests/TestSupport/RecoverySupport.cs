@@ -250,6 +250,9 @@ public sealed class SwitchableBroker : IBroker
     /// <summary>When set, <see cref="GetSymbol"/> throws it (REC-016).</summary>
     public Exception? SymbolFault { get; set; }
 
+    /// <summary>How many more <see cref="GetSymbol"/> calls throw <see cref="SymbolFault"/>; unlimited by default.</summary>
+    public int SymbolFaultCalls { get; set; } = int.MaxValue;
+
     /// <summary>Number of <see cref="GetSymbol"/> calls, failed ones included.</summary>
     public int SymbolReads { get; private set; }
 
@@ -262,7 +265,13 @@ public sealed class SwitchableBroker : IBroker
     public SymbolInfo GetSymbol(string symbol)
     {
         SymbolReads++;
-        return SymbolFault != null ? throw SymbolFault : Inner.GetSymbol(symbol);
+        if (SymbolFault != null && SymbolFaultCalls > 0)
+        {
+            SymbolFaultCalls--;
+            throw SymbolFault;
+        }
+
+        return Inner.GetSymbol(symbol);
     }
 
     public IReadOnlyList<PositionInfo> GetPositions() => PositionsFault != null ? throw PositionsFault : Inner.GetPositions();

@@ -139,4 +139,42 @@ public class Rec016GoldSessionScenarios
         Assert.Single(core.LastReport!.AcceptedGaps);
         Assert.Equal(1, h.Journal.Count("start", " sessions=none\\sreported"));
     }
+
+    [Fact]
+    [Trait("Req", "REC-016")]
+    public void Live_GetSymbolThrowsAnUnexpectedException_NoSessionsBarStillFedAndTheErrorJournaled()
+    {
+        // Owner answer of 2026-11-17 on #50: any failure of the session read means "no sessions" and never aborts the handler.
+        BotHarness h = Harness();
+        BotCore core = h.Start(GoldData.Start, GoldData.Parameters());
+        h.FeedTo(At(4, 21, 0));
+
+        // Only the session read of the 22:00 bar fails; it is the first symbol read of that bar.
+        h.Port.SymbolFault = new NullReferenceException("adapter failed");
+        h.Port.SymbolFaultCalls = 1;
+        h.FeedTo(At(4, 22, 15));
+
+        Assert.Equal(0, h.Port.SymbolFaultCalls);
+        Assert.True(core.DataGap);
+        Assert.Equal(1, h.Journal.Count("bar", "detail=M15\\sbars\\smissing\\sbetween\\s2026-03-04\\s20:45\\sand\\s2026-03-04\\s22:00"));
+        Assert.Equal(1, h.Journal.Count("error", "source=symbol-sessions error=NullReferenceException:\\sadapter\\sfailed"));
+        Assert.Equal(0, h.Journal.Count("error", "source=OnBarClosed"));
+    }
+
+    [Fact]
+    [Trait("Req", "REC-016")]
+    public void Start_GetSymbolThrowsAnUnexpectedExceptionForTheStartLine_RecoveryStillRuns()
+    {
+        BotHarness h = Harness();
+        h.Port.SymbolFault = new NullReferenceException("adapter failed");
+        h.Port.SymbolFaultCalls = 1;
+
+        BotCore core = h.Start(GoldData.Start, GoldData.Parameters());
+
+        Assert.Equal(1, h.Journal.Count("start", " sessions=unavailable"));
+        Assert.Equal(1, h.Journal.Count("error", "source=symbol-sessions error=NullReferenceException:\\sadapter\\sfailed"));
+        Assert.Equal(0, h.Journal.Count("error", "source=OnStart"));
+        Assert.Equal(BotState.Running, core.State);
+        Assert.Empty(core.LastReport!.AcceptedGaps);
+    }
 }

@@ -8,7 +8,10 @@ namespace ZoneFvg.Core.Tests;
 /// SIM-005 as changed on 2026-11-17 (owner decision D): the profitable-symbols threshold is
 /// max(3, N - 1) of N, N being the number of distinct symbols in the development log, for both
 /// segments: 3 of 4 for the four forex pairs, 4 of 5 with gold. The threshold text reads
-/// "&lt;threshold&gt; of &lt;N&gt;"; the value reads "&lt;profitable&gt; of &lt;symbols of that log&gt;".
+/// "&lt;threshold&gt; of &lt;N&gt;"; the value reads "&lt;profitable&gt; of &lt;symbols of that segment&gt;".
+/// Owner answer of 2026-11-17 on pull request 50: N is every symbol the run covers, that is every
+/// symbol whose log is given; a covered symbol without trades is not profitable and does not lower N.
+/// No symbol at all never reads "3 of 0".
 /// </summary>
 public class AcceptanceProfitableSymbolsTests
 {
@@ -136,5 +139,93 @@ public class AcceptanceProfitableSymbolsTests
     public void ProfitableSymbolsThreshold_IsMaxOfThreeAndNMinusOne(int symbols, int expected)
     {
         Assert.Equal(expected, AcceptanceReport.ProfitableSymbolsThreshold(symbols));
+    }
+
+    // ------------------------------------------------------------------ owner answer of 2026-11-17: N is every covered symbol
+
+    [Fact]
+    [Trait("Req", "SIM-005")]
+    public void Evaluate_GoldCoveredWithoutTrades_CountsInNAndIsNotProfitable()
+    {
+        // Four forex symbols with trades, gold covered but without a trade: N = 5, so 4 of 5 is needed.
+        AcceptanceRow fourOfFive = Row(AcceptanceReport.Evaluate(new AcceptanceInputs(Log(4, 4)) { DevelopmentSymbolCount = 5 }), "Development");
+        AcceptanceRow threeOfFive = Row(AcceptanceReport.Evaluate(new AcceptanceInputs(Log(4, 3)) { DevelopmentSymbolCount = 5 }), "Development");
+
+        Assert.Equal(AcceptanceVerdict.Pass, fourOfFive.Verdict);
+        Assert.Equal("4 of 5", fourOfFive.Value);
+        Assert.Equal("4 of 5", fourOfFive.Threshold);
+        Assert.Equal(AcceptanceVerdict.Fail, threeOfFive.Verdict);
+        Assert.Equal("3 of 5", threeOfFive.Value);
+        Assert.Equal("4 of 5", threeOfFive.Threshold);
+    }
+
+    [Fact]
+    [Trait("Req", "SIM-005")]
+    public void Evaluate_HoldoutSymbolCount_IsTheHoldoutValueDenominator()
+    {
+        var inputs = new AcceptanceInputs(Log(5, 4)) { Holdout = Log(3, 3), HoldoutSymbolCount = 5 };
+
+        AcceptanceRow row = Row(AcceptanceReport.Evaluate(inputs), "Holdout");
+
+        Assert.Equal(AcceptanceVerdict.Fail, row.Verdict);
+        Assert.Equal("3 of 5", row.Value);
+        Assert.Equal("4 of 5", row.Threshold);
+    }
+
+    [Fact]
+    [Trait("Req", "SIM-005")]
+    public void Evaluate_NoSymbolAtAll_FailsAndNeverReadsThreeOfZero()
+    {
+        AcceptanceResult result = AcceptanceReport.Evaluate(new AcceptanceInputs(Array.Empty<TradeRecord>()));
+
+        AcceptanceRow development = Row(result, "Development");
+        Assert.Equal(AcceptanceVerdict.Fail, development.Verdict);
+        Assert.Equal("no symbol", development.Value);
+        Assert.Equal("max(3, N - 1) of N symbols", development.Threshold);
+        Assert.Equal("max(3, N - 1) of N symbols", Row(result, "Holdout").Threshold);
+        string text = AcceptanceReport.ToMarkdown(result);
+        Assert.DoesNotContain("3 of 0", text, StringComparison.Ordinal);
+        Assert.Contains("| Profitable symbols | Development | no symbol | max(3, N - 1) of N symbols | FAIL |", text, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [Trait("Req", "SIM-005")]
+    [InlineData(0, null)]
+    [InlineData(4, null)]
+    [InlineData(null, 0)]
+    [InlineData(null, 2)]
+    public void Validate_SymbolCountBelowOneOrBelowTheTradedSymbols_Throws(int? development, int? holdout)
+    {
+        // The development log trades five symbols, the holdout log three.
+        var inputs = new AcceptanceInputs(Log(5, 5)) { Holdout = Log(3, 3), DevelopmentSymbolCount = development, HoldoutSymbolCount = holdout };
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => AcceptanceReport.Evaluate(inputs));
+        Assert.Equal(development.HasValue ? "DevelopmentSymbolCount" : "HoldoutSymbolCount", exception.ParamName);
+    }
+
+    [Fact]
+    [Trait("Req", "SIM-005")]
+    public void Validate_SymbolCountsEqualToTheTradedSymbols_AreAccepted()
+    {
+        var inputs = new AcceptanceInputs(Log(5, 5)) { Holdout = Log(3, 3), DevelopmentSymbolCount = 5, HoldoutSymbolCount = 3 };
+
+        Assert.Equal("5 of 5", Row(AcceptanceReport.Evaluate(inputs), "Development").Value);
+    }
+
+    [Fact]
+    [Trait("Req", "SIM-005")]
+    public void SymbolsCovered_NamedSymbolsOncePlusOnePerLogWithoutTrades()
+    {
+        IReadOnlyList<TradeRecord> eurUsd = Log(1, 1);
+        IReadOnlyList<TradeRecord> twoSymbols = Log(2, 1);
+        IReadOnlyList<TradeRecord> empty = Array.Empty<TradeRecord>();
+
+        Assert.Equal(1, AcceptanceReport.SymbolsCovered(new[] { eurUsd }));
+        Assert.Equal(2, AcceptanceReport.SymbolsCovered(new[] { eurUsd, twoSymbols }));
+        Assert.Equal(4, AcceptanceReport.SymbolsCovered(new[] { eurUsd, twoSymbols, empty, empty }));
+        Assert.Equal(1, AcceptanceReport.SymbolsCovered(new[] { empty }));
+        Assert.Equal(0, AcceptanceReport.SymbolsCovered(Array.Empty<IReadOnlyList<TradeRecord>>()));
+        Assert.Throws<ArgumentNullException>(() => AcceptanceReport.SymbolsCovered(null!));
+        Assert.Throws<ArgumentNullException>(() => AcceptanceReport.SymbolsCovered(new IReadOnlyList<TradeRecord>[] { eurUsd, null! }));
     }
 }
