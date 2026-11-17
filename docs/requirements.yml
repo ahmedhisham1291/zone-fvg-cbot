@@ -401,27 +401,41 @@ requirements:
     verify: unit
     status: planned
     text: >-
-      Ladder sizing (owner's plan, 2026-11-16; win reset and deal risk 0.50
-      decided 2026-11-17). Entries are numbered 1, 2, 3 in the order their
-      entry orders were placed, counting every bot entry order since
-      RiskEpochDate that filled or is still pending; orders that were
-      cancelled or expired unfilled are not counted. Entry number t starts
-      deal t, whose size is LadderDealRiskPercent (0.50) x LadderGrowth
-      (1.5924) ^ s(t), where s(t) is the number of consecutive winning bot
-      trades (net result above zero, newest first) among the trades closed
-      before entry t was placed. Deal t is split into four parts traded on
-      entries t, t+1, t+2, t+3 with the weights w1 = 0.2962, w2 = w1/2,
-      w3 = (w1+w2)/2, w4 = (w1+w2+w3)/2. A win ends every open deal: deal j
-      contributes nothing to entry t when any bot trade with a net result
-      above zero closed after entry j was placed and before entry t was
-      placed (a close at the same instant as a placement counts as before
-      it). Losses and break-even trades do not end deals. The risk percent
-      of entry t is the sum of the parts of deals t, t-1, t-2 and t-3 that
-      fall on it and have not ended (deals before entry 1 do not exist),
-      capped at MaxRiskPercentPerTrade (0.5). Everything is computed from
-      broker data, so a restart gives the same percent. All other risk
-      limits still apply after it. With LadderEnabled false, the fixed
-      RiskPercent is used.
+      Ladder sizing (owner's plan of 2026-11-16, step rule of 2026-11-17).
+      Entries are numbered 1, 2, 3 in the order their entry orders were
+      placed, counting every bot entry order since RiskEpochDate that filled
+      or is still pending; orders that were cancelled or expired unfilled are
+      not counted. A win is a closed bot trade with a net result above zero;
+      losses and break-even trades are not wins. A close at the same instant
+      as a placement counts as before it.
+      (1) Position: the position p(t) of entry t is 1 plus the number of
+      entries placed after the latest win that closed before entry t was
+      placed (or since entry 1 if there is none).
+      (2) Columns: there are four step columns C, D, E, F for positions 1 to
+      4, each holding a whole number, all 0 at the start. Entry t starts deal
+      t of size LadderDealRiskPercent (0.30) x LadderGrowth (1.5924) ^ step,
+      where step is the value of the column of p(t) when entry t is placed,
+      or 0 when p(t) is 5 or more.
+      (3) Parts: deal t is split into four parts traded on entries t, t+1,
+      t+2, t+3 with the weights w1 = 0.2962, w2 = w1/2, w3 = (w1+w2)/2,
+      w4 = (w1+w2+w3)/2. A win ends every open deal: deal j gives nothing to
+      entry t when a win closed after entry j was placed and before entry t
+      was placed. The raw percent of entry t is the sum of the parts of deals
+      t, t-1, t-2 and t-3 that fall on it and have not ended; the risk
+      percent is the raw percent capped at MaxRiskPercentPerTrade (0.5).
+      (4) Raising a step: when a win closes, the column of the winning
+      entry's position (F for position 5 or more) is raised by 1, except that
+      while the column before it is 0 the raise moves one column back (a win
+      at position 4 with D = 1 and E = 0 raises E; with D = 0 and E = 0 it
+      raises D; C is always allowed).
+      (5) Month: in each calendar month (CE(S)T, the clock of the FTMO day),
+      once an entry's raw percent is above MaxRiskPercentPerTrade, wins that
+      close after that entry was placed raise no step until the month ends.
+      At 00:00 CE(S)T on the 1st of each month all four columns go back to 0
+      and raising is allowed again; open deals keep their sizes.
+      Everything is computed from broker data, so a restart gives the same
+      percent. All other risk limits still apply after it. With
+      LadderEnabled false, the fixed RiskPercent is used.
 
   # ---------------------------------------------------------------- NEWS
   - id: NWS-001
