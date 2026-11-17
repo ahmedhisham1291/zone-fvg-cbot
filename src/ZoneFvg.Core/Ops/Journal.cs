@@ -154,7 +154,7 @@ public sealed class Journal
     public string Recovery(RecoveryJournalEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return Emit(entry.TimeUtc, "recovery", new (string, string?)[]
+        var fields = new List<(string, string?)>
         {
             ("symbol", entry.Symbol),
             ("trigger", entry.Trigger),
@@ -165,7 +165,14 @@ public sealed class Journal
             ("zones", JournalFormat.Integer(entry.ZonesActive)),
             ("downtime", JournalFormat.Duration(entry.Downtime)),
             ("state", entry.ResultState.ToString()),
-        });
+        };
+        if (entry.FailedRuns.HasValue)
+        {
+            // OPS-008: a failed run carries the number of failed runs since the last written one.
+            fields.Add(("failed-runs", JournalFormat.Integer(entry.FailedRuns.Value)));
+        }
+
+        return Emit(entry.TimeUtc, "recovery", fields);
     }
 
     /// <summary>Journals a bot state change with the keys from, to and reason (spec 8.5, spec 11).</summary>
@@ -194,6 +201,28 @@ public sealed class Journal
     {
         ArgumentNullException.ThrowIfNull(exception);
         return Error(atUtc, source, _masker.Apply(exception));
+    }
+
+    /// <summary>
+    /// Journals an exception with the keys source, error and left-out: the number of equal errors
+    /// that were not journaled since the last line of their group (OPS-008); the message is masked
+    /// (OPS-007, REC-011).
+    /// </summary>
+    /// <param name="atUtc">Server time.</param>
+    /// <param name="source">Where it happened, for example <c>OnTimer</c>.</param>
+    /// <param name="exception">The exception.</param>
+    /// <param name="leftOut">Equal errors left out since the group's last line.</param>
+    /// <returns>The line written.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="exception"/> is null.</exception>
+    public string Error(DateTime atUtc, string? source, Exception exception, int leftOut)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        return Emit(atUtc, "error", new (string, string?)[]
+        {
+            ("source", source ?? string.Empty),
+            ("error", _masker.Apply(exception)),
+            ("left-out", JournalFormat.Integer(leftOut)),
+        });
     }
 
     /// <summary>Journals an error message with the keys source and error; the message is masked (OPS-007).</summary>

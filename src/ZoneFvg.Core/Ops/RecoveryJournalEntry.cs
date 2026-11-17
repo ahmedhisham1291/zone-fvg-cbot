@@ -28,4 +28,11 @@ public sealed record RecoveryJournalEntry(
     int Strangers,
     int ZonesActive,
     TimeSpan? Downtime,
-    BotState ResultState);
+    BotState ResultState)
+{
+    /// <summary>
+    /// For a failed run (missing or stale data), the number of failed runs since the last written
+    /// one, this run included (OPS-008); null for a completed run, which writes no such field.
+    /// </summary>
+    public int? FailedRuns { get; init; }
+}

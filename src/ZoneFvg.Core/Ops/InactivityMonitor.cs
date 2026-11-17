@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
+using ZoneFvg.Core.Risk;
 
 namespace ZoneFvg.Core.Ops;
 
@@ -25,10 +26,13 @@ public sealed record InactivityStatus(DateTime LastTradeUtc, bool LastTradeKnown
 /// <remarks>
 /// When neither the history nor the positions hold a trade, the start of the history of the first
 /// check is used as the last trade time: the account has been inactive at least that long (fail
-/// towards warning). The reference time never moves backward and never drifts: it is replaced
+/// towards warning). Since OPS-006 was changed on 2026-11-17, that reference is never earlier than
+/// 00:00 CE(S)T of RiskEpochDate, so a fresh account or a backtest is not warned before 21 days
+/// without a trade. The reference time never moves backward and never drifts: it is replaced
 /// only by a newer trade, and kept when the last trade leaves the history window, so each step is
-/// raised once. Which alerts were raised is kept in memory only, so after a restart the current
-/// step is raised once more.
+/// raised once. Which alerts were raised is kept in memory; after a restart the caller passes the
+/// time of the last alert it stored (<see cref="RestoreLastAlert"/>), and no alert is raised within
+/// <see cref="OpsParameters.InactivityRepeatDays"/> days of it.
 /// </remarks>
 public sealed class InactivityMonitor
 {
@@ -36,7 +40,9 @@ public sealed class InactivityMonitor
     private readonly Journal _journal;
     private DateTime? _lastTradeUtc;
     private bool _lastTradeKnown;
+    private DateTime? _epochStartUtc;
     private long _alertedStep = -1;
+    private DateTime? _quietUntilUtc;
 
     /// <summary>Creates the monitor (OPS-006).</summary>
     /// <param name="alerts">The alert service.</param>
@@ -48,6 +54,31 @@ public sealed class InactivityMonitor
         ArgumentNullException.ThrowIfNull(journal);
         _alerts = alerts;
         _journal = journal;
+    }
+
+    /// <summary>
+    /// Sets RiskEpochDate (OPS-006, changed on 2026-11-17): without any trade, the count starts no
+    /// earlier than 00:00 CE(S)T of that date. Call it before the first <see cref="Check"/>; a
+    /// reference already set is kept.
+    /// </summary>
+    /// <param name="riskEpochDate">RiskEpochDate, a date meaning 00:00 CE(S)T on that day.</param>
+    public void CountNoEarlierThan(DateTime riskEpochDate)
+    {
+        _epochStartUtc = CestClock.StartOfCestDateUtc(riskEpochDate);
+    }
+
+    /// <summary>
+    /// The server time of the last inactivity alert, as stored before a restart (OPS-006). No
+    /// alert is raised before that time plus <see cref="OpsParameters.InactivityRepeatDays"/> days.
+    /// A time within 3 days of <see cref="DateTime.MaxValue"/> does not throw; the caller rejects
+    /// stored times later than the server time.
+    /// </summary>
+    /// <param name="lastAlertUtc">Server time of the last alert, kind UTC.</param>
+    public void RestoreLastAlert(DateTime lastAlertUtc)
+    {
+        // A time within 3 days of DateTime.MaxValue cannot be moved forward; it then means "never again".
+        TimeSpan repeat = TimeSpan.FromDays(OpsParameters.InactivityRepeatDays);
+        _quietUntilUtc = lastAlertUtc > DateTime.MaxValue - repeat ? DateTime.MaxValue : lastAlertUtc + repeat;
     }
 
     /// <summary>
@@ -91,7 +122,7 @@ public sealed class InactivityMonitor
         }
 
         long step = (inactive - first).Ticks / TimeSpan.FromDays(OpsParameters.InactivityRepeatDays).Ticks;
-        if (step <= _alertedStep)
+        if (step <= _alertedStep || (_quietUntilUtc.HasValue && serverTimeUtc < _quietUntilUtc.Value))
         {
             return new InactivityStatus(last, known, inactive, false);
         }
@@ -115,8 +146,9 @@ public sealed class InactivityMonitor
     /// <summary>
     /// Keeps the reference time of the last trade (OPS-006): a trade newer than the reference
     /// replaces it and starts the count again; otherwise the reference stays, also when the last
-    /// trade has left the history window. Without any trade, the first history start is used and
-    /// then kept, so the reference never drifts with the clock.
+    /// trade has left the history window. Without any trade, the later of the first history start
+    /// and the start of RiskEpochDate is used and then kept, so the reference never drifts with the
+    /// clock.
     /// </summary>
     private DateTime UpdateReference(DateTime? latest, DateTime historySinceUtc)
     {
@@ -128,7 +160,7 @@ public sealed class InactivityMonitor
         }
         else if (!_lastTradeUtc.HasValue)
         {
-            _lastTradeUtc = historySinceUtc;
+            _lastTradeUtc = _epochStartUtc.HasValue && _epochStartUtc.Value > historySinceUtc ? _epochStartUtc.Value : historySinceUtc;
             _lastTradeKnown = false;
             _alertedStep = -1;
         }
