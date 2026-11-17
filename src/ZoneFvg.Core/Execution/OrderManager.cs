@@ -70,17 +70,23 @@ public sealed class OrderManager
     private readonly RequestCounter _counter;
     private readonly IExecutionEvents _events;
     private readonly List<PlannedOrder> _unresolved = new List<PlannedOrder>();
+    private readonly bool _requestLimitRecordOnly;
 
     /// <summary>Creates the order manager (EXE-009).</summary>
     /// <param name="broker">Broker port.</param>
     /// <param name="counter">Request counter of this instance (RSK-010), shared with <see cref="TradeManager"/>.</param>
     /// <param name="events">Hook for skip records and alerts.</param>
+    /// <param name="requestLimitRecordOnly">
+    /// REC-014, backtests only: when true an entry request is sent even when it exceeds the request
+    /// limit; the request is counted and the bot records the would-be halt. Default false (live).
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    public OrderManager(IBroker broker, RequestCounter counter, IExecutionEvents events)
+    public OrderManager(IBroker broker, RequestCounter counter, IExecutionEvents events, bool requestLimitRecordOnly = false)
     {
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _counter = counter ?? throw new ArgumentNullException(nameof(counter));
         _events = events ?? throw new ArgumentNullException(nameof(events));
+        _requestLimitRecordOnly = requestLimitRecordOnly;
     }
 
     /// <summary>Number of placements whose outcome is still unclear (EXE-009).</summary>
@@ -213,7 +219,7 @@ public sealed class OrderManager
         }
 
         DateTime now = _broker.ServerTimeUtc;
-        if (!EntryRequestAllowed(now))
+        if (!_requestLimitRecordOnly && !EntryRequestAllowed(now))
         {
             string detail = "request limit would be exceeded";
             _events.Skipped(new SkipRecord(order.Symbol, order.Signal.ZoneId, SkipReason.RequestLimitReached, 0.0, 0.0, detail, now));

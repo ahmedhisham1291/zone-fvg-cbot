@@ -7,6 +7,19 @@ using static ZoneFvg.Core.Domain.Invariant;
 namespace ZoneFvg.Core.Recovery;
 
 /// <summary>
+/// A gap between two consecutive bars of a series (REC-003): the open times of the bar before and
+/// the bar after the missing bars.
+/// </summary>
+/// <param name="TimeFrame">Timeframe of the series.</param>
+/// <param name="PreviousOpenUtc">Open time of the bar before the gap, kind UTC.</param>
+/// <param name="NextOpenUtc">Open time of the bar after the gap, kind UTC.</param>
+public sealed record BarGap(TimeFrame TimeFrame, DateTime PreviousOpenUtc, DateTime NextOpenUtc)
+{
+    /// <summary>The gap as <c>yyyy-MM-dd HH:mm&gt;yyyy-MM-dd HH:mm</c> (REC-003 journal and report).</summary>
+    public string Text => Minute(PreviousOpenUtc) + ">" + Minute(NextOpenUtc);
+}
+
+/// <summary>
 /// Checks a bar series before replay and while running (REC-003, spec 8.3 step 1 and 8.4):
 /// enough bars, closed bars only, strictly increasing open times, no gap and a recent last bar.
 /// </summary>
@@ -85,6 +98,59 @@ public static class BarSeriesCheck
     /// <param name="holidays">Market holidays (owner decision of 2026-11-16); null means none.</param>
     public static string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null)
     {
+        return FirstProblem(timeFrame, bars, required, nowUtc, fridayCloseUtc, holidays, true);
+    }
+
+    /// <summary>
+    /// The first problem of a series other than a gap, or null (REC-003, owner decision A of
+    /// 2026-11-17): fewer bars than <paramref name="required"/>, a missing bar, open times not
+    /// strictly increasing, a bar not yet closed at <paramref name="nowUtc"/>, or a last bar that
+    /// is not recent. The texts are those of <see cref="Problem"/>. Gaps are listed by
+    /// <see cref="Gaps"/>.
+    /// </summary>
+    /// <param name="timeFrame">Timeframe of the series.</param>
+    /// <param name="bars">The series, oldest first.</param>
+    /// <param name="required">Fewest bars needed (the warm-up requirement).</param>
+    /// <param name="nowUtc">Server time, kind UTC.</param>
+    /// <param name="fridayCloseUtc">UTC time of day at which the weekend closure starts on Fridays.</param>
+    /// <param name="holidays">Market holidays (owner decision of 2026-11-16); null means none.</param>
+    /// <returns>A short invariant description of the first problem, or null.</returns>
+    public static string? ProblemOtherThanGap(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null)
+    {
+        return FirstProblem(timeFrame, bars, required, nowUtc, fridayCloseUtc, holidays, false);
+    }
+
+    /// <summary>
+    /// Every gap of a series, oldest first (REC-003, owner decision A of 2026-11-17): each pair of
+    /// consecutive bars for which <see cref="IsGap"/> is true. Pairs with a missing bar or with
+    /// open times that do not increase are not gaps; <see cref="ProblemOtherThanGap"/> reports them.
+    /// </summary>
+    /// <param name="timeFrame">Timeframe of the series.</param>
+    /// <param name="bars">The series, oldest first; null gives no gap.</param>
+    /// <param name="fridayCloseUtc">UTC time of day at which the weekend closure starts on Fridays.</param>
+    /// <param name="holidays">Market holidays (owner decision of 2026-11-16); null means none.</param>
+    /// <returns>The gaps, oldest first.</returns>
+    public static IReadOnlyList<BarGap> Gaps(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null)
+    {
+        var gaps = new List<BarGap>();
+        if (bars == null)
+        {
+            return gaps.AsReadOnly();
+        }
+
+        for (int i = 1; i < bars.Count; i++)
+        {
+            if (bars[i - 1] is Bar previous && bars[i] is Bar next && next.OpenTimeUtc > previous.OpenTimeUtc && IsGap(timeFrame, previous, next, fridayCloseUtc, holidays))
+            {
+                gaps.Add(new BarGap(timeFrame, previous.OpenTimeUtc, next.OpenTimeUtc));
+            }
+        }
+
+        return gaps.AsReadOnly();
+    }
+
+    private static string? FirstProblem(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays, bool gaps)
+    {
         if (bars == null)
         {
             return timeFrame + ": no bars";
@@ -116,7 +182,7 @@ public static class BarSeriesCheck
                     return timeFrame + ": bar opening " + Minute(bar.OpenTimeUtc) + " does not follow " + Minute(previous.OpenTimeUtc);
                 }
 
-                if (IsGap(timeFrame, previous, bar, fridayCloseUtc, holidays))
+                if (gaps && IsGap(timeFrame, previous, bar, fridayCloseUtc, holidays))
                 {
                     return timeFrame + ": gap between " + Minute(previous.OpenTimeUtc) + " and " + Minute(bar.OpenTimeUtc);
                 }

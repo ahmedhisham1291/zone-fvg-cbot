@@ -528,6 +528,11 @@ namespace cAlgo.Robots
                 // One machine-readable line per closed trade for the backtest trade log (SIM-001,
                 // docs/backtest-howto.md). Journal only.
                 WriteTradeLog = isBacktest,
+
+                // REC-014 (owner decision C of 2026-11-17): in a backtest halts and the daily budget are
+                // only journaled as would-halt or would-block. Never live: no cBot parameter, and the core
+                // refuses the flag outside a backtest.
+                BacktestHaltsLogOnly = isBacktest,
             };
         }
 

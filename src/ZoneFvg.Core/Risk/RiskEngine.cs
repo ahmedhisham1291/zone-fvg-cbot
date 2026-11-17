@@ -104,6 +104,26 @@ public sealed class RiskEngine
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public RiskCheckResult CheckNewTrade(RiskSnapshot snapshot, PlannedTrade trade)
     {
+        return Check(snapshot, trade, true);
+    }
+
+    /// <summary>
+    /// <see cref="CheckNewTrade"/> without the daily risk budget (RSK-006), for the backtest mode of
+    /// REC-014 (owner decision C of 2026-11-17) only: every other check runs in the same order with
+    /// the same values. Live code never calls it; a backtest calls it after
+    /// <see cref="CheckNewTrade"/> refused a trade for the budget alone.
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <param name="trade">The sized trade with the broker's margin estimate.</param>
+    /// <returns>Allowed, or the first failing reason other than the daily budget.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public RiskCheckResult CheckNewTradeWithoutDailyBudget(RiskSnapshot snapshot, PlannedTrade trade)
+    {
+        return Check(snapshot, trade, false);
+    }
+
+    private RiskCheckResult Check(RiskSnapshot snapshot, PlannedTrade trade, bool dailyBudget)
+    {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(trade);
 
@@ -111,7 +131,11 @@ public sealed class RiskEngine
         failure ??= CheckMargin(snapshot, trade);
         failure ??= CheckOpenRisk(snapshot, trade);
         failure ??= CheckCurrencyExposure(snapshot, trade);
-        failure ??= CheckDailyBudget(snapshot, trade);
+        if (dailyBudget)
+        {
+            failure ??= CheckDailyBudget(snapshot, trade);
+        }
+
         failure ??= CheckEntryCounts(snapshot, trade);
         return failure ?? new RiskCheckResult(RiskReason.None, 0.0, 0.0, string.Empty);
     }

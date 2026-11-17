@@ -22,8 +22,10 @@ namespace ZoneFvg.Core.Recovery;
 /// (REC-009). Running it twice in a row therefore changes nothing the second time (REC-002).</para>
 /// <para>Bars are read through <see cref="IBarHistory"/>: for each timeframe the larger of the
 /// load of spec 8.3 (300 D1, 500 H4, 3,000 M15) and the warm-up requirement, which is the least
-/// that must be present (SIG-020). Incomplete data is requested once more; if still incomplete,
-/// the bot stays in Recovering and only protection repair runs.</para>
+/// that must be present (SIG-020). A series with a problem or a gap is requested once more; if a
+/// problem other than a gap remains, the bot stays in Recovering and only protection repair runs.
+/// A gap that remains is the broker's data and is accepted and reported (REC-003, owner decision
+/// A of 2026-11-17).</para>
 /// <para>A zone is known when the rebuilt signal layer has it among its non-terminal zones, or
 /// produced a signal for it during the replay. A zone that signalled is Used at once and leaves
 /// the zone book (architecture section 10, "Terminal zones"), so the replayed signals are how the
@@ -53,6 +55,7 @@ public sealed class RecoveryService
     private readonly AccountGuard _guard;
     private readonly SafetyActions _safety;
     private readonly TradeJournal _journal;
+    private readonly bool _haltsRecordOnly;
 
     /// <summary>Creates the recovery procedure of one instance (REC-002).</summary>
     /// <param name="symbol">Symbol of this instance.</param>
@@ -67,6 +70,11 @@ public sealed class RecoveryService
     /// <param name="events">Hook for skip records and alerts.</param>
     /// <param name="enterState">Called at step 10 with the findings; enters the next state and returns it.</param>
     /// <param name="marketHolidays">Market holidays, which are not data gaps (REC-003); null means none.</param>
+    /// <param name="haltsRecordOnly">
+    /// REC-014, backtests only: when true the catch-up step closes and cancels nothing for the
+    /// emergency guard, the kill switch or the daily budget; the bot records them instead. Default
+    /// false (live).
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">The symbol is empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
@@ -82,7 +90,8 @@ public sealed class RecoveryService
         RequestCounter counter,
         IExecutionEvents events,
         Func<RecoveryFindings, BotState> enterState,
-        IReadOnlyCollection<MonthDay>? marketHolidays = null)
+        IReadOnlyCollection<MonthDay>? marketHolidays = null,
+        bool haltsRecordOnly = false)
     {
         ArgumentNullException.ThrowIfNull(signalParameters);
         ArgumentNullException.ThrowIfNull(executionParameters);
@@ -100,6 +109,7 @@ public sealed class RecoveryService
         _events = events ?? throw new ArgumentNullException(nameof(events));
         _enterState = enterState ?? throw new ArgumentNullException(nameof(enterState));
         _marketHolidays = marketHolidays ?? Array.Empty<MonthDay>();
+        _haltsRecordOnly = haltsRecordOnly;
         _warmup = WarmupCalculator.For(signalParameters);
         _parameterHash = ParameterHash.Compute(signalParameters, executionParameters);
         _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
@@ -176,6 +186,7 @@ public sealed class RecoveryService
             AtUtc = now,
             Downtime = downtime,
             DataComplete = true,
+            AcceptedGaps = data.AcceptedGaps,
             ActiveZones = replay.Engine.Zones.Select(zone => zone.Id).ToList().AsReadOnly(),
             ReplaySignals = replay.Signals.Count,
             PositionsAdopted = adopt.Adopted,
@@ -195,20 +206,23 @@ public sealed class RecoveryService
         };
     }
 
-    // Step 1 (REC-003): connection, bar counts against the warm-up requirement, gaps, recency.
+    // Step 1 (REC-003, owner decision A of 2026-11-17): connection, bar counts against the warm-up
+    // requirement, missing, unclosed or disordered bars and recency fail recovery; a gap that is still
+    // there after the one reload is the broker's data and is accepted.
     private DataStep WaitForConnectionAndData(IBarHistory history, DateTime now)
     {
         if (!_broker.IsConnected)
         {
-            return new DataStep(false, new[] { "broker not connected" }, new Dictionary<TimeFrame, IReadOnlyList<Bar>>(), new Bar?[3]);
+            return new DataStep(false, new[] { "broker not connected" }, new Dictionary<TimeFrame, IReadOnlyList<Bar>>(), new Bar?[3], Array.Empty<AcceptedGapList>());
         }
 
         var bars = new Dictionary<TimeFrame, IReadOnlyList<Bar>>();
         var problems = new List<string>();
+        var accepted = new List<AcceptedGapList>();
         foreach (TimeFrame timeFrame in BarIntakeOrder.SameInstant)
         {
             IReadOnlyList<Bar> series = history.ClosedBars(timeFrame, LoadCount(timeFrame));
-            if (Problem(timeFrame, series, now) != null)
+            if (Problem(timeFrame, series, now) != null || Gaps(timeFrame, series).Count > 0)
             {
                 // Request more once, then read again (prompt WP07).
                 history.RequestMore(timeFrame, LoadCount(timeFrame));
@@ -219,6 +233,15 @@ public sealed class RecoveryService
             if (problem != null)
             {
                 problems.Add(problem);
+            }
+            else
+            {
+                IReadOnlyList<BarGap> gaps = Gaps(timeFrame, series);
+                if (gaps.Count > 0)
+                {
+                    IReadOnlyList<BarGap> newest = gaps.Reverse().Take(AcceptedGapList.Listed).ToList().AsReadOnly();
+                    accepted.Add(new AcceptedGapList(timeFrame, gaps.Count, newest));
+                }
             }
 
             bars[timeFrame] = series;
@@ -234,7 +257,7 @@ public sealed class RecoveryService
             }
         }
 
-        return new DataStep(problems.Count == 0, problems.AsReadOnly(), bars, lastBars);
+        return new DataStep(problems.Count == 0, problems.AsReadOnly(), bars, lastBars, accepted.AsReadOnly());
     }
 
     // Step 2 (REC-004): replay in close-time order, D1 then H4 then M15 at equal close times, with trading off.
@@ -369,21 +392,14 @@ public sealed class RecoveryService
         return _guard.Evaluate(now);
     }
 
-    // Step 9 (REC-009): emergency close, cancels on a breached limit, and the weekend close.
+    // Step 9 (REC-009): emergency close, cancels on a breached limit, and the weekend close. In a backtest
+    // (REC-014) the guards close and cancel nothing; the bot records them as would-halt or would-block.
     private CatchUpStep CatchUpDuties(DateTime now, GuardStatus guard)
     {
         var actions = new List<TradeAction>();
-        if (guard.EmergencyFires)
+        if (!_haltsRecordOnly)
         {
-            actions.AddRange(_safety.CloseAllBotTrades("emergency guard"));
-        }
-        else if (guard.KillSwitchFires)
-        {
-            actions.AddRange(_trades.CancelEntryOrders("kill switch"));
-        }
-        else if (guard.BudgetExhausted)
-        {
-            actions.AddRange(_trades.CancelEntryOrders("daily budget exhausted"));
+            actions.AddRange(GuardActions(guard));
         }
 
         bool pending = false;
@@ -400,15 +416,36 @@ public sealed class RecoveryService
         return new CatchUpStep(actions.AsReadOnly(), pending);
     }
 
+    private IReadOnlyList<TradeAction> GuardActions(GuardStatus guard)
+    {
+        if (guard.EmergencyFires)
+        {
+            return _safety.CloseAllBotTrades("emergency guard");
+        }
+
+        if (guard.KillSwitchFires)
+        {
+            return _trades.CancelEntryOrders("kill switch");
+        }
+
+        return guard.BudgetExhausted ? _trades.CancelEntryOrders("daily budget exhausted") : Array.Empty<TradeAction>();
+    }
+
     // Step 10 (REC-010): the bot enters Running, Blocked or Halted from the findings; the caller journals and alerts the report.
     private BotState ReportAndResume(RecoveryFindings findings)
     {
         return _enterState(findings);
     }
 
+    // REC-003 (owner decision A): every problem except a gap.
     private string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? series, DateTime now)
     {
-        return BarSeriesCheck.Problem(timeFrame, series, _warmup[timeFrame], now, _executionParameters.FridayCloseUtc, _marketHolidays);
+        return BarSeriesCheck.ProblemOtherThanGap(timeFrame, series, _warmup[timeFrame], now, _executionParameters.FridayCloseUtc, _marketHolidays);
+    }
+
+    private IReadOnlyList<BarGap> Gaps(TimeFrame timeFrame, IReadOnlyList<Bar>? series)
+    {
+        return BarSeriesCheck.Gaps(timeFrame, series, _executionParameters.FridayCloseUtc, _marketHolidays);
     }
 
     private string? StrangerReason(string label, string comment, SortedSet<string> knownZones)
@@ -484,7 +521,7 @@ public sealed class RecoveryService
         return actions.Select(action => Text(action.Id) + " " + action.Outcome + " (" + action.Detail + ")").ToList().AsReadOnly();
     }
 
-    private sealed record DataStep(bool Complete, IReadOnlyList<string> Problems, Dictionary<TimeFrame, IReadOnlyList<Bar>> Bars, Bar?[] LastBars);
+    private sealed record DataStep(bool Complete, IReadOnlyList<string> Problems, Dictionary<TimeFrame, IReadOnlyList<Bar>> Bars, Bar?[] LastBars, IReadOnlyList<AcceptedGapList> AcceptedGaps);
 
     private sealed record ReplayStep(SignalEngine Engine, SortedSet<string> KnownZones, IReadOnlyList<ReplayedSignal> Signals);
 
