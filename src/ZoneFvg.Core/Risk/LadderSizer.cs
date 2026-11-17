@@ -2,30 +2,37 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution.Ports;
 
 namespace ZoneFvg.Core.Risk;
 
 /// <summary>
-/// Ladder sizing, the owner's 4-part plan (RSK-013, spec 4.1): the risk percent of the next
-/// entry as a pure function of the bot's entries since RiskEpochDate. The only field is the
-/// validated parameter set; nothing is remembered between calls.
+/// Ladder sizing, the owner's 4-part plan with step columns (RSK-013, spec 4.1): the risk percent
+/// of the next entry as a pure function of the bot's entries since RiskEpochDate and the time the
+/// next entry is placed. The only field is the validated parameter set; nothing is remembered
+/// between calls: the columns are rebuilt from the full entry list every time.
 /// </summary>
 /// <remarks>
-/// <para>Entries are numbered 1, 2, 3 in the order they were placed. Entry t starts deal t of
-/// size LadderDealRiskPercent x LadderGrowth ^ s(t), where s(t) is the number of consecutive
-/// winning entries, newest close first, among the entries closed at or before the placement of
-/// entry t. A win is a net result above zero; zero (break-even) or less ends the run. Entries
-/// that are still pending or open do not count and do not end the run.</para>
+/// <para>Entries are numbered 1, 2, 3 in the order they were placed (placement time, then key,
+/// ordinal). A win is a closed entry with a net result above zero (1e-9 tolerance). The position
+/// p(t) of entry t is 1 plus the number of entries placed after the latest win. Entry t starts
+/// deal t of size LadderDealRiskPercent x LadderGrowth ^ step, where step is the value of the
+/// column C, D, E or F of p(t) when entry t is placed, or 0 from position 5.</para>
 /// <para>Deal t is split into four parts with weights w1 = LadderFirstWeight, w2 = w1/2,
-/// w3 = (w1+w2)/2, w4 = (w1+w2+w3)/2, traded on entries t, t+1, t+2 and t+3. The risk percent of
-/// entry t is w1 x deal t + w2 x deal t-1 + w3 x deal t-2 + w4 x deal t-3 (deals before entry 1
-/// do not exist), capped at MaxRiskPercentPerTrade.</para>
-/// <para>Order and ties: entries are ordered by placement time, then by key (ordinal); closed
-/// entries are ranked newest first by close time, then by higher entry number. The growth power
-/// is computed by repeated multiplication, so the result does not depend on the platform's
-/// <c>Math.Pow</c>.</para>
+/// w3 = (w1+w2)/2, w4 = (w1+w2+w3)/2, traded on entries t, t+1, t+2 and t+3. A win ends every
+/// deal placed before it. The raw percent of entry t is the sum of the parts that fall on it from
+/// deals that have not ended; the risk percent is the raw percent capped at
+/// MaxRiskPercentPerTrade.</para>
+/// <para>A win raises the column of the winning entry's position (F from position 5), moving
+/// back while the column before it is 0. Once an entry's raw percent is above
+/// MaxRiskPercentPerTrade, wins that close after it raise no step. Only a new RiskEpochDate puts
+/// the columns back to 0 and lifts that freeze, because entries before it are not counted; there is
+/// no monthly reset.</para>
+/// <para>Event order: by time; at the same instant closes of entries placed earlier come before
+/// placements (a close at the same instant as a placement counts as before it), closes among
+/// themselves in entry order, placements in entry order, and a close at the instant of its own
+/// placement right after that placement. The growth power is computed by repeated multiplication, so the result does not
+/// depend on the platform's <c>Math.Pow</c>.</para>
 /// </remarks>
 public sealed class LadderSizer
 {
@@ -49,21 +56,21 @@ public sealed class LadderSizer
     public IReadOnlyList<double> PartWeights => Weights(_parameters.LadderFirstWeight);
 
     /// <summary>
-    /// Size of a deal in percent of balance (RSK-013): LadderDealRiskPercent x LadderGrowth ^
-    /// <paramref name="consecutiveWins"/>.
+    /// Size of a deal in percent of balance (RSK-013 clause 2): LadderDealRiskPercent x
+    /// LadderGrowth ^ <paramref name="step"/>.
     /// </summary>
-    /// <param name="consecutiveWins">The number of consecutive wins s, zero or more.</param>
-    /// <returns>The deal size in percent; may be infinite for a very long run of wins.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="consecutiveWins"/> is negative.</exception>
-    public double DealPercent(int consecutiveWins)
+    /// <param name="step">The step of the deal, zero or more.</param>
+    /// <returns>The deal size in percent; may be infinite for a very large step.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="step"/> is negative.</exception>
+    public double DealPercent(int step)
     {
-        if (consecutiveWins < 0)
+        if (step < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(consecutiveWins), "The number of consecutive wins must not be negative.");
+            throw new ArgumentOutOfRangeException(nameof(step), "The step must not be negative.");
         }
 
         double deal = _parameters.LadderDealRiskPercent;
-        for (int i = 0; i < consecutiveWins && double.IsFinite(deal); i++)
+        for (int i = 0; i < step && double.IsFinite(deal); i++)
         {
             deal *= _parameters.LadderGrowth;
         }
@@ -73,14 +80,14 @@ public sealed class LadderSizer
 
     /// <summary>
     /// The four parts of a deal in percent of balance, w1 to w4 times
-    /// <see cref="DealPercent"/> (RSK-013).
+    /// <see cref="DealPercent"/> (RSK-013 clause 3).
     /// </summary>
-    /// <param name="consecutiveWins">The number of consecutive wins s of the deal.</param>
+    /// <param name="step">The step of the deal.</param>
     /// <returns>Part 1 to part 4.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="consecutiveWins"/> is negative.</exception>
-    public IReadOnlyList<double> DealParts(int consecutiveWins)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="step"/> is negative.</exception>
+    public IReadOnlyList<double> DealParts(int step)
     {
-        double deal = DealPercent(consecutiveWins);
+        double deal = DealPercent(step);
         return Weights(_parameters.LadderFirstWeight).Select(weight => deal * weight).ToArray();
     }
 
@@ -118,44 +125,125 @@ public sealed class LadderSizer
     }
 
     /// <summary>
-    /// The risk percent of the next entry (RSK-013, spec 4.1). With LadderEnabled false it is the
-    /// fixed RiskPercent (RSK-001). The entries are checked in either case.
+    /// The risk percent of the next entry, placed at <paramref name="placedUtc"/> (RSK-013, spec
+    /// 4.1). With LadderEnabled false it is the fixed RiskPercent (RSK-001). The entries are
+    /// checked in either case.
     /// </summary>
     /// <param name="entries">Every bot entry since RiskEpochDate that filled or is pending, in any order.</param>
+    /// <param name="placedUtc">Placement time of the next entry, kind UTC: the broker's server time.</param>
     /// <returns>The risk percent, greater than zero and at most MaxRiskPercentPerTrade when the ladder is on.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entries"/> is null.</exception>
-    /// <exception cref="ArgumentException">An entry is null or invalid, or two entries share a key.</exception>
-    public double NextRiskPercent(IReadOnlyList<LadderEntry> entries)
+    /// <exception cref="ArgumentException">An entry is null or invalid, two entries share a key, the time is not UTC, or an entry was placed or closed after it.</exception>
+    public double NextRiskPercent(IReadOnlyList<LadderEntry> entries, DateTime placedUtc)
     {
-        LadderEntry[] ordered = Ordered(entries);
-        if (!_parameters.LadderEnabled)
-        {
-            return _parameters.RiskPercent;
-        }
-
-        var deals = new List<double>(Parts) { DealPercent(Wins(ordered, null)) };
-        for (int k = 1; k < Parts && k <= ordered.Length; k++)
-        {
-            deals.Add(DealPercent(Wins(ordered, ordered[ordered.Length - k].PlacedUtc)));
-        }
-
-        return RiskPercentFromDeals(deals);
+        LadderDecision decision = Next(entries, placedUtc);
+        return _parameters.LadderEnabled ? decision.RiskPercent : _parameters.RiskPercent;
     }
 
     /// <summary>
-    /// The number of consecutive winning entries s (RSK-013): among the entries closed at or
-    /// before <paramref name="placedUtc"/> (all closed entries when null), newest close first,
-    /// how many in a row have a net result above zero. Break-even ends the run; pending and open
-    /// entries are skipped.
+    /// The ladder sizing of the next entry, placed at <paramref name="placedUtc"/> (RSK-013): its
+    /// position, step, raw and capped percent and the columns C, D, E, F at its placement. The
+    /// state is rebuilt from <paramref name="entries"/> alone, so the same broker data always
+    /// gives the same result. Computed whether or not LadderEnabled is set.
+    /// </summary>
+    /// <param name="entries">Every bot entry since RiskEpochDate that filled or is pending, in any order.</param>
+    /// <param name="placedUtc">Placement time of the next entry, kind UTC.</param>
+    /// <returns>The sizing of the next entry.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="entries"/> is null.</exception>
+    /// <exception cref="ArgumentException">An entry is null or invalid, two entries share a key, the time is not UTC, or an entry was placed or closed after it.</exception>
+    public LadderDecision Next(IReadOnlyList<LadderEntry> entries, DateTime placedUtc)
+    {
+        LadderEntry[] ordered = Ordered(entries);
+        RequireUtc(placedUtc, "placement time of the next entry");
+        foreach (LadderEntry entry in ordered)
+        {
+            // Broker data cannot hold an event after the server time; such data is not trusted (fail closed).
+            Require(entry.PlacedUtc <= placedUtc, "entry " + entry.Key + " was placed after the next entry");
+            Require(!entry.ClosedUtc.HasValue || entry.ClosedUtc.Value <= placedUtc, "entry " + entry.Key + " closed after the next entry was placed");
+        }
+
+        LadderBook book = Replay(ordered);
+        return book.Preview(placedUtc);
+    }
+
+    /// <summary>
+    /// The risk percent of the next entry placed at the latest placement or close time in
+    /// <paramref name="entries"/> (RSK-013), that is right after the last broker event. Used by
+    /// tests; the bot gives the server time.
     /// </summary>
     /// <param name="entries">The entries, in any order.</param>
-    /// <param name="placedUtc">Placement time of the entry whose deal is sized, or null for the next entry.</param>
-    /// <returns>The number of consecutive wins.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="entries"/> is null.</exception>
-    /// <exception cref="ArgumentException">An entry is null or invalid, or two entries share a key.</exception>
-    public static int ConsecutiveWins(IReadOnlyList<LadderEntry> entries, DateTime? placedUtc)
+    /// <returns>The risk percent as <see cref="NextRiskPercent(IReadOnlyList{LadderEntry}, DateTime)"/>.</returns>
+    internal double NextRiskPercent(IReadOnlyList<LadderEntry> entries)
     {
-        return Wins(Ordered(entries), placedUtc);
+        return NextRiskPercent(entries, LatestTime(entries));
+    }
+
+    /// <summary>The sizing of the next entry placed right after the last broker event, as <see cref="NextRiskPercent(IReadOnlyList{LadderEntry})"/>.</summary>
+    /// <param name="entries">The entries, in any order.</param>
+    /// <returns>The sizing of the next entry.</returns>
+    internal LadderDecision Next(IReadOnlyList<LadderEntry> entries)
+    {
+        return Next(entries, LatestTime(entries));
+    }
+
+    /// <summary>A new, empty book with this sizer's parameters (RSK-013), for the simulator.</summary>
+    /// <returns>A book with all columns at 0 and no entries.</returns>
+    internal LadderBook NewBook()
+    {
+        return new LadderBook(this, _parameters.MaxRiskPercentPerTrade);
+    }
+
+    private LadderBook Replay(LadderEntry[] ordered)
+    {
+        var events = new List<BookEvent>(ordered.Length * 2);
+        for (int i = 0; i < ordered.Length; i++)
+        {
+            DateTime placed = ordered[i].PlacedUtc;
+            events.Add(new BookEvent(placed, 1, i, 0));
+            if (ordered[i].ClosedUtc.HasValue)
+            {
+                DateTime closed = ordered[i].ClosedUtc!.Value;
+                events.Add(closed == placed ? new BookEvent(closed, 1, i, 1) : new BookEvent(closed, 0, i, 0));
+            }
+        }
+
+        // Time; closes of earlier entries before placements; entry order; own close right after own placement. A total order.
+        events.Sort((a, b) =>
+        {
+            int result = a.TimeUtc.CompareTo(b.TimeUtc);
+            result = result != 0 ? result : a.Group.CompareTo(b.Group);
+            result = result != 0 ? result : a.Index.CompareTo(b.Index);
+            return result != 0 ? result : a.Sub.CompareTo(b.Sub);
+        });
+
+        LadderBook book = NewBook();
+        foreach (BookEvent e in events)
+        {
+            bool isClose = e.Group == 0 || e.Sub == 1;
+            if (isClose)
+            {
+                book.Close(e.Index, e.TimeUtc, ordered[e.Index].NetResult);
+            }
+            else
+            {
+                book.Place(e.TimeUtc);
+            }
+        }
+
+        return book;
+    }
+
+    private static DateTime LatestTime(IReadOnlyList<LadderEntry> entries)
+    {
+        LadderEntry[] ordered = Ordered(entries);
+        DateTime latest = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        foreach (LadderEntry entry in ordered)
+        {
+            latest = entry.PlacedUtc > latest ? entry.PlacedUtc : latest;
+            latest = entry.ClosedUtc.HasValue && entry.ClosedUtc.Value > latest ? entry.ClosedUtc.Value : latest;
+        }
+
+        return latest;
     }
 
     /// <summary>
@@ -254,39 +342,6 @@ public sealed class LadderSizer
         return new LadderEntry(label, placed, closed[closed.Length - 1].CloseTimeUtc, net);
     }
 
-    private static int Wins(LadderEntry[] ordered, DateTime? placedUtc)
-    {
-        var closed = new List<int>();
-        for (int i = 0; i < ordered.Length; i++)
-        {
-            DateTime? close = ordered[i].ClosedUtc;
-            if (close.HasValue && (!placedUtc.HasValue || close.Value <= placedUtc.Value))
-            {
-                closed.Add(i);
-            }
-        }
-
-        // Newest close first; at the same close time the later entry first. Indices are unique, so the order is total.
-        closed.Sort((a, b) =>
-        {
-            int result = ordered[b].ClosedUtc!.Value.CompareTo(ordered[a].ClosedUtc!.Value);
-            return result != 0 ? result : b.CompareTo(a);
-        });
-
-        int wins = 0;
-        foreach (int index in closed)
-        {
-            if (!PriceMath.GreaterThan(ordered[index].NetResult, 0.0, PriceMath.DefaultTolerance))
-            {
-                break;
-            }
-
-            wins++;
-        }
-
-        return wins;
-    }
-
     private static LadderEntry[] Ordered(IReadOnlyList<LadderEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
@@ -341,4 +396,7 @@ public sealed class LadderSizer
 
     /// <summary>One bot position, pending order or closed trade, by label (RSK-013). Lives for one call only.</summary>
     private sealed record BrokerPart(string Label, DateTime TimeUtc, ClosedTradeInfo? Closed);
+
+    /// <summary>A placement (group 1, sub 0) or close (group 0, or group 1 sub 1 at its own placement instant) of entry Index (RSK-013).</summary>
+    private readonly record struct BookEvent(DateTime TimeUtc, int Group, int Index, int Sub);
 }

@@ -17,10 +17,12 @@ namespace ZoneFvg.Core.Simulation;
 /// result_r times that risk, and at its stop it would lose that risk plus its commission in R
 /// (commission / risk_money). Swap is not counted at the stop (architecture section 10).</para>
 /// <para>Ladder sizing (RSK-013): when <see cref="FtmoChallengeParameters.Ladder"/> is set with
-/// LadderEnabled true, the percent comes from <see cref="LadderSizer"/> instead: every trade taken
-/// in the path is an entry, numbered in the order taken; its deal grows with the run of winning
-/// trades closed up to its open, newest close first (closes at the same instant in the order
-/// taken); a trade refused by the daily budget is not an entry.</para>
+/// LadderEnabled true, the percent comes from the same step-column rule as <see cref="LadderSizer"/>
+/// instead: every trade taken in the path is an entry, numbered in the order taken, placed at its
+/// open and closed at its close with its result as the net; the path's events go through one
+/// ladder book in the order below (closes at the same instant in the order taken); the columns
+/// start at 0 on the path's first day, as with a RiskEpochDate on that day, and are never reset
+/// inside the path; a trade refused by the daily budget is not an entry.</para>
 /// <para>Each event is processed in time order; a close at the same instant as an open comes
 /// first. At 00:00 CE(S)T the day's start balance M is the balance then.</para>
 /// <list type="number">
@@ -258,8 +260,7 @@ public static class FtmoChallengeSimulator
         private readonly int _first;
         private readonly DateTime _startDay;
         private readonly FtmoChallengeParameters _p;
-        private readonly LadderSizer? _ladder;
-        private readonly List<double> _deals = new();
+        private readonly LadderBook? _ladder;
         private readonly List<OpenTrade> _open = new();
         private double _balance;
         private double _peak;
@@ -273,7 +274,6 @@ public static class FtmoChallengeSimulator
         private int _taken;
         private int _refused;
         private int _sequence;
-        private int _wins;
         private DateTime _lastEvent;
         private ChallengeOutcome? _outcome;
 
@@ -283,7 +283,7 @@ public static class FtmoChallengeSimulator
             _first = first;
             _startDay = startDay;
             _p = parameters;
-            _ladder = parameters.Ladder is { LadderEnabled: true } ? new LadderSizer(parameters.Ladder) : null;
+            _ladder = parameters.Ladder is { LadderEnabled: true } ? new LadderSizer(parameters.Ladder).NewBook() : null;
             _balance = parameters.InitialCapital;
             _peak = _balance;
             _day = startDay;
@@ -383,8 +383,7 @@ public static class FtmoChallengeSimulator
                 return;
             }
 
-            double deal = _ladder == null ? 0.0 : _ladder.DealPercent(_wins);
-            double riskPercent = _ladder == null ? _p.RiskPercent : _ladder.RiskPercentFromDeals(DealsNewestFirst(deal));
+            double riskPercent = _ladder == null ? _p.RiskPercent : _ladder.Preview(trade.OpenTimeUtc).RiskPercent;
             double risk = _balance * riskPercent / 100.0;
             double atStop = (-1.0 + (trade.Commission / trade.RiskMoney)) * risk;
             double worst = _balance + atStop;
@@ -401,7 +400,8 @@ public static class FtmoChallengeSimulator
                 return;
             }
 
-            _deals.Add(deal);
+            // RSK-013: the trade becomes the ladder's next entry; its index in the book equals its sequence.
+            _ladder?.Place(trade.OpenTimeUtc);
             _open.Add(new OpenTrade(trade, trade.ResultR * risk, atStop, _sequence++));
             _taken++;
             if (_lastTradingDay != _day)
@@ -414,22 +414,10 @@ public static class FtmoChallengeSimulator
             CheckFloors();
         }
 
-        private List<double> DealsNewestFirst(double deal)
-        {
-            // RSK-013: the new deal (weight w1), then the deals of up to three earlier entries.
-            var deals = new List<double>(LadderSizer.Parts) { deal };
-            for (int k = 1; k < LadderSizer.Parts && k <= _deals.Count; k++)
-            {
-                deals.Add(_deals[_deals.Count - k]);
-            }
-
-            return deals;
-        }
-
         private void Close(OpenTrade closing)
         {
             _balance += closing.Result;
-            _wins = PriceMath.GreaterThan(closing.Result, 0.0, PriceMath.DefaultTolerance) ? _wins + 1 : 0;
+            _ladder?.Close(closing.Sequence, closing.Trade.CloseTimeUtc, closing.Result);
             if (closing.Result < closing.AtStop)
             {
                 // Closed below its stop (a gap or slippage): the day's worst case is the actual loss.
