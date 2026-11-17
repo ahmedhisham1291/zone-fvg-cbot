@@ -400,8 +400,16 @@ namespace cAlgo.Robots
             Positions.Closed += args =>
             {
                 // The close reason is journal data for the trade journal and the backtest trade log (SIM-001).
-                broker.RecordClose(args);
-                core.OnTradeEvent();
+                // It is recorded first so the journal sees it; the finally block makes sure the core still
+                // handles the close if recording fails, and the failure is not swallowed.
+                try
+                {
+                    broker.RecordClose(args);
+                }
+                finally
+                {
+                    core.OnTradeEvent();
+                }
             };
             Positions.Modified += _ => core.OnTradeEvent();
 
