@@ -1091,9 +1091,12 @@ requirements:
       less than 60 minutes earlier, is counted for RSK-010 as before but is
       neither journaled nor alerted; the first such error 60 minutes or more
       after the group's last written line is journaled and alerted with the
-      number left out since. (3) The risk-unavailable line is written when
-      its text differs from the last one written or when 60 minutes have
-      passed since that line. The limits are fixed values, not parameters.
+      number left out since. Errors while the server time cannot be read are
+      always written. (3) The risk-unavailable line is written when its text
+      differs from the last one written or when 60 minutes have passed since
+      that line; the last text is forgotten when entries are allowed again,
+      so a new outage is always written (owner answer of 2026-11-17). The
+      limits are fixed values, not parameters.
       No trading decision changes.
 
   - id: OPS-009
