@@ -396,26 +396,33 @@ requirements:
       operating-system time-zone data, and is correct on the changeover days.
 
   - id: RSK-013
-    wp: WP12
+    wp: WP18
     spec: "4.1"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
-      Ladder sizing (owner's plan, 2026-11-16). Entries are numbered 1, 2, 3
-      in the order their entry orders were placed, counting every bot entry
-      order since RiskEpochDate that filled or is still pending; orders that
-      were cancelled or expired unfilled are not counted. Entry number t
-      starts deal t, whose size is LadderDealRiskPercent (0.30) x
-      LadderGrowth (1.5924) ^ s(t), where s(t) is the number of consecutive
-      winning bot trades (net result above zero, newest first) among the
-      trades closed before entry t was placed. Deal t is split into four
-      parts traded on entries t, t+1, t+2, t+3 with the weights w1 = 0.2962,
-      w2 = w1/2, w3 = (w1+w2)/2, w4 = (w1+w2+w3)/2. The risk percent of entry
-      t is the sum of the parts of deals t, t-1, t-2 and t-3 that fall on it
-      (deals before entry 1 do not exist), capped at MaxRiskPercentPerTrade
-      (0.5). Everything is computed from broker data, so a restart gives the
-      same percent. All other risk limits still apply after it. With
-      LadderEnabled false, the fixed RiskPercent is used.
+      Ladder sizing (owner's plan, 2026-11-16; win reset and deal risk 0.50
+      decided 2026-11-17). Entries are numbered 1, 2, 3 in the order their
+      entry orders were placed, counting every bot entry order since
+      RiskEpochDate that filled or is still pending; orders that were
+      cancelled or expired unfilled are not counted. Entry number t starts
+      deal t, whose size is LadderDealRiskPercent (0.50) x LadderGrowth
+      (1.5924) ^ s(t), where s(t) is the number of consecutive winning bot
+      trades (net result above zero, newest first) among the trades closed
+      before entry t was placed. Deal t is split into four parts traded on
+      entries t, t+1, t+2, t+3 with the weights w1 = 0.2962, w2 = w1/2,
+      w3 = (w1+w2)/2, w4 = (w1+w2+w3)/2. A win ends every open deal: deal j
+      contributes nothing to entry t when any bot trade with a net result
+      above zero closed after entry j was placed and before entry t was
+      placed (a close at the same instant as a placement counts as before
+      it). Losses and break-even trades do not end deals. The risk percent
+      of entry t is the sum of the parts of deals t, t-1, t-2 and t-3 that
+      fall on it and have not ended (deals before entry 1 do not exist),
+      capped at MaxRiskPercentPerTrade (0.5). Everything is computed from
+      broker data, so a restart gives the same percent. All other risk
+      limits still apply after it. With LadderEnabled false, the fixed
+      RiskPercent is used.
+
   # ---------------------------------------------------------------- NEWS
   - id: NWS-001
     wp: WP05

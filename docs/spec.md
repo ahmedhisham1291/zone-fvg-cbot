@@ -172,8 +172,11 @@ Every skip is logged with its reason.
 
 **Owner decision 2026-11-16: ladder sizing (the owner's 4-part plan).** The
 risk percent of each new trade comes from the ladder rule of requirement
-RSK-013 (deal risk 0.30%, split over 4 consecutive trades, grown by 1.5924 per
-consecutive win, never more than 0.5% per trade). The formula below then uses
+RSK-013 (deal risk 0.50%, split over 4 consecutive trades, grown by 1.5924 per
+consecutive win, never more than 0.5% per trade). Owner decision 2026-11-17:
+a win ends every open deal, so the remaining parts of earlier deals are
+dropped and the next trade carries only the new, larger deal's first part;
+the deal risk is 0.50% instead of 0.30%. The formula below then uses
 that percent instead of a fixed 0.5%. With `LadderEnabled` = false the bot
 uses the fixed `RiskPercent` as before.
 
