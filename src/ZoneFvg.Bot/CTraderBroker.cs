@@ -70,8 +70,9 @@ namespace ZoneFvg.Bot
         }
 
         /// <summary>
-        /// Symbol data (EXE-002). Pip value and commission are converted to the account currency with
-        /// the platform's current conversion rates; see <see cref="SymbolCosts"/>.
+        /// Symbol data (EXE-002). Pip value and commission are converted to the account currency
+        /// with the symbol's own Bid where that is exact, otherwise with the platform's current
+        /// conversion rates; see <see cref="SymbolCosts"/>.
         /// </summary>
         /// <param name="symbol">Symbol name.</param>
         /// <returns>The symbol data now.</returns>
@@ -100,7 +101,8 @@ namespace ZoneFvg.Bot
 
         /// <summary>
         /// A one-line description of the symbol's cost data for the start log, so the owner can
-        /// compare the converted values with the platform's own (test record WP08). Diagnostics only.
+        /// compare the converted values with the platform's own (test record WP08), with the path
+        /// each conversion took (WP21). Diagnostics only.
         /// </summary>
         /// <param name="symbol">Symbol name.</param>
         /// <returns>The description.</returns>
@@ -112,11 +114,14 @@ namespace ZoneFvg.Bot
                 + " account " + _robot.Account.Asset.Name
                 + " pipSize " + Number(s.PipSize)
                 + " platformPipValue " + Number(s.PipValue)
+                + " bid " + Number(s.Bid)
                 + " pipValuePerUnit " + Number(costs.PipValuePerUnit())
+                + " pipValuePath " + costs.PipValuePath()
                 + " lotSize " + s.LotSize.ToString(CultureInfo.InvariantCulture)
                 + " commission " + Number(s.Commission) + " " + s.CommissionType
                 + " minCommission " + Number(s.MinCommission) + " " + s.MinCommissionType
                 + " roundTripCommissionPerUnit " + Number(costs.RoundTripCommissionPerUnit())
+                + " commissionPath " + costs.CommissionPath()
                 + " roundTripCommissionPerLot " + Number(costs.RoundTripCommissionPerUnit() * s.LotSize)
                 + " spread " + Number(s.Spread)
                 + " volumeMin " + Number(s.VolumeInUnitsMin) + " step " + Number(s.VolumeInUnitsStep) + " max " + Number(s.VolumeInUnitsMax);
