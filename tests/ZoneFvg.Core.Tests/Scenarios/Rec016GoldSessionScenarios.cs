@@ -1,6 +1,8 @@
 using Xunit;
 using ZoneFvg.Core.App;
 using ZoneFvg.Core.Domain;
+using ZoneFvg.Core.Execution;
+using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Recovery;
 
 namespace ZoneFvg.Core.Tests;
@@ -23,7 +25,7 @@ public class Rec016GoldSessionScenarios
 
     private static BotHarness Harness(bool withSessions = true)
     {
-        var gold = withSessions ? GoldData.Gold() : GoldData.Gold(Array.Empty<ZoneFvg.Core.Execution.Ports.TradingSession>());
+        var gold = withSessions ? GoldData.Gold() : GoldData.Gold(Array.Empty<TradingSession>());
         return new BotHarness(GoldData.Bars(), GoldData.Broker(GoldData.Start, gold));
     }
 
@@ -131,7 +133,7 @@ public class Rec016GoldSessionScenarios
         BotCore core = h.Start(GoldData.Start, GoldData.Parameters());
         Assert.Empty(core.LastReport!.AcceptedGaps);
 
-        h.Broker.SetSymbol(GoldData.Gold(Array.Empty<ZoneFvg.Core.Execution.Ports.TradingSession>()));
+        h.Broker.SetSymbol(GoldData.Gold(Array.Empty<TradingSession>()));
         core.OnConnected(h.History);
 
         Assert.Single(core.LastReport!.AcceptedGaps);
