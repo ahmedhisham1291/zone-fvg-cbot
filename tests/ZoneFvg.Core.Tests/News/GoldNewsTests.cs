@@ -12,8 +12,8 @@ namespace ZoneFvg.Core.Tests;
 /// NewsBeforeMin and NewsAfterMin are 30; both window ends are included (NWS-001).
 /// </summary>
 /// <remarks>
-/// Live feed document fetched on Monday 2026-03-02 00:00 UTC: USD Non-Farm at Wednesday 2026-03-04
-/// 08:30 New York time (-05:00), which is 13:30 UTC; EUR CPI at 11:00 Frankfurt time (+01:00), which
+/// Live feed document fetched on Wednesday 2026-03-04 00:00 UTC (data older than NewsMaxCacheHours,
+/// 48, would be unavailable): USD Non-Farm at Wednesday 2026-03-04 08:30 New York time (-05:00), which is 13:30 UTC; EUR CPI at 11:00 Frankfurt time (+01:00), which
 /// is 10:00 UTC; an "All" event at 15:00 UTC; and GBP and JPY events at 11:00 and 12:00 UTC.
 /// ExtraBlackouts adds XAU at 16:00 UTC.
 /// </remarks>
@@ -46,7 +46,7 @@ public class GoldNewsTests
     private static NewsService Service()
     {
         NewsService service = LiveService(new MemoryStore(), new FakeTransport(Ok(Document())), Parameters("2026-03-04 16:00 XAU"));
-        Assert.Equal(NewsStatus.Available, service.Refresh(Utc(2026, 3, 2, 0, 0)).Status);
+        Assert.Equal(NewsStatus.Available, service.Refresh(Utc(2026, 3, 4, 0, 0)).Status);
         return service;
     }
 
@@ -156,7 +156,7 @@ public class GoldNewsTests
     public void ExtraBlackoutUsd_BlocksGold()
     {
         NewsService service = LiveService(new MemoryStore(), new FakeTransport(Ok(Document())), Parameters("2026-03-04 18:00 USD"));
-        service.Refresh(Utc(2026, 3, 2, 0, 0));
+        service.Refresh(Utc(2026, 3, 4, 0, 0));
 
         Assert.True(service.CalendarAt(Wednesday(18, 0)).IsInWindow(Gold, Wednesday(18, 0)));
     }
@@ -167,7 +167,7 @@ public class GoldNewsTests
     {
         const string history = "2026-03-04 13:30,USD,High,Non-Farm Employment Change\n2026-03-04 10:00,EUR,High,German CPI\n";
         var service = new NewsService(Parameters(), new[] { ForexFactoryFeed() }, new MemoryStore(), new FakeTransport(Failed()), true, history);
-        Assert.Equal(NewsStatus.Available, service.Refresh(Utc(2026, 3, 2, 0, 0)).Status);
+        Assert.Equal(NewsStatus.Available, service.Refresh(Utc(2026, 3, 4, 0, 0)).Status);
 
         Assert.Equal(NewsBlockReason.InsideWindow, service.CheckEntry(Gold, Wednesday(13, 30), EarlyGap()).Reason);
         Assert.True(service.CheckEntry(Gold, Wednesday(10, 0), EarlyGap()).IsAllowed);
