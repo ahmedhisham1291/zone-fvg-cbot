@@ -280,7 +280,8 @@ public sealed class OrderManager
 
     private static string? Mismatch(PlannedOrder order, PendingOrderInfo placed)
     {
-        double tolerance = 0.5 * Math.Pow(10.0, -order.PriceDigits);
+        // EXE-017: half a tick, plus one billionth of a tick for floating-point noise.
+        double tolerance = (0.5 * order.TickSize) + (1e-9 * order.TickSize);
         if (!placed.StopLoss.HasValue || Math.Abs(placed.StopLoss.Value - order.StopLoss) > tolerance)
         {
             return "stop loss " + Price(placed.StopLoss) + " instead of " + Text(order.StopLoss);

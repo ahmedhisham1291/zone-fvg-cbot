@@ -45,13 +45,13 @@ public static class RiskData
 
     public static SymbolInfo AudUsd => Major("AUDUSD", "AUD", "USD");
 
-    public static SymbolInfo UsdJpy => new("USDJPY", "USD", "JPY", 0.01, 0.00008, 1000.0, 1000.0, 10000000.0, 0.01, true, 0.0);
+    public static SymbolInfo UsdJpy => new("USDJPY", "USD", "JPY", 0.01, 0.00008, 1000.0, 1000.0, 10000000.0, 0.01, true, 0.0) { Digits = 3, TickSize = 0.001 };
 
     public static IReadOnlyList<SymbolInfo> AllSymbols => new[] { EurUsd, GbpUsd, AudUsd, UsdJpy };
 
     public static SymbolInfo Major(string name, string baseCurrency, string quoteCurrency)
     {
-        return new SymbolInfo(name, baseCurrency, quoteCurrency, 0.0001, 0.0001, 1000.0, 1000.0, 10000000.0, 0.00001, true, 0.0);
+        return new SymbolInfo(name, baseCurrency, quoteCurrency, 0.0001, 0.0001, 1000.0, 1000.0, 10000000.0, 0.00001, true, 0.0) { Digits = 5, TickSize = 0.00001 };
     }
 
     public static AccountSnapshot Account(double balance)

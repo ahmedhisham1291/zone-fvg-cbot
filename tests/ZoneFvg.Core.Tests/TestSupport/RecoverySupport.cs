@@ -65,7 +65,7 @@ public static class RecoveryData
 
     public static SymbolInfo UsdJpy(bool marketOpen = true, double spread = 0.01)
     {
-        return new SymbolInfo(Symbol, "USD", "JPY", 0.01, 0.0001, 1000.0, 1000.0, 10000000.0, spread, marketOpen, 0.0);
+        return new SymbolInfo(Symbol, "USD", "JPY", 0.01, 0.0001, 1000.0, 1000.0, 10000000.0, spread, marketOpen, 0.0) { Digits = 3, TickSize = 0.001 };
     }
 
     public static BotParameters Parameters(bool newsEnabled = true, string news = News)

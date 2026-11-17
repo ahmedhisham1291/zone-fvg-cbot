@@ -100,6 +100,7 @@ public sealed class BotCore
     private DateTime _lastFedCloseUtc;
     private int _lastFedRank;
     private int _tradeLogLines;
+    private DateTime? _fridayCloseDeferredDay;
 
     /// <summary>
     /// Creates the core of one instance (docs/architecture.md section 3). Validates every
@@ -395,7 +396,7 @@ public sealed class BotCore
         {
             // The emergency guard is checked every minute as well as at M15 closes (owner decision of 2026-11-16).
             CheckEmergencyGuard(now);
-            JournalActions("friday-close", _trades.FridayClose(now));
+            FridayCloseDuty(now);
             WeekendDuty();
         }
 
@@ -819,6 +820,29 @@ public sealed class BotCore
 
         JournalActions("weekend-close", _safety.CloseSymbolTrades("weekend close"));
         _weekendClosePending = _safety.HasSymbolExposure();
+    }
+
+    // EXE-016: against a closed market no close or cancel request is sent; the weekend close does it at the reopen.
+    private void FridayCloseDuty(DateTime now)
+    {
+        if (!_trades.FridayCloseDue(now) || _safety.MarketOpen())
+        {
+            JournalActions("friday-close", _trades.FridayClose(now));
+            return;
+        }
+
+        if (!_safety.HasSymbolExposure())
+        {
+            return;
+        }
+
+        _weekendClosePending = true;
+        if (_fridayCloseDeferredDay != now.Date)
+        {
+            // One line per Friday, not per minute.
+            _fridayCloseDeferredDay = now.Date;
+            Write("friday-close", ("event", "deferred"), ("reason", "market-closed"));
+        }
     }
 
     private void ResolvePending(GuardStatus guard, DateTime now)

@@ -60,4 +60,17 @@ public sealed record SymbolInfo(
 
     /// <summary>Commission for opening and closing one unit of volume, in the account currency (RSK-006).</summary>
     public double RoundTripCommissionPerUnit { get; init; } = RoundTripCommissionPerUnit;
+
+    /// <summary>
+    /// Number of decimals of the symbol's prices, cTrader <c>Symbol.Digits</c> (EXE-017). Used to
+    /// write prices in the order comment. Default 0; the adapter sets it.
+    /// </summary>
+    public int Digits { get; init; }
+
+    /// <summary>
+    /// Smallest price step of the symbol, cTrader <c>Symbol.TickSize</c> (EXE-017). Entry, stop and
+    /// target are rounded to a whole multiple of it. Default 0, which is not usable, so a symbol
+    /// record without it is refused as BrokerDataInvalid.
+    /// </summary>
+    public double TickSize { get; init; }
 }
