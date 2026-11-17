@@ -260,7 +260,6 @@ public static class FtmoChallengeSimulator
         private readonly int _first;
         private readonly DateTime _startDay;
         private readonly FtmoChallengeParameters _p;
-        private readonly LadderBook? _ladder;
         private readonly List<OpenTrade> _open = new();
         private double _balance;
         private double _peak;
@@ -274,6 +273,7 @@ public static class FtmoChallengeSimulator
         private int _taken;
         private int _refused;
         private int _sequence;
+        private LadderState? _ladder;
         private DateTime _lastEvent;
         private ChallengeOutcome? _outcome;
 
@@ -283,7 +283,7 @@ public static class FtmoChallengeSimulator
             _first = first;
             _startDay = startDay;
             _p = parameters;
-            _ladder = parameters.Ladder is { LadderEnabled: true } ? new LadderSizer(parameters.Ladder).NewBook() : null;
+            _ladder = parameters.Ladder is { LadderEnabled: true } ? new LadderSizer(parameters.Ladder).StartState() : null;
             _balance = parameters.InitialCapital;
             _peak = _balance;
             _day = startDay;
@@ -400,9 +400,15 @@ public static class FtmoChallengeSimulator
                 return;
             }
 
-            // RSK-013: the trade becomes the ladder's next entry; its index in the book equals its sequence.
-            _ladder?.Place(trade.OpenTimeUtc);
-            _open.Add(new OpenTrade(trade, trade.ResultR * risk, atStop, _sequence++));
+            // RSK-013: the trade becomes the ladder's next entry; its position is kept to close it.
+            int position = 0;
+            if (_ladder != null)
+            {
+                _ladder = _ladder.Place(trade.OpenTimeUtc, out LadderDecision placed);
+                position = placed.Position;
+            }
+
+            _open.Add(new OpenTrade(trade, trade.ResultR * risk, atStop, _sequence++, position));
             _taken++;
             if (_lastTradingDay != _day)
             {
@@ -417,7 +423,7 @@ public static class FtmoChallengeSimulator
         private void Close(OpenTrade closing)
         {
             _balance += closing.Result;
-            _ladder?.Close(closing.Sequence, closing.Trade.CloseTimeUtc, closing.Result);
+            _ladder = _ladder?.Close(closing.LadderPosition, closing.Trade.CloseTimeUtc, closing.Result);
             if (closing.Result < closing.AtStop)
             {
                 // Closed below its stop (a gap or slippage): the day's worst case is the actual loss.
@@ -468,7 +474,7 @@ public static class FtmoChallengeSimulator
             return (dayStartUtc + CestClock.UtcOffset(dayStartUtc)).Date;
         }
 
-        private sealed record OpenTrade(TradeRecord Trade, double Result, double AtStop, int Sequence);
+        private sealed record OpenTrade(TradeRecord Trade, double Result, double AtStop, int Sequence, int LadderPosition);
     }
 }
 

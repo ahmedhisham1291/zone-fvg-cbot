@@ -514,33 +514,52 @@ public class LadderStepColumnTests
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void Book_EventsOutOfOrderOrAnUnplacedClose_Throw()
+    public void State_EventsOutOfOrderOrABadPosition_Throw()
     {
-        LadderBook book = Sizer().NewBook();
-        book.Place(H(1.0));
+        LadderState state = Sizer().StartState().Place(H(1.0), out LadderDecision placed);
 
-        Assert.Throws<InvalidOperationException>(() => book.Close(1, H(2.0), 50.0));
-        Assert.Throws<InvalidOperationException>(() => book.Close(-1, H(2.0), 50.0));
-        Assert.Throws<InvalidOperationException>(() => book.Place(H(0.5)));
-        Assert.Equal(1, book.Count);
+        Assert.Equal(1, placed.Position);
+        Assert.Throws<ArgumentOutOfRangeException>(() => state.Close(0, H(2.0), 50.0));
+        Assert.Throws<InvalidOperationException>(() => state.Close(1, H(0.5), 50.0));
+        Assert.Throws<InvalidOperationException>(() => state.Place(H(0.5), out _));
+        Assert.Throws<InvalidOperationException>(() => state.Preview(H(0.5)));
     }
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void Book_InfiniteRawPercent_IsCappedAndFreezes()
+    public void State_IsImmutable_EveryEventGivesANewState()
     {
-        LadderBook book = Sizer(Ladder with { LadderGrowth = 1e300, MaxRiskPercentPerTrade = 100.0 }).NewBook();
-        book.Place(H(0.0));
-        book.Place(H(1.0));
-        book.Close(1, H(2.0), 50.0);
-        book.Close(0, H(3.0), 50.0);
+        LadderState start = Sizer().StartState();
+        LadderState placed = start.Place(H(0.0), out LadderDecision first);
+        LadderState won = placed.Close(first.Position, H(1.0), 50.0);
+        LadderState lost = placed.Close(first.Position, H(1.0), -50.0);
 
-        LadderDecision decision = book.Place(H(4.0));
+        Assert.Equal(0.08886, start.Preview(H(2.0)).RiskPercent, Tolerance);
+        Assert.Equal(0.13329, placed.Preview(H(2.0)).RiskPercent, Tolerance);
+        Assert.Equal(0.13329, lost.Preview(H(2.0)).RiskPercent, Tolerance);
+        Assert.Equal(0.141501, won.Preview(H(2.0)).RiskPercent, Tolerance);
+        Assert.Equal(new[] { 0, 0, 0, 0 }, Columns(placed.Preview(H(2.0))));
+        Assert.Equal(new[] { 1, 0, 0, 0 }, Columns(won.Preview(H(2.0))));
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-013")]
+    public void State_InfiniteRawPercent_IsCappedAndFreezes()
+    {
+        // B (position 2) wins first and moves back to C; A (position 1) then raises C to 2 with no entry in
+        // between, so the next deal is 0.30 x (1e300)^2, which is infinite.
+        LadderState state = Sizer(Ladder with { LadderGrowth = 1e300, MaxRiskPercentPerTrade = 100.0 }).StartState();
+        state = state.Place(H(0.0), out LadderDecision a);
+        state = state.Place(H(1.0), out LadderDecision b);
+        state = state.Close(b.Position, H(2.0), 50.0);
+        state = state.Close(a.Position, H(3.0), 50.0);
+
+        state = state.Place(H(4.0), out LadderDecision decision);
 
         Assert.Equal(2, decision.Step);
         Assert.True(double.IsPositiveInfinity(decision.RawPercent));
         Assert.Equal(100.0, decision.RiskPercent);
-        Assert.True(book.Preview(H(5.0)).StepsFrozen);
+        Assert.True(state.Preview(H(5.0)).StepsFrozen);
     }
 
     [Fact]

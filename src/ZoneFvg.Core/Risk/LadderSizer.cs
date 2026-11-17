@@ -162,8 +162,7 @@ public sealed class LadderSizer
             Require(!entry.ClosedUtc.HasValue || entry.ClosedUtc.Value <= placedUtc, "entry " + entry.Key + " closed after the next entry was placed");
         }
 
-        LadderBook book = Replay(ordered);
-        return book.Preview(placedUtc);
+        return Replay(ordered).Preview(placedUtc);
     }
 
     /// <summary>
@@ -186,14 +185,14 @@ public sealed class LadderSizer
         return Next(entries, LatestTime(entries));
     }
 
-    /// <summary>A new, empty book with this sizer's parameters (RSK-013), for the simulator.</summary>
-    /// <returns>A book with all columns at 0 and no entries.</returns>
-    internal LadderBook NewBook()
+    /// <summary>The ladder state before the first entry, with this sizer's parameters (RSK-013), also used by the simulator.</summary>
+    /// <returns>A state with all columns at 0 and no deals.</returns>
+    internal LadderState StartState()
     {
-        return new LadderBook(this, _parameters.MaxRiskPercentPerTrade);
+        return LadderState.Start(this, _parameters.MaxRiskPercentPerTrade);
     }
 
-    private LadderBook Replay(LadderEntry[] ordered)
+    private LadderState Replay(LadderEntry[] ordered)
     {
         var events = new List<BookEvent>(ordered.Length * 2);
         for (int i = 0; i < ordered.Length; i++)
@@ -216,21 +215,24 @@ public sealed class LadderSizer
             return result != 0 ? result : a.Sub.CompareTo(b.Sub);
         });
 
-        LadderBook book = NewBook();
+        LadderState state = StartState();
+        var positions = new int[ordered.Length];
         foreach (BookEvent e in events)
         {
             bool isClose = e.Group == 0 || e.Sub == 1;
             if (isClose)
             {
-                book.Close(e.Index, e.TimeUtc, ordered[e.Index].NetResult);
+                // The entry's own placement came earlier in this order, so its position is known.
+                state = state.Close(positions[e.Index], e.TimeUtc, ordered[e.Index].NetResult);
             }
             else
             {
-                book.Place(e.TimeUtc);
+                state = state.Place(e.TimeUtc, out LadderDecision placed);
+                positions[e.Index] = placed.Position;
             }
         }
 
-        return book;
+        return state;
     }
 
     private static DateTime LatestTime(IReadOnlyList<LadderEntry> entries)
