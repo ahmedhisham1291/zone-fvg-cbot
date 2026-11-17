@@ -1,4 +1,4 @@
-# Numbered requirements extracted from docs/spec.md (v0.8).
+# Numbered requirements extracted from docs/spec.md (v0.9).
 #
 # Rules for this file
 # - The text of a requirement may only be changed by the human owner.
@@ -438,6 +438,35 @@ requirements:
       percent. All other risk limits still apply after it. With
       LadderEnabled false, the fixed RiskPercent is used.
 
+  - id: RSK-014
+    wp: WP22
+    spec: "4.2, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Start checks (fail closed; owner acceptance of 2026-11-17). Before its
+      first recovery the bot refuses to start, with a Log line that names
+      both values, when (1) 00:00 CE(S)T of RiskEpochDate is later than the
+      broker's server time, or (2) in a backtest, the account balance
+      differs from InitialCapital by more than 0.01 in account currency. A
+      RiskEpochDate whose start equals the server time, and a difference of
+      exactly 0.01, are accepted. Outside backtests the balance is not
+      compared with InitialCapital. If the account or the server time cannot
+      be read, the bot refuses to start.
+
+  - id: RSK-015
+    wp: WP24
+    spec: "2, 4.2"
+    verify: unit
+    status: planned
+    text: >-
+      Gold in the currency cap (owner decision D of 2026-11-17). XAUUSD is
+      handled by RSK-005 like a pair with base XAU and quote USD: a gold buy
+      counts as long XAU and short USD, a gold sell as short XAU and long
+      USD, so gold counts towards the USD limit together with the forex
+      pairs. The base and quote come from the broker's symbol data, as for
+      the forex pairs.
+
   # ---------------------------------------------------------------- NEWS
   - id: NWS-001
     wp: WP05
@@ -567,6 +596,19 @@ requirements:
     text: >-
       Events without a clock time (all-day, tentative, holidays) create no
       window and are listed in the log.
+
+  - id: NWS-013
+    wp: WP24
+    spec: "6.1"
+    verify: unit
+    status: planned
+    text: >-
+      Gold news (owner decision D of 2026-11-17). For XAUUSD the relevant
+      currencies of NWS-001 are XAU and USD. No feed and no embedded history
+      publishes XAU events, so gold is blocked by high-impact USD events,
+      by "All" events and by ExtraBlackouts entries for USD or XAU, and is
+      not blocked by EUR, GBP, JPY or AUD events. Windows, FVG overlap and
+      order expiry (NWS-009, EXE-015) work as for the forex pairs.
 
   # ---------------------------------------------------------------- EXECUTION
   - id: EXE-001
@@ -720,6 +762,38 @@ requirements:
       placement) and the start of the next news window for the symbol. If
       fewer than 15 minutes remain the signal is skipped.
 
+  - id: EXE-016
+    wp: WP22
+    spec: "5.5, 8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Friday close against a closed market (owner acceptance of
+      2026-11-17). When Friday close (EXE-013) is due and the broker reports
+      the symbol's market closed, no close or cancel request is sent. The
+      weekend close is marked pending instead and is done at the first
+      event at which the broker reports the market open again, as for a
+      restart over the weekend (architecture section 10, 2026-11-16). With
+      the market open, EXE-013 is unchanged.
+
+  - id: EXE-017
+    wp: WP22
+    spec: "5.2, 5.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Price grid from the broker (owner acceptance of 2026-11-17). Entry,
+      stop and target are rounded, half away from zero, to a whole multiple
+      of the symbol's tick size and written in the order comment with the
+      symbol's number of digits; both values come from the broker port
+      (cTrader Symbol.TickSize and Symbol.Digits). The read-back check of
+      EXE-010 compares stop and target within half a tick. Digits must be 0
+      to 10, and the tick size finite, above zero and a whole multiple of
+      10^-Digits (within 1e-9 of that step); otherwise the signal is skipped
+      as BrokerDataInvalid and no order is sent. For the forex pairs
+      (EURUSD 5 digits, tick 0.00001; USDJPY 3 digits, tick 0.001) the
+      prices are the same as before.
+
   # ---------------------------------------------------------------- RECOVERY
   - id: REC-001
     wp: WP07
@@ -740,14 +814,31 @@ requirements:
       it is safe to run it repeatedly.
 
   - id: REC-003
-    wp: WP07
+    wp: WP23
     spec: "8.3, 8.4"
     verify: scenario
-    status: implemented
+    status: planned
     text: >-
-      Recovery waits for connection and sufficient bar history, detects gaps
-      in each bar series, and stays in Recovering with an alert if data cannot
-      be completed.
+      Recovery waits for connection and bar history (rules of 2026-11-16
+      changed by owner decision A of 2026-11-17). For each series (D1, H4,
+      M15) it reads the closed bars; if the series has any problem it asks
+      for more history once for that timeframe and reads again. Recovery
+      then fails, stays in Recovering and alerts once per outage, only when
+      the broker is not connected or a series still has fewer bars than the
+      warm-up requirement, a missing bar entry, a bar not yet closed at
+      server time, open times that are not strictly increasing, or a last
+      bar that is not recent (at least two bar lengths of open-market time
+      since its close: stale data). A gap is at least one bar length of
+      open-market time between two consecutive bars; the weekend closure
+      (Friday FridayCloseUtc to Monday 00:00 UTC), market holidays (whole
+      UTC day) and, from REC-016, time outside the symbol's trading sessions
+      count as closed. A gap that is still present after the reload is the
+      broker's data and is accepted: recovery continues, writes one journal
+      line per timeframe with accepted gaps, and its report gives the number
+      of accepted gaps per timeframe and the three newest with both bar open
+      times. A gap between two bars fed live blocks entries (Blocked, data
+      gap) until the next recovery, which runs at the next timer event,
+      reloads the history and accepts the gap if it is still there.
 
   - id: REC-004
     wp: WP07
@@ -845,6 +936,66 @@ requirements:
       FakeBroker scenarios with zero duplicate orders and zero positions left
       without a stop loss.
 
+  - id: REC-014
+    wp: WP23
+    spec: "8.5, 12.1"
+    verify: scenario
+    status: planned
+    text: >-
+      Backtest halts are recorded, not applied (owner decision C of
+      2026-11-17). In a backtest, and never live, the kill switch (RSK-008),
+      the FTMO emergency guard (RSK-009), the error limit and the request
+      limits (RSK-010) do not put the bot into Halted, close positions,
+      cancel orders or stop a request from being sent, and the daily risk
+      budget (RSK-006, both the Blocked state with its order cancels and the
+      budget check of a new trade) does not block or refuse anything.
+      Instead the journal line "risk event=would-halt cause=<cause>
+      detail=<text>" ("event=would-block cause=DailyBudget" for the budget)
+      is written the first time each cause fires in a CE(S)T day, and
+      trading continues, so the backtest trade list is complete and the
+      simulation tools apply the account limits and FTMO's rules afterwards
+      (spec 12.1). All other checks of a new trade (RSK-001 to RSK-005,
+      RSK-010 entry counts, EXE filters) refuse trades as before. The mode
+      is automatic: the adapter switches it on exactly when the cTrader
+      running mode is not RealTime, there is no cBot parameter, and the core
+      refuses to start with it on outside a backtest. Live behaviour is
+      unchanged.
+
+  - id: REC-015
+    wp: WP23
+    spec: "8.5, 5.5, 4.2"
+    verify: scenario
+    status: planned
+    text: >-
+      Duties in every connected state (owner decision B of 2026-11-17).
+      While the broker is connected, the FTMO emergency guard (RSK-009) is
+      checked and Friday close (EXE-013, EXE-016) runs on every one-minute
+      timer event in every state, Recovering included, and a pending weekend
+      close (REC-009) is done at timer and trade events in every state. These
+      duties read only broker data and do not need the signal engine. When
+      the guard fires during Recovering, all bot trades are closed and the
+      bot enters Halted (in a backtest REC-014 applies instead); the halt
+      stays when recovery completes. Recovery still has to complete before
+      the bot can leave Recovering for Running or Blocked. While
+      disconnected no request is sent.
+
+  - id: REC-016
+    wp: WP24
+    spec: "8.3, 8.4"
+    verify: unit
+    status: planned
+    text: >-
+      Symbol trading sessions in the market model (owner decision D of
+      2026-11-17). The open-market time used for gaps and recency (REC-003)
+      also counts as closed every moment outside the symbol's weekly trading
+      sessions reported by the broker (cTrader Symbol.MarketHours.Sessions),
+      for example gold's daily break. Sessions only add closed time to the
+      weekend closure and market holidays; they never make a closed moment
+      open. When the broker reports no session, the model is the weekend
+      closure and holidays alone, and the start log says so. The sessions
+      are read from the broker port each time they are needed and are never
+      stored.
+
   # ---------------------------------------------------------------- OPERATIONS
   - id: OPS-001
     wp: WP09
@@ -896,13 +1047,21 @@ requirements:
       trading.
 
   - id: OPS-006
-    wp: WP09
+    wp: WP22
     spec: "11, 15.2"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       Inactivity warning. An alert is raised when 21 days have passed since
-      the account's last opened trade, in every state.
+      the account's last opened trade, in every state, and again every 3
+      days while it lasts. Changed on 2026-11-17 (owner acceptance): when
+      the history shows no trade, the count starts at the later of the
+      history start and 00:00 CE(S)T of RiskEpochDate, so a fresh account
+      or a backtest is not warned before it has been without a trade for 21
+      days. The server time of the last inactivity alert is stored through
+      the key-value port, and after a restart no inactivity alert is raised
+      within 3 days of it. A lost or unreadable stored value only removes
+      this limit.
 
   - id: OPS-007
     wp: WP09
@@ -913,6 +1072,47 @@ requirements:
       Secrets never appear in logs, journal entries, alerts, exception
       messages or the repository. Journal and log writers mask the Telegram
       token and heartbeat URL.
+
+  - id: OPS-008
+    wp: WP22
+    spec: "11"
+    verify: unit
+    status: planned
+    text: >-
+      Repeat limits for the Log (owner acceptance of 2026-11-17), so that a
+      lasting condition cannot fill the cTrader Log. (1) Recovery that keeps
+      failing for missing or stale data: its recovery journal entry and its
+      report line are written for the first failed run after a start, a
+      reconnect or a completed recovery, then at most once per 24 hours of
+      server time, each with the number of failed runs since the last
+      written one; the run that completes is always written. The 15-minute
+      retry is unchanged. (2) Errors: an error whose handler, exception type
+      and message equal those of its group's last written error, written
+      less than 60 minutes earlier, is counted for RSK-010 as before but is
+      neither journaled nor alerted; the first such error 60 minutes or more
+      after the group's last written line is journaled and alerted with the
+      number left out since. (3) The risk-unavailable line is written when
+      its text differs from the last one written or when 60 minutes have
+      passed since that line. The limits are fixed values, not parameters.
+      No trading decision changes.
+
+  - id: OPS-009
+    wp: WP22
+    spec: "11, 3.3"
+    verify: unit
+    status: planned
+    text: >-
+      Zone outcome counts, journal only (owner acceptance of 2026-11-17).
+      For bars fed live (not replayed) the bot counts per CE(S)T day the
+      zones created and the zones that ended, by reason: signalled (a signal
+      was emitted, whatever then happened to it), no FVG within
+      ConfirmWindowBars after the touch, bias mismatch at the confirmation
+      bar (SIG-018), invalid (close beyond distal), expired (MaxZoneAgeBars)
+      and superseded (SIG-012). At the first live M15 bar of a later CE(S)T
+      day it writes one line "zones day=<yyyy-MM-dd> created=N signalled=N
+      no-fvg=N bias=N invalid=N expired=N superseded=N" for the counted day,
+      unless every count is 0. Counts are not stored; a restart starts a new
+      count. Zones, zone states and signals do not change.
 
   # ---------------------------------------------------------------- PLATFORM
   - id: PLT-001
@@ -952,13 +1152,20 @@ requirements:
       ZoneFvg.Core and ZoneFvg.Bot target net6.0 with C# language version 10.
 
   - id: PLT-005
-    wp: WP08
+    wp: WP22
     spec: "9.4"
     verify: manual
     status: planned
     text: >-
       Chart drawing is optional, controlled by DrawObjects, and every chart
-      call is guarded so that a missing chart cannot throw.
+      call is guarded so that a missing chart cannot throw. Added on
+      2026-11-17 (owner acceptance): the painter remembers the names of the
+      drawings it made in its previous paint and removes by name every
+      remembered name it does not draw again, because cTrader does not list
+      non-interactive drawings in the chart's object collection. A zone that
+      ended or a gap that left the snapshot therefore disappears at the next
+      paint. The remembered names are adapter drawing state only and no
+      trading decision reads them.
 
   - id: PLT-006
     wp: WP08
@@ -995,6 +1202,19 @@ requirements:
     status: planned
     text: >-
       No required behaviour depends on the cBot's stop handler running.
+
+  - id: PLT-010
+    wp: WP24
+    spec: "2, 7, 10.2"
+    verify: manual
+    status: planned
+    text: >-
+      Gold instance (owner decision D of 2026-11-17). The deployment files
+      run a fifth instance on XAUUSD (M15) beside the four forex pairs, with
+      its own parameter file, storage, logs and heartbeat address. Its
+      parameters equal the forex instances' except MaxSpreadPips 40,
+      MinStopPips 800 and MaxVolumeUnits 200 (ounces). The cBot's default
+      parameter values stay the forex values.
 
   # ---------------------------------------------------------------- SIMULATION
   - id: SIM-001
@@ -1040,10 +1260,13 @@ requirements:
       Challenge and Verification phases.
 
   - id: SIM-005
-    wp: WP10
+    wp: WP24
     spec: "13.1"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       Acceptance report. Produces every measure of spec 13.1 from trade logs
-      and states pass or fail against each threshold.
+      and states pass or fail against each threshold. Changed on 2026-11-17
+      (owner decision D): the profitable-symbols threshold is max(3, N - 1)
+      of N, N being the number of distinct symbols in the development logs,
+      for both segments: 3 of 4 for the four forex pairs, 4 of 5 with gold.

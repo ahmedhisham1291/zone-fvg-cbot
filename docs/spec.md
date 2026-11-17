@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.8 (implementation baseline) · 13 November 2026
+Version 0.9 · 17 November 2026 (v0.8 implementation baseline of 13 November 2026, with the owner decisions of 17 November 2026)
 
 ## 0. What changed in v0.2
 
@@ -24,7 +24,7 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 
 | Topic | Decision | Section |
 |---|---|---|
-| Pairs | EURUSD, GBPUSD, USDJPY, AUDUSD | 2 |
+| Symbols | EURUSD, GBPUSD, USDJPY, AUDUSD; XAUUSD (gold) added on 17 November 2026 | 2 |
 | Timeframes | D1 trend, H4 zones, M15 entries | 2, 3 |
 | Stop placement | Beyond the whole zone | 3.5 |
 | Account limits | 1.5% daily loss stop, 8% drawdown kill switch | 4.2 |
@@ -33,9 +33,19 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | Alerts | Telegram | 11 |
 | News calendar | Two free feeds combined (Forex Factory weekly export and ShowMyTrades); Forex Factory history for backtests | 6.2, 6.4, 6.5 |
 
+**Changes in v0.9 (owner decisions of 17 November 2026, after the audits of the adapter and the core)**
+
+| Topic | Decision | Section |
+|---|---|---|
+| A. Data gaps | A gap that is still in the broker's history after reloading it (for example the early close on 24 and 31 December) is accepted. Recovery fails only on too few bars or stale data | 8.3, 8.4 |
+| B. Duties while recovering | Friday close and the FTMO emergency guard run in every connected state, Recovering included | 8.5 |
+| C. Halts in backtests | In a backtest a halt (kill switch, emergency guard, error storm, request limit) and the daily budget are only written to the Log as "would halt" or "would block", and the bot keeps trading, so the trade list is complete. The simulation tools apply the limits and FTMO's rules afterwards. Automatic in backtests; live behaviour unchanged | 8.5, 12.1 |
+| D. Gold | XAUUSD is a fifth instance with its own spread, stop and volume limits; only USD news blocks it; a gold buy counts as short USD; the gap check uses the symbol's trading sessions (gold's daily break); prices are rounded to the symbol's tick size | 2, 4.3, 5.1, 6.1, 7, 8.3, 13.1 |
+| Fixes without a rule change | Old chart drawings removed by name; repeated Log lines limited; refuse to start when RiskEpochDate is after the server time or, in a backtest, the starting balance differs from InitialCapital; no Friday close request while the market is closed (the weekend close does it at the reopen); daily counts of why zones end | 5.5, 9.4, 11 |
+
 ## 1. Purpose and scope
 
-A cTrader cBot that trades forex by waiting for price to return to a higher-timeframe supply or demand zone, then entering on a lower-timeframe fair value gap (FVG) in the direction of the higher-timeframe trend.
+A cTrader cBot that trades four forex pairs and gold (XAUUSD) by waiting for price to return to a higher-timeframe supply or demand zone, then entering on a lower-timeframe fair value gap (FVG) in the direction of the higher-timeframe trend.
 
 **In scope (v1)**
 
@@ -68,7 +78,7 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 
 | Item | Setting | Status and reason |
 |---|---|---|
-| Symbols | EURUSD, GBPUSD, USDJPY, AUDUSD | Decided. Liquid majors, low spread |
+| Symbols | EURUSD, GBPUSD, USDJPY, AUDUSD, XAUUSD | Decided. Liquid majors, low spread. XAUUSD (gold) added by the owner on 17 November 2026; one instance per symbol |
 | Bias timeframe | D1 | Decided. Trend filter |
 | Zone timeframe | H4 | Decided. Higher-timeframe zones |
 | Entry timeframe | M15 (the chart the bot runs on) | Decided. Lower-timeframe FVG |
@@ -158,7 +168,7 @@ Naming the three most recently closed M15 bars c3, c2, c1 (c1 is the newest):
 ### 3.6 Signal is skipped when
 
 - It is not live: its confirmation bar closed more than one bar ago (for example, it was found during a restart replay).
-- Stop distance is under 12 pips or over 2.0 x ATR(H4).
+- Stop distance is under `MinStopPips` (12 pips for the forex pairs, 800 pips for gold) or over 2.0 x ATR(H4).
 - **Cost check fails:** spread plus round-trip commission, in pips, is more than `CostToRiskMax` (10%) of the stop distance.
 - An active supply zone sits between entry and 1.5R above entry.
 - The news filter blocks it (section 6).
@@ -242,10 +252,10 @@ Protection against code errors rather than market risk.
 | Entries per symbol per day | 2 | Skip further signals |
 | Entries per account per day | 6 | Skip further signals |
 | Order requests per instance per hour | 20 | Halt |
-| Order requests per instance per day | 100 | Halt. Four instances stay far below FTMO's 2,000-a-day limit |
+| Order requests per instance per day | 100 | Halt. Five instances stay far below FTMO's 2,000-a-day limit |
 | Unhandled errors per hour | 5 | Halt |
 | Calculated risk above 0.55% of balance | n/a | Skip and alert |
-| Volume above `MaxVolumeUnits` | Per symbol | Skip and alert |
+| Volume above `MaxVolumeUnits` | Per symbol: 500,000 units for the forex pairs, 200 for gold (ounces) | Skip and alert |
 | Stop or target on the wrong side of entry | n/a | Skip and alert |
 
 ## 5. Orders and execution
@@ -253,7 +263,7 @@ Protection against code errors rather than market risk.
 ### 5.1 Filters checked before placing an order
 
 - Time is inside 07:00 to 17:00 UTC, and before `FridayNoEntryUtc` (12:00) on Fridays.
-- Current spread is at most `MaxSpreadPips` (1.5).
+- Current spread is at most `MaxSpreadPips` (1.5 for the forex pairs, 40 for gold).
 - The symbol's market is open.
 - No existing bot position or pending order on the symbol.
 - Not inside a news window; calendar data is valid (section 6).
@@ -281,13 +291,13 @@ Protection against code errors rather than market risk.
 ### 5.5 Open position management (v1 baseline)
 
 - No break-even move and no trailing stop. The trade ends at stop, target or Friday close.
-- Friday 20:00 UTC: close positions and cancel pending orders.
+- Friday 20:00 UTC: close positions and cancel pending orders. If the market is already closed then (an early close before a holiday), no request is sent; the positions are closed and the orders cancelled when the market reopens (v0.9).
 
 ## 6. News filter
 
 ### 6.1 Rule
 
-For each symbol, the relevant currencies are its base and quote (EURUSD: EUR and USD).
+For each symbol, the relevant currencies are its base and quote (EURUSD: EUR and USD). For gold (XAUUSD) they are XAU and USD; no calendar publishes XAU events, so gold is blocked by USD events only (and by "All" events and manual blackouts).
 
 - **News window:** from `NewsBeforeMin` (30) minutes before to `NewsAfterMin` (30) minutes after every high-impact event for a relevant currency.
 - **No new orders** inside a window.
@@ -302,7 +312,7 @@ cTrader has no confirmed built-in calendar feed for bots, so the calendar comes 
 | Source | Used when | Notes |
 |---|---|---|
 | Two live feeds over HTTP | Live and demo | Event time, currency and impact from each feed, combined as described below |
-| Embedded history | Backtests | High-impact events for the four pairs' currencies over the test period, compiled into the bot. cTrader's HTTP calls during a backtest return today's data, not historical data, so the live feed must be off in backtests |
+| Embedded history | Backtests | High-impact events for the traded symbols' currencies over the test period (gold adds none: its currency is USD), compiled into the bot. cTrader's HTTP calls during a backtest return today's data, not historical data, so the live feed must be off in backtests |
 | Manual list | Any time | `ExtraBlackouts` parameter for unscheduled events and holidays |
 
 **Live feed handling**
@@ -390,7 +400,7 @@ Only the four marked **Optimise** are searched. New in v0.2 are marked (new).
 | EntryLevelPct | 50 | Entry depth into the gap | Test 0, 50, 100 |
 | EntryExpiryBars | 8 | Limit order life | Fixed |
 | StopBufferAtr | 0.1 | Stop buffer | Fixed |
-| MinStopPips | 12 (was 8) | Smallest allowed stop | Fixed |
+| MinStopPips | 12 (was 8); gold 800 | Smallest allowed stop | Per symbol |
 | MaxStopAtr | 2.0 | Largest allowed stop (x ATR H4) | Fixed |
 | RewardRisk | 2.0 | Target in R | **Optimise** 1.5 to 3.0, step 0.5 |
 | MinRoomR | 1.5 | Clear space to opposing zone | Fixed |
@@ -408,11 +418,11 @@ Only the four marked **Optimise** are searched. New in v0.2 are marked (new).
 | RiskEpochDate (new) | First live day | Start date for drawdown measurement | Set manually |
 | MaxEntriesPerSymbolPerDay (new) | 2 | Circuit breaker | Fixed |
 | MaxEntriesPerDay (new) | 6 | Circuit breaker | Fixed |
-| MaxVolumeUnits (new) | 500,000 (5 lots) | Size sanity cap | Fixed |
+| MaxVolumeUnits (new) | 500,000 (5 lots); gold 200 (ounces) | Size sanity cap | Per symbol |
 | SessionStartUtc / SessionEndUtc | 07:00 / 17:00 | Trading window | Fixed |
 | FridayNoEntryUtc (new) | 12:00 | Last entry time on Friday | Fixed |
 | FridayCloseUtc | 20:00 | Weekend flat time | Fixed |
-| MaxSpreadPips | 1.5 | Spread filter | Per symbol |
+| MaxSpreadPips | 1.5; gold 40 | Spread filter | Per symbol |
 | NewsEnabled (new) | true | News filter on or off | Test on and off |
 | NewsBeforeMin / NewsAfterMin (new) | 30 / 30 | Window around events | Fixed |
 | NewsFailMode (new) | Block | Behaviour without calendar | Fixed |
@@ -448,7 +458,7 @@ Only the four marked **Optimise** are searched. New in v0.2 are marked (new).
 
 Runs at every start and after every reconnect. The bot is in state **Recovering** and cannot trade until it finishes.
 
-1. **Wait for connection and data.** Confirm the server is connected and the latest closed M15 bar is recent. Load at least 300 D1 bars, 500 H4 bars and 3,000 M15 bars, loading more history if needed. If data cannot be loaded, stay in Recovering and alert.
+1. **Wait for connection and data.** Confirm the server is connected and the latest closed M15 bar is recent. Load at least 300 D1 bars, 500 H4 bars and 3,000 M15 bars, loading more history if needed. If there are too few bars or the data is stale, stay in Recovering and alert. A gap that is still there after reloading the history is the broker's data (an early close, a broker outage): it is accepted and reported, not a reason to stay in Recovering (v0.9, decision A). Time outside the symbol's trading sessions, such as gold's daily break, is not a gap.
 2. **Rebuild the signal layer.** Replay the stored bars through the same detection code with trading switched off. This restores every zone and its state exactly as if the bot had never stopped.
 3. **Read the broker.** List positions, pending orders and recent history carrying the bot's label for this symbol.
 4. **Adopt positions.** For each position: match it to its zone by id, read its plan from the comment, and check it has a stop loss and take profit. Missing stop: set it from the comment. Cannot set: close the position and alert.
@@ -464,17 +474,19 @@ Runs at every start and after every reconnect. The bot is in state **Recovering*
 - Subscribe to the server's connected and disconnected events. On disconnect: mark the state, stop sending requests. On reconnect: run the recovery procedure.
 - Under cTrader CLI a user reported that reconnection restarts the bot's start routine instead of raising the connected event. Running the same recovery from both places covers either behaviour.
 - Do not rely on a connection flag before trading. Send the request, read the result, and follow section 5.3.
-- After reconnect, check the bar series for gaps and reload history before resuming.
+- After reconnect, check the bar series for gaps and reload history before resuming. A gap still there after the reload is accepted (8.3 step 1).
 - Use server time only, never the machine's clock.
 
 ### 8.5 Bot states
 
 | State | New orders | Open trades | Leaves the state when |
 |---|---|---|---|
-| Recovering | No | Protected at broker | Recovery completes |
+| Recovering | No | Protected at broker; Friday close and the emergency guard still run (v0.9) | Recovery completes |
 | Running | Yes | Managed | n/a |
 | Blocked | No | Managed | Cause clears (calendar back, daily limit resets, data restored) |
 | Halted | No; pending orders cancelled | Managed; Friday close still runs | Kill switch or emergency guard: new `RiskEpochDate` after review. Error storm: next CE(S)T day or manual restart |
+
+**Backtests (v0.9, decision C).** In a backtest the bot does not halt: a halt, and the daily budget's block, are only written to the Log as "would halt" or "would block", and the bot keeps trading. The simulation tools (12.1 steps 7 to 9) apply the account limits and FTMO's rules to the complete trade list. This is automatic in backtests and never applies live.
 
 The bot never stops its own process when halted. It keeps running in a non-trading state, which avoids restart loops and keeps Friday close and alerts working.
 
@@ -563,7 +575,7 @@ The cloud remains a fallback. One of the news feeds offers a WebSocket route tha
 
 - **Host:** a small Linux VPS in a commercial data centre, located outside the United States (FTMO does not accept access from a US location). Your home or office power and internet then have no effect on the bot. If you prefer your own machine, add a UPS, set the BIOS to power on when electricity returns, and consider a mobile-data backup link.
 - **Runtime:** the official cTrader CLI Docker image. cTrader CLI runs cBots without the desktop application.
-- **One container per symbol** (four containers), each started with `ctrader-cli run` for its symbol on M15, with a parameter file.
+- **One container per symbol** (five containers: four forex pairs and gold), each started with `ctrader-cli run` for its symbol on M15, with a parameter file.
 - **Automatic restart:** Docker's restart policy restarts each container after a crash or reboot, and Docker itself starts at boot. No login is needed.
 - **Persistence:** a mounted volume for the bot's local storage and logs.
 - **Credentials:** the cTrader ID password sits in a file readable only by the service user. Secure the VPS (key-only SSH, firewall, automatic security updates).
@@ -590,7 +602,7 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 **Setup**
 
 - An FTMO Free Trial account, which has the same trading conditions as the Challenge and costs nothing.
-- Run the four instances from cTrader desktop on Windows. Starting each as an external process keeps it running if the cTrader window is closed.
+- Run the five instances from cTrader desktop on Windows. Starting each as an external process keeps it running if the cTrader window is closed.
 - Laptop settings: never sleep or hibernate, on battery or on power; closing the lid does nothing; keep it plugged in; pause automatic update restarts for the test period.
 
 **What this stage can prove**
@@ -613,7 +625,11 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 
 **Daily summary:** trades, net R, balance, equity, drawdown, distance to FTMO's daily and overall floors, progress to the profit target, skips by reason, calendar status, uptime, restarts.
 
-**Inactivity warning:** an alert after 21 days without a trade, including while halted, because FTMO is reported to close accounts after 30 days without one.
+**Inactivity warning:** an alert after 21 days without a trade, including while halted, because FTMO is reported to close accounts after 30 days without one. Without any trade the count starts no earlier than `RiskEpochDate`, and a restart does not repeat a recent warning (v0.9).
+
+**Zone counts (v0.9):** once a day, how many zones were created and why each zone ended (signalled, no FVG, bias, invalid, expired, superseded), so that the number of signals can be explained.
+
+**Repeated lines (v0.9):** a condition that lasts (recovery waiting for data, the same error again and again, risk data unavailable) is written to the Log at most once per hour, or once per day for a waiting recovery, with a count of the repeats. The cTrader Log holds a limited number of lines, and the backtest trade list is read from it.
 
 **Recovery report:** after every start or reconnect (section 8.3, step 10).
 
@@ -636,6 +652,8 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 
 - Tick data from the broker's server. Bar-data backtests misjudge stop, target and limit fills.
 - Longest history available, target 5 to 10 years, each symbol separately.
+- Start each backtest at least 10 months before the period that is judged: cTrader cannot load older history during a backtest, and the bot needs about 9.5 months of D1 bars before it can trade.
+- Halts are only logged in backtests (8.5); the simulation tools apply the limits afterwards.
 - Real commission; starting balance equal to planned live capital.
 - News filter on, using embedded history; repeat with it off.
 
@@ -648,13 +666,13 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 
 **Sequence**
 
-1. Baseline run with default parameters on all four symbols, no optimisation.
+1. Baseline run with default parameters on all five symbols, no optimisation (gold with its own spread, stop and volume values, section 7).
 2. If the baseline is unprofitable across symbols, revisit the rules. Do not optimise a losing baseline into a winner.
 3. Coarse optimisation of the four **Optimise** parameters. Prefer broad plateaus of good results.
 4. Re-run chosen settings as a single backtest; optimisation passes and single runs sometimes disagree.
 5. Sensitivity: move each key parameter 20% either way.
-6. Stress costs: repeat with spread and commission increased by 50% and with 0.5 pip extra slippage on stops.
-7. Combine the four symbols' trade lists by time for portfolio drawdown and exposure caps.
+6. Stress costs: repeat with spread and commission increased by 50% and with 0.5 pip extra slippage on stops (gold: 15 pips, proposed in v0.9).
+7. Combine the five symbols' trade lists by time for portfolio drawdown and exposure caps.
 8. Monte Carlo: reshuffle the trade order 1,000 times to estimate the range of drawdowns and of 30-trade results (used in 13.3).
 9. Challenge simulation: replay the backtest's trades through FTMO's exact rules several thousand times to estimate the chance of passing each phase and the time it takes, at 0.5%, 0.75% and 1.0% risk per trade (section 15.5).
 10. Benchmark: a simple D1 trend-following bot on the same data and costs.
@@ -721,7 +739,7 @@ The number of variants tried is recorded, because every extra attempt raises the
 | Maximum drawdown at 0.5% risk | 6% or less (FTMO's floor is 10%) | 6% or less |
 | Challenge simulation: chance of passing the Challenge phase | 70% or higher | n/a |
 | Challenge simulation: chance of breaching an FTMO floor | 10% or lower | n/a |
-| Profitable symbols | 3 of 4 | 3 of 4 |
+| Profitable symbols | 4 of 5 (3 of 4 without gold; proposed in v0.9) | 4 of 5 (3 of 4 without gold) |
 | Share of profit from one symbol | 60% or less | n/a |
 | Profit factor under cost stress | Above 1.10 | n/a |
 | Versus benchmark | Better return-to-drawdown ratio | Same |
@@ -747,7 +765,7 @@ Calculated from account history after every closed trade.
 |---|---|
 | Average result below the 5th percentile | Cut risk to 0.25%; alert |
 | Average result below the 1st percentile | Block new entries; review |
-| Average slippage above 0.5 pip over 20 trades | Alert; review broker conditions |
+| Average slippage above 0.5 pip over 20 trades (gold: 15 pips, proposed in v0.9) | Alert; review broker conditions |
 
 Every quarter, re-run the backtest including the latest data and compare live results with it.
 
@@ -770,7 +788,7 @@ Every quarter, re-run the backtest including the latest data and compare live re
 1. On what date did you buy the Challenge? It decides which option in section 15.7 is open to you.
 2. Will this account be used only by the bot?
 
-**Resolved:** account (FTMO 2-Step, Swing, cTrader, 100,000 USD, bought and not started), pairs (four majors), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
+**Resolved:** account (FTMO 2-Step, Swing, cTrader, 100,000 USD, bought and not started), symbols (four majors, plus gold from v0.9), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
 
 ## 15. FTMO account
 

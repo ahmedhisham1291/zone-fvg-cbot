@@ -57,25 +57,65 @@ described is the HTML report).
 
 ## Part 2. Run one backtest per symbol
 
-Spec 12.1 asks for each of the four symbols (EURUSD, GBPUSD, USDJPY, AUDUSD)
-separately.
+Spec 12.1 asks for each symbol separately: the four forex pairs (EURUSD,
+GBPUSD, USDJPY, AUDUSD) and, once work package WP24 is merged, gold (XAUUSD).
 
 6. Open an **M15** chart of the symbol and add an instance of `ZoneFvgBot` to
-   it, with the default parameters. (The bot refuses any other timeframe.)
+   it, with the default parameters, except these (in the instance's parameter
+   panel):
+   - **InitialCapital:** 100000, the same number as the Starting capital in
+     step 7. With a different starting capital the FTMO emergency guard
+     fires at once (10,000 against 100,000 is already 90% below), and from
+     WP22 on the bot refuses to start and says why in the Log.
+   - **RiskEpochDate:** the start date of the backtest (step 7). A later
+     date silently switches off the ladder steps and the kill switch; from
+     WP22 on the bot refuses to start with a RiskEpochDate after the
+     backtest's start.
+   - **NewsEnabled:** false, until the developer says the embedded news
+     history is in the bot. Without it, a backtest with the news filter on
+     has no events to block.
+   - **DrawObjects:** true only if you want to see the zones and gaps on the
+     chart; it needs Visual mode on (step 7).
+   - **Gold (XAUUSD) only, after WP24:** MaxSpreadPips 40, MinStopPips 800,
+     MaxVolumeUnits 200. Everything else as for the forex pairs.
 7. Open the **Backtesting** tab of that instance (to the right of the chart
    tab) and click the cog icon. Settings (spec 12.1):
    - **Data:** tick data from server.
-   - **Starting capital:** 100000 (the planned capital).
+   - **Starting capital:** 100000 (the planned capital), equal to the
+     InitialCapital parameter of step 6.
    - **Commission:** the commission of your FTMO account per million units.
      If you do not know it, write down what you used.
    - **Spread:** leave the default unless the developer said otherwise.
-   - **Period:** development data is everything up to **November 2024**.
-     Do **not** include November 2024 to November 2026 yet: that is the
-     holdout, used once at the very end (spec 12.1 and 13.1).
-   - **Visual mode:** off (faster).
+   - **Period:** development data is everything **before November 2024**:
+     end the backtest on 31 October 2024 at the latest. Do **not** include
+     November 2024 to November 2026 yet: that is the holdout, used once at
+     the very end (spec 12.1 and 13.1).
+   - **Start at least 10 months before the period you want judged.** The
+     bot needs about 9.5 months of daily bars before it can find zones, and
+     cTrader cannot load older history during a backtest (Spotware staff on
+     the cTrader forum: loading more history "is not currently supported in
+     backtesting ... start backtesting from a previous date",
+     [forum 24262](https://communityuat.ctrader.com/forum/cbot-support/24262)).
+     Until then the bot waits in Recovering and trades nothing. Example: to
+     judge 2020 to October 2024, start on 1 March 2019. In the Log, the
+     first `state ... from=Recovering to=Running` line shows when trading
+     could start; it must be before the period you judge.
+   - **Visual mode:** off (faster). Turn it **on** only to look at the
+     drawings (DrawObjects true in step 6). Drawings can disappear when a
+     visual backtest ends, so pause the backtest while it runs and look at
+     the chart then.
    Source for these settings: cTrader help,
    ["Backtest a trading bot"](https://help.ctrader.com/ctrader-algo/how-tos/cbots/backtest-a-trading-bot/).
 8. Click **Play** and wait until the progress bar is full.
+
+   **Halts in backtests (from WP23 on).** A backtest never halts: when the
+   kill switch, the FTMO emergency guard, the error limit, the request limit
+   or the daily risk budget would stop the bot, it writes a line with
+   `would-halt` or `would-block` to the Log and keeps trading. That keeps
+   the trade list complete; the `sim` commands of Part 3 apply the account
+   limits and FTMO's rules afterwards. Before WP23, any `KillSwitch` or
+   `EmergencyGuard` line in the Log means the bot stopped trading there and
+   the run is too short for spec 13.1.
 9. **Save the Log.** Click the **Log** tab under the chart. Click one line in
    it, press **Cmd+A** (select all) and **Cmd+C** (copy). Open **TextEdit**,
    choose **Format > Make Plain Text**, press **Cmd+V**, and save the file as
@@ -103,7 +143,9 @@ separately.
 
     If `extract` stops with an error, it says which trade and why. Two runs
     pasted into one file, or a missing trade, are refused on purpose.
-11. Repeat steps 6 to 10 for GBPUSD, USDJPY and AUDUSD.
+11. Repeat steps 6 to 10 for GBPUSD, USDJPY and AUDUSD, and after WP24 for
+    XAUUSD (with its own values from step 6). Add `--log xauusd-dev.csv`
+    (or `--dev xauusd-dev.csv` for `accept`) to the commands below.
 
 ## Part 3. Compute the numbers
 
@@ -158,7 +200,7 @@ The `accept` report states pass or fail for each line of spec 13.1:
 | Maximum drawdown at 0.5% risk | 6% or less | 6% or less |
 | Chance of passing the Challenge phase (simulation) | 70% or higher | n/a |
 | Chance of breaching an FTMO floor (simulation) | 10% or lower | n/a |
-| Profitable symbols | 3 of 4 | 3 of 4 |
+| Profitable symbols | 3 of 4 (4 of 5 with gold, after WP24) | 3 of 4 (4 of 5 with gold) |
 | Share of profit from one symbol | 60% or less | n/a |
 | Profit factor under cost stress | Above 1.10 | n/a |
 | Versus benchmark | Better return-to-drawdown ratio | Same |
