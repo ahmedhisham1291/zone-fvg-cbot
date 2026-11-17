@@ -247,13 +247,23 @@ public sealed class SwitchableBroker : IBroker
     /// <summary>When set, <see cref="ServerTimeUtc"/> throws it.</summary>
     public Exception? TimeFault { get; set; }
 
+    /// <summary>When set, <see cref="GetSymbol"/> throws it (REC-016).</summary>
+    public Exception? SymbolFault { get; set; }
+
+    /// <summary>Number of <see cref="GetSymbol"/> calls, failed ones included.</summary>
+    public int SymbolReads { get; private set; }
+
     public DateTime ServerTimeUtc => TimeFault != null ? throw TimeFault : Inner.ServerTimeUtc;
 
     public bool IsConnected => Inner.IsConnected;
 
     public AccountSnapshot GetAccount() => Inner.GetAccount();
 
-    public SymbolInfo GetSymbol(string symbol) => Inner.GetSymbol(symbol);
+    public SymbolInfo GetSymbol(string symbol)
+    {
+        SymbolReads++;
+        return SymbolFault != null ? throw SymbolFault : Inner.GetSymbol(symbol);
+    }
 
     public IReadOnlyList<PositionInfo> GetPositions() => PositionsFault != null ? throw PositionsFault : Inner.GetPositions();
 
