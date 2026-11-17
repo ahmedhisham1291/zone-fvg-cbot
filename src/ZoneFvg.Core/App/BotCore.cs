@@ -100,6 +100,7 @@ public sealed class BotCore
     private bool _dataGap;
     private bool _dataAlertSent;
     private bool _riskDataAlertSent;
+    private bool _inactivityAlertRestored;
     private bool _calendarUnavailable;
     private bool _weekendClosePending;
     private DateTime? _budgetBlockedDayUtc;
@@ -109,7 +110,6 @@ public sealed class BotCore
     private DateTime _lastFedCloseUtc;
     private int _lastFedRank;
     private int _tradeLogLines;
-    private bool _inactivityAlertRestored;
 
     /// <summary>
     /// Creates the core of one instance (docs/architecture.md section 3). Validates every
