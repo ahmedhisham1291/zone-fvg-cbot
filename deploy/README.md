@@ -139,8 +139,10 @@ before you pay for a server.
 3. Install the bot and check one instance exactly as in
    [`docs/test-records/WP08-adapter.md`](../docs/test-records/WP08-adapter.md),
    "Preparation" and steps 1 to 5. Fill in that record.
-4. Add three more instances on **M15** charts of GBPUSD, USDJPY and AUDUSD with
-   the same parameters (only `HeartbeatUrl` differs, one monitor per symbol).
+4. Add four more instances on **M15** charts of GBPUSD, USDJPY, AUDUSD and
+   XAUUSD (gold) with the same parameters (only `HeartbeatUrl` differs, one
+   monitor per symbol). The gold instance also has its own three values (see
+   "Gold (XAUUSD)" below): use `deploy/params/xauusd.cbotset.example`.
 5. Optional, one instance only: right-click it and choose **Start in external
    process**, then close the cTrader window; the cBot keeps running in a CLI
    process (source: https://help.ctrader.com/ctrader-cli/cbots/, "Launch from
@@ -404,6 +406,7 @@ Everything lives in `/opt/zfvg`, outside any git checkout:
   params/gbpusd/bot.cbotset
   params/usdjpy/bot.cbotset
   params/audusd/bot.cbotset
+  params/xauusd/bot.cbotset  from deploy/params/xauusd.cbotset.example (gold)
   log-archive/               copies of container logs saved before updates
 ```
 
@@ -411,7 +414,7 @@ Everything lives in `/opt/zfvg`, outside any git checkout:
 sudo mkdir -p /opt/zfvg
 sudo chown $USER:$USER /opt/zfvg
 cd /opt/zfvg
-mkdir -p secrets algo/current algo/previous log-archive params/eurusd params/gbpusd params/usdjpy params/audusd
+mkdir -p secrets algo/current algo/previous log-archive params/eurusd params/gbpusd params/usdjpy params/audusd params/xauusd
 chmod 700 secrets params
 ```
 
@@ -431,6 +434,7 @@ scp deploy/params/eurusd.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/eurusd/
 scp deploy/params/gbpusd.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/gbpusd/bot.cbotset
 scp deploy/params/usdjpy.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/usdjpy/bot.cbotset
 scp deploy/params/audusd.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/audusd/bot.cbotset
+scp deploy/params/xauusd.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/xauusd/bot.cbotset
 scp ZoneFvgBot.algo zfvg@SERVER_IP:/opt/zfvg/algo/current/ZoneFvgBot.algo
 ```
 
@@ -471,20 +475,48 @@ service user.
 
 | Parameter | What to put |
 |---|---|
-| `RiskEpochDate` | The first day of this account, `yyyy-MM-dd`. It means 00:00 Prague time that day (architecture section 10). Same value in all four files. Runbook: "Changing RiskEpochDate" |
-| `NewsFeedUrl` | The Forex Factory weekly calendar export address (JSON) you used on the laptop. Same in all four files |
-| `TelegramBotToken`, `TelegramChatId` | From your Telegram bot (spec 11). Same in all four files |
+| `RiskEpochDate` | The first day of this account, `yyyy-MM-dd`. It means 00:00 Prague time that day (architecture section 10). Same value in all five files. Runbook: "Changing RiskEpochDate" |
+| `NewsFeedUrl` | The Forex Factory weekly calendar export address (JSON) you used on the laptop. Same in all five files |
+| `TelegramBotToken`, `TelegramChatId` | From your Telegram bot (spec 11). Same in all five files |
 | `HeartbeatUrl` | One check per symbol at your heartbeat-monitoring service, so an alert names the symbol that stopped |
 | `ProfitTargetPercent` | 10 in the Challenge, 5 in the Verification |
 
-Leave every other value at the spec default. `MaxSpreadPips` is 1.5 for all
-four symbols until the broker conditions (spec 10.4) say otherwise. A value
+Leave every other value at the spec default. `MaxSpreadPips` is 1.5 for the
+four forex symbols until the broker conditions (spec 10.4) say otherwise. A value
 left as `CHANGE_ME...` makes the bot refuse to start (`RiskEpochDate`) or fail
 safely (no calendar means no entries; failed alerts are logged).
 
 ```bash
 chmod 600 /opt/zfvg/params/*/bot.cbotset
 ```
+
+### Gold (XAUUSD)
+
+Gold runs as a fifth instance (spec v0.9, owner decision D of 2026-11-17,
+requirement PLT-010): its own container `xauusd`, parameter file
+`params/xauusd/bot.cbotset`, storage and log volumes and heartbeat check. Its
+parameter file is a copy of the forex file with exactly these differences:
+
+| Parameter | Forex | Gold | Why |
+|---|---|---|---|
+| `MaxSpreadPips` | 1.5 | 40.0 | Gold's pip is 0.01 USD; a normal gold spread is far above 1.5 such pips |
+| `MinStopPips` | 12.0 | 800.0 | 8.00 USD per ounce |
+| `MaxVolumeUnits` | 500000.0 | 200.0 | Gold volume is in ounces |
+| `HeartbeatUrl` | one check per symbol | its own check | So an alert names gold |
+
+No other parameter is in pips; the ATR and R multiples scale by themselves.
+The cBot's default values stay the forex values, so a gold instance started
+without its parameter file would use the forex limits: always load
+`xauusd.cbotset`.
+
+Before the gold instance trades on the demo account, open the XAUUSD symbol
+information in cTrader and compare it with the adapter's start line
+(`symbol XAUUSD ... pipSize ... digits ... tickSize ... lotSize ...
+commission ... volumeMin ... step ... max ... sessionsAsReported ...`):
+digits, tick size, pip size (0.01 is assumed by the values above), lot size
+(ounces per lot), commission and its type, volume minimum and step, and the
+trading sessions with the daily break. Write them into
+`docs/test-records/WP11-fault-injection.md` with the PLT-010 check.
 
 ### 11. Check the compose file
 
@@ -535,7 +567,7 @@ docker compose run --rm --no-deps eurusd symbols --environment-variables
 Sources: image README, "What each command accepts" (`accounts`/`symbols` read
 `CTID`, `PWD_FILE`, `ACCOUNT` from the environment); command reference
 `accounts`, `symbols`. Expected: your trial account is listed; the symbol list
-contains `EURUSD`, `GBPUSD`, `USDJPY` and `AUDUSD` spelled exactly like that.
+contains `EURUSD`, `GBPUSD`, `USDJPY`, `AUDUSD` and `XAUUSD` spelled exactly like that.
 If FTMO uses other names (for example with a suffix), change `SYMBOL` in the
 compose file and tell the developer.
 
@@ -584,8 +616,8 @@ docker stats --no-stream
 
 Sources: compose `up`, `ps` (https://docs.docker.com/reference/cli/docker/compose/ps/);
 https://docs.docker.com/reference/cli/docker/container/stats/
-Expected: four containers `zfvg-eurusd-1`, `zfvg-gbpusd-1`, `zfvg-usdjpy-1`,
-`zfvg-audusd-1`, status `Up`. Write down memory use per container.
+Expected: five containers `zfvg-eurusd-1`, `zfvg-gbpusd-1`, `zfvg-usdjpy-1`,
+`zfvg-audusd-1`, `zfvg-xauusd-1`, status `Up`. Write down memory use per container.
 
 12.7 Run the fault-injection tests (record, VPS column), then the four-week soak
 test (spec 12.3). Only after both, think about the Challenge (spec 15.6).
@@ -594,7 +626,7 @@ test (spec 12.3). Only after both, think about the Challenge (spec 15.6).
 
 | Task | Command | Source |
 |---|---|---|
-| Status of the four containers | `docker compose ps` | compose `ps` |
+| Status of the five containers | `docker compose ps` | compose `ps` |
 | Last 200 log lines of one symbol | `docker compose logs --tail 200 eurusd` | compose `logs` |
 | Log lines of the last 24 hours with times | `docker compose logs --since 24h --timestamps eurusd` | compose `logs` |
 | Stop one symbol (no new trades; stops stay at the broker) | `docker compose stop eurusd` | https://docs.docker.com/reference/cli/docker/compose/stop/ |
@@ -627,7 +659,7 @@ this pair of versions (old to new) has passed on a trial account (fault test 11
 procedure, "Adoption test" in the record).
 
 1. Read the release notes in the pull request. If they change a parameter, edit
-   the four `bot.cbotset` files in step 6, not before.
+   the five `bot.cbotset` files in step 6, not before.
 2. Prefer Saturday. Check in the cTrader app that there is no bot position and
    no bot pending order, or that the adoption test for this version pair is
    signed.
@@ -649,8 +681,8 @@ procedure, "Adoption test" in the record).
    ```
 
    Source: compose `up` (`--force-recreate`).
-7. Expected: four start lines with the **new** version, four recovery reports,
-   four Telegram "Started" messages. If anything is unexpected, roll back
+7. Expected: five start lines with the **new** version, five recovery reports,
+   five Telegram "Started" messages. If anything is unexpected, roll back
    (section 16).
 
 ### 16. Roll back
@@ -674,7 +706,7 @@ procedure, "Adoption test" in the record).
 Spec 8.6 and 10.2: only after all fault tests have passed on demo with the new
 version.
 
-1. On a **trial account** server (or with the four containers pointing at a
+1. On a **trial account** server (or with the five containers pointing at a
    trial account), change the tag in `image:` of `docker-compose.yml`, never to
    `latest`.
 2. `docker compose pull`, save the logs, `docker compose up -d --force-recreate`.
@@ -694,4 +726,4 @@ sudo reboot
 Source: https://ubuntu.com/blog/ubuntu-updates-best-practices-for-updating-your-instance
 (`pro system reboot-required`); `reboot`: https://man7.org/linux/man-pages/man8/reboot.8.html.
 After the reboot, `docker compose ps` must show
-the four containers `Up` without any action from you.
+the five containers `Up` without any action from you.

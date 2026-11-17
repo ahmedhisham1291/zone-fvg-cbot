@@ -58,7 +58,7 @@ described is the HTML report).
 ## Part 2. Run one backtest per symbol
 
 Spec 12.1 asks for each symbol separately: the four forex pairs (EURUSD,
-GBPUSD, USDJPY, AUDUSD) and, once work package WP24 is merged, gold (XAUUSD).
+GBPUSD, USDJPY, AUDUSD) and gold (XAUUSD).
 
 6. Open an **M15** chart of the symbol and add an instance of `ZoneFvgBot` to
    it, with the default parameters, except these (in the instance's parameter
@@ -76,7 +76,7 @@ GBPUSD, USDJPY, AUDUSD) and, once work package WP24 is merged, gold (XAUUSD).
      has no events to block.
    - **DrawObjects:** true only if you want to see the zones and gaps on the
      chart; it needs Visual mode on (step 7).
-   - **Gold (XAUUSD) only, after WP24:** MaxSpreadPips 40, MinStopPips 800,
+   - **Gold (XAUUSD) only:** MaxSpreadPips 40, MinStopPips 800,
      MaxVolumeUnits 200. Everything else as for the forex pairs.
 7. Open the **Backtesting** tab of that instance (to the right of the chart
    tab) and click the cog icon. Settings (spec 12.1):
@@ -143,8 +143,8 @@ GBPUSD, USDJPY, AUDUSD) and, once work package WP24 is merged, gold (XAUUSD).
 
     If `extract` stops with an error, it says which trade and why. Two runs
     pasted into one file, or a missing trade, are refused on purpose.
-11. Repeat steps 6 to 10 for GBPUSD, USDJPY and AUDUSD, and after WP24 for
-    XAUUSD (with its own values from step 6). Add `--log xauusd-dev.csv`
+11. Repeat steps 6 to 10 for GBPUSD, USDJPY and AUDUSD, and for XAUUSD
+    (with its own values from step 6). Add `--log xauusd-dev.csv`
     (or `--dev xauusd-dev.csv` for `accept`) to the commands below.
 
 ## Part 3. Compute the numbers
@@ -200,7 +200,7 @@ The `accept` report states pass or fail for each line of spec 13.1:
 | Maximum drawdown at 0.5% risk | 6% or less | 6% or less |
 | Chance of passing the Challenge phase (simulation) | 70% or higher | n/a |
 | Chance of breaching an FTMO floor (simulation) | 10% or lower | n/a |
-| Profitable symbols | 3 of 4 (4 of 5 with gold, after WP24) | 3 of 4 (4 of 5 with gold) |
+| Profitable symbols | 3 of 4 (4 of 5 with gold) | 3 of 4 (4 of 5 with gold) |
 | Share of profit from one symbol | 60% or less | n/a |
 | Profit factor under cost stress | Above 1.10 | n/a |
 | Versus benchmark | Better return-to-drawdown ratio | Same |
