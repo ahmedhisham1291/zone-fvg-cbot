@@ -132,15 +132,20 @@ public class RecoveryScenarios
 
     [Fact]
     [Trait("Req", "REC-003")]
-    public void Recovery_MissingBarOnAWeekday_StaysRecovering()
+    public void Recovery_MissingBarOnAWeekday_IsAcceptedAfterOneReload()
     {
+        // Owner decision A of 2026-11-17 (WP23 prompt, changed test 1): a gap still there after the reload is accepted.
         var h = new BotHarness();
         h.History.Missing.Add(A.AddHours(-2.0));
 
         BotCore core = h.Start(A);
 
-        Assert.Equal(BotState.Recovering, core.State);
-        Assert.Equal(new[] { "M15: gap between 2026-03-04 05:45 and 2026-03-04 06:15" }, core.LastReport!.DataProblems);
+        Assert.Equal(BotState.Running, core.State);
+        Assert.Empty(core.LastReport!.DataProblems);
+        AcceptedGapList m15 = Assert.Single(core.LastReport.AcceptedGaps);
+        Assert.Equal(TimeFrame.M15, m15.TimeFrame);
+        Assert.Equal(1, m15.Count);
+        Assert.Equal(new[] { new BarGap(TimeFrame.M15, A.AddHours(-2.25), A.AddHours(-1.75)) }, m15.Newest);
         Assert.Equal(new[] { (TimeFrame.M15, 3000) }, h.History.MoreRequests);
     }
 
@@ -158,12 +163,17 @@ public class RecoveryScenarios
 
         BotCore withHoliday = h.Start(A, RecoveryData.Parameters() with { MarketHolidays = "12-25,01-01,03-03" });
         Assert.Equal(BotState.Running, withHoliday.State);
+        Assert.Empty(withHoliday.LastReport!.AcceptedGaps);
 
+        // Without the holiday the two gaps are the broker's data and are accepted (owner decision A, WP23 prompt, changed test 2).
         BotCore withoutHoliday = h.Start(A.AddMinutes(1.0));
-        Assert.Equal(BotState.Recovering, withoutHoliday.State);
-        Assert.Equal(
-            new[] { "H4: gap between 2026-03-02 20:00 and 2026-03-04 00:00", "M15: gap between 2026-03-02 23:45 and 2026-03-04 00:00" },
-            withoutHoliday.LastReport!.DataProblems);
+        Assert.Equal(BotState.Running, withoutHoliday.State);
+        Assert.Empty(withoutHoliday.LastReport!.DataProblems);
+        IReadOnlyList<AcceptedGapList> accepted = withoutHoliday.LastReport.AcceptedGaps;
+        Assert.Equal(new[] { TimeFrame.H4, TimeFrame.M15 }, accepted.Select(gaps => gaps.TimeFrame));
+        Assert.Equal(new[] { 1, 1 }, accepted.Select(gaps => gaps.Count));
+        Assert.Equal(new[] { new BarGap(TimeFrame.H4, RecoveryData.At(2, 20, 0), RecoveryData.At(4, 0, 0)) }, accepted[0].Newest);
+        Assert.Equal(new[] { new BarGap(TimeFrame.M15, RecoveryData.At(2, 23, 45), RecoveryData.At(4, 0, 0)) }, accepted[1].Newest);
     }
 
     [Fact]
