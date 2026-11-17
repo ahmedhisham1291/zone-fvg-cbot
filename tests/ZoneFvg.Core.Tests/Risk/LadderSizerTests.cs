@@ -7,9 +7,11 @@ namespace ZoneFvg.Core.Tests;
 
 /// <summary>
 /// RSK-013: ladder sizing, the owner's 4-part plan. Deal t = LadderDealRiskPercent x LadderGrowth
-/// ^ s(t); weights w1 = 0.2962, w2 = w1/2 = 0.1481, w3 = (w1+w2)/2 = 0.22215, w4 = (w1+w2+w3)/2 =
+/// ^ step(t), the step being the column C, D, E or F of the entry's position after the last win;
+/// weights w1 = 0.2962, w2 = w1/2 = 0.1481, w3 = (w1+w2)/2 = 0.22215, w4 = (w1+w2+w3)/2 =
 /// 0.333225 (together 0.999675); the risk of entry t is w1 x deal t + w2 x deal t-1 + w3 x deal
-/// t-2 + w4 x deal t-3, capped at MaxRiskPercentPerTrade (0.5).
+/// t-2 + w4 x deal t-3 over the deals no win has ended, capped at MaxRiskPercentPerTrade (0.5).
+/// The step-column rule itself is tested in <see cref="LadderStepColumnTests"/>.
 /// </summary>
 /// <remarks>
 /// The sheet values (deal risk 2%, no cap, 100,000): Step 0 parts 592.40, 296.20, 444.30,
@@ -163,23 +165,25 @@ public class LadderSizerTests
     [Trait("Req", "RSK-013")]
     public void NextRiskPercent_OneWinAfterLosses_GrowsOnlyTheNewDeal()
     {
-        // The new deal has s = 1; the deals of entries 3, 4 and 5 were started with s = 0.
+        // WP18: the win at position 5 raises F, moved back to C (D, E, F... C is 0); it ends the deals of
+        // entries 2 to 5, so the new entry (position 1, step C = 1) carries only its own part 1.
         double percent = Sizer().NextRiskPercent(Sequential(-100.0, -100.0, -100.0, -100.0, 100.0));
 
-        Assert.Equal(0.30 * ((1.5924 * 0.2962) + 0.1481 + 0.22215 + 0.333225), percent, 12);
-        Assert.Equal(0.352543164, percent, 9);
+        Assert.Equal(0.30 * 1.5924 * 0.2962, percent, 12);
+        Assert.Equal(0.141500664, percent, 9);
     }
 
     [Fact]
     [Trait("Req", "RSK-013")]
     public void NextRiskPercent_FourDealsAtOneWin_StaysJustBelowTheCap()
     {
-        // Entry A won and closed; B, C and D were placed after it and are open: every deal has s = 1.
+        // Entry A won and closed (C = 1); B, C and D were placed after it at positions 1, 2, 3 and are
+        // open: only B (position 1) has step 1. The new entry is position 4 at step 0 (WP18).
         var entries = new List<LadderEntry> { Closed("A", 0.0, 1.0, 50.0), Open("B", 2.0), Open("C", 3.0), Open("D", 4.0) };
 
         double percent = Sizer().NextRiskPercent(entries);
 
-        Assert.Equal(0.30 * 0.999675 * 1.5924, percent, 12);
+        Assert.Equal((0.30 * (0.2962 + 0.1481 + 0.22215)) + (0.30 * 1.5924 * 0.333225), percent, 12);
         Assert.True(percent < 0.5);
     }
 
@@ -215,83 +219,106 @@ public class LadderSizerTests
         Assert.Equal(0.5, sizer.RiskPercentFromDeals(new[] { deal }));
     }
 
-    // ------------------------------------------------------------------ consecutive wins
+    // ------------------------------------------------------------------ wins and columns (WP12 consecutive wins, rewritten in WP18)
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void ConsecutiveWins_ALossResetsTheRunToZero()
+    public void Next_ALossMovesTheNextEntryToTheNextColumn()
     {
-        Assert.Equal(2, LadderSizer.ConsecutiveWins(Sequential(-10.0, 10.0, 10.0), null));
-        Assert.Equal(0, LadderSizer.ConsecutiveWins(Sequential(10.0, 10.0, -10.0), null));
-        Assert.Equal(1, LadderSizer.ConsecutiveWins(Sequential(10.0, 10.0, -10.0, 10.0), null));
+        // L W W: the first win (position 2) moves back to C; the second (position 1) raises C to 2.
+        Assert.Equal(2, Sizer().Next(Sequential(-10.0, 10.0, 10.0)).Step);
+
+        // W W L: C = 2, the loss puts the next entry at position 2, column D = 0.
+        Assert.Equal(0, Sizer().Next(Sequential(10.0, 10.0, -10.0)).Step);
+
+        // W W L W: the last win at position 2 raises D; the next entry is position 1 with C = 2.
+        Assert.Equal(2, Sizer().Next(Sequential(10.0, 10.0, -10.0, 10.0)).Step);
+        Assert.Equal(new[] { 2, 1, 0, 0 }, Sizer().Next(Sequential(10.0, 10.0, -10.0, 10.0)).Columns.ToArray());
     }
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void ConsecutiveWins_BreakEvenIsNotAWin_OneCentIs()
+    public void Next_BreakEvenIsNotAWin_OneCentIs()
     {
-        Assert.Equal(0, LadderSizer.ConsecutiveWins(Sequential(10.0, 0.0), null));
-        Assert.Equal(2, LadderSizer.ConsecutiveWins(Sequential(10.0, 0.01), null));
-        Assert.Equal(0, LadderSizer.ConsecutiveWins(Sequential(10.0, -0.01), null));
+        Assert.Equal(0, Sizer().Next(Sequential(10.0, 0.0)).Step);
+        Assert.Equal(2, Sizer().Next(Sequential(10.0, 0.01)).Step);
+        Assert.Equal(0, Sizer().Next(Sequential(10.0, -0.01)).Step);
+        Assert.Equal(2, Sizer().Next(Sequential(10.0, 0.0)).Position);
+        Assert.Equal(1, Sizer().Next(Sequential(10.0, 0.01)).Position);
     }
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void ConsecutiveWins_OpenTradesDoNotCountAndDoNotEndTheRun()
+    public void Next_OpenTradesAreNotWins_ButTakeAPosition()
     {
+        // A (position 1) wins at 5: C = 1. C (position 3, B still open) wins at 6: E moves back to D.
+        // D is placed after both wins at position 1; the next entry is position 2 with D = 1.
         var entries = new List<LadderEntry> { Closed("A", 0.0, 5.0, 10.0), Open("B", 1.0), Closed("C", 2.0, 6.0, 10.0), Open("D", 7.0) };
 
-        Assert.Equal(2, LadderSizer.ConsecutiveWins(entries, null));
+        LadderDecision next = Sizer().Next(entries);
+
+        Assert.Equal(1, next.Step);
+        Assert.Equal(2, next.Position);
+        Assert.Equal(new[] { 1, 1, 0, 0 }, next.Columns.ToArray());
     }
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void ConsecutiveWins_NewestCloseComesFirst_NotTheNewestEntry()
+    public void Next_TheLatestWinByCloseTime_StartsThePositions()
     {
-        // A was placed first but closed last.
+        // A was placed first but closed last. Either way one win raised C, and nothing was placed after it.
         var lossClosedLast = new List<LadderEntry> { Closed("A", 0.0, 5.0, -10.0), Closed("B", 1.0, 3.0, 10.0) };
         var winClosedLast = new List<LadderEntry> { Closed("A", 0.0, 5.0, 10.0), Closed("B", 1.0, 3.0, -10.0) };
 
-        Assert.Equal(0, LadderSizer.ConsecutiveWins(lossClosedLast, null));
-        Assert.Equal(1, LadderSizer.ConsecutiveWins(winClosedLast, null));
+        Assert.Equal(1, Sizer().Next(lossClosedLast).Step);
+        Assert.Equal(1, Sizer().Next(lossClosedLast).Position);
+        Assert.Equal(1, Sizer().Next(winClosedLast).Step);
+        Assert.Equal(1, Sizer().Next(winClosedLast).Position);
     }
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void ConsecutiveWins_SameCloseTime_TheLaterEntryCountsAsNewer()
+    public void Next_SameCloseTime_OneWinRaisesOneColumn()
     {
         var laterLost = new List<LadderEntry> { Closed("A", 0.0, 5.0, 10.0), Closed("B", 1.0, 5.0, -10.0) };
         var laterWon = new List<LadderEntry> { Closed("A", 0.0, 5.0, -10.0), Closed("B", 1.0, 5.0, 10.0) };
 
-        Assert.Equal(0, LadderSizer.ConsecutiveWins(laterLost, null));
-        Assert.Equal(1, LadderSizer.ConsecutiveWins(laterWon, null));
+        Assert.Equal(new[] { 1, 0, 0, 0 }, Sizer().Next(laterLost).Columns.ToArray());
+        Assert.Equal(new[] { 1, 0, 0, 0 }, Sizer().Next(laterWon).Columns.ToArray());
+        Assert.Equal(1, Sizer().Next(laterLost).Step);
+        Assert.Equal(1, Sizer().Next(laterWon).Step);
     }
 
     [Fact]
     [Trait("Req", "RSK-013")]
-    public void ConsecutiveWins_OnlyTradesClosedAtOrBeforeThePlacementCount()
+    public void Next_OnlyTradesClosedAtOrBeforeThePlacementCount()
     {
-        var entries = Sequential(10.0, 10.0, 10.0);
+        // Sequential(10, 10, 10) as the broker shows it at each time: A placed 0 closes 1, B placed 2 closes 3.
+        LadderDecision at0999 = Sizer().Next(new[] { Open("A", 0.0) }, H(0.999));
+        LadderDecision at1 = Sizer().Next(new[] { Closed("A", 0.0, 1.0, 10.0) }, H(1.0));
+        LadderDecision at2999 = Sizer().Next(new[] { Closed("A", 0.0, 1.0, 10.0), Open("B", 2.0) }, H(2.999));
+        LadderDecision at3 = Sizer().Next(new[] { Closed("A", 0.0, 1.0, 10.0), Closed("B", 2.0, 3.0, 10.0) }, H(3.0));
 
-        Assert.Equal(0, LadderSizer.ConsecutiveWins(entries, H(0.999)));
-        Assert.Equal(1, LadderSizer.ConsecutiveWins(entries, H(1.0)));
-        Assert.Equal(1, LadderSizer.ConsecutiveWins(entries, H(2.999)));
-        Assert.Equal(2, LadderSizer.ConsecutiveWins(entries, H(3.0)));
+        Assert.Equal(0, at0999.Step);
+        Assert.Equal(1, at1.Step);
+        Assert.Equal(0, at2999.Step);
+        Assert.Equal(2, at3.Step);
     }
 
     [Fact]
     [Trait("Req", "RSK-013")]
     public void NextRiskPercent_EarlierDealsKeepTheRunOfTheirOwnPlacement()
     {
-        // W, W, then three entries placed after the wins are open (s = 2 for each of them and for the new
-        // deal) -> capped. Compare with the same wins closing after those entries were placed: their deals
-        // stay at s = 0 and only the new deal grows.
+        // WP18: W, W (C = 2), then three entries placed after the wins are open at positions 1, 2, 3: only C
+        // (position 1) has step 2, D and E step 0, and the new entry (position 4) step 0. Compare with the
+        // same wins closing after those entries were placed: A (position 1) raises C, B (position 2) raises
+        // D, and the wins end every deal, so the new entry (position 1, step 1) carries only its own part.
         var before = new List<LadderEntry> { Closed("A", 0.0, 1.0, 10.0), Closed("B", 2.0, 3.0, 10.0), Open("C", 4.0), Open("D", 5.0), Open("E", 6.0) };
         var after = new List<LadderEntry> { Closed("A", 0.0, 7.0, 10.0), Closed("B", 2.0, 8.0, 10.0), Open("C", 4.0), Open("D", 5.0), Open("E", 6.0) };
         double g2 = 1.5924 * 1.5924;
 
-        Assert.Equal(0.5, Sizer().NextRiskPercent(before));
-        Assert.Equal(0.30 * ((g2 * 0.2962) + 0.1481 + 0.22215 + 0.333225), Sizer().NextRiskPercent(after), 12);
+        Assert.Equal((0.30 * (0.2962 + 0.1481 + 0.22215)) + (0.30 * g2 * 0.333225), Sizer().NextRiskPercent(before), 12);
+        Assert.Equal(0.30 * 1.5924 * 0.2962, Sizer().NextRiskPercent(after), 12);
     }
 
     // ------------------------------------------------------------------ disabled, restart, order

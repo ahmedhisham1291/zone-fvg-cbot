@@ -48,7 +48,7 @@ public sealed class PositionSizer
     /// <summary>
     /// Sizes a trade like <see cref="Size(AccountSnapshot, TradePlan, SymbolInfo)"/> but with the
     /// given risk percent in place of the fixed RiskPercent: the percent of the next entry from
-    /// <see cref="LadderSizer.NextRiskPercent"/> (RSK-013, spec 4.1). The checks and their order
+    /// <see cref="LadderSizer.NextRiskPercent(System.Collections.Generic.IReadOnlyList{LadderEntry}, System.DateTime)"/> (RSK-013, spec 4.1). The checks and their order
     /// are the same (RSK-001, RSK-002); a risk percent that is not a finite number greater than 0
     /// and at most 100 is an invalid input (fail closed).
     /// </summary>

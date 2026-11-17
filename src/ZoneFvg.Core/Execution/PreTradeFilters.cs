@@ -345,12 +345,12 @@ public sealed class PreTradeFilters
         double riskPercent = _riskParameters.RiskPercent;
         if (_riskParameters.LadderEnabled)
         {
-            // RSK-013: the percent comes from the bot's entries since RiskEpochDate, read from the broker now.
+            // RSK-013: the percent comes from the bot's entries since RiskEpochDate, read from the broker now; the new entry is placed at server time.
             c.History = _broker.GetHistory(HistoryStart(c.Now));
             try
             {
                 DateTime epochStart = CestClock.StartOfCestDateUtc(_riskParameters.RiskEpochDate);
-                riskPercent = _ladder.NextRiskPercent(LadderSizer.EntriesFromBroker(c.Positions, c.Orders, c.History, epochStart));
+                riskPercent = _ladder.NextRiskPercent(LadderSizer.EntriesFromBroker(c.Positions, c.Orders, c.History, epochStart), c.Now);
             }
             catch (ArgumentException exception)
             {
