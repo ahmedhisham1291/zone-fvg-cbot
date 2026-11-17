@@ -176,8 +176,9 @@ RSK-013 (deal risk 0.30%, split over 4 consecutive trades, never more than
 0.5% per trade). Owner decision 2026-11-17: a win ends every open deal; the
 growth step lives in four columns C, D, E, F for the 1st to 4th trade after
 the last win, a win raises the column of its position (not past a column
-that is still 0), steps stop rising for the month once a trade would go over
-0.5%, and all steps go back to 0 on the 1st of each month. The formula below then uses
+that is still 0), steps stop rising once a trade would go over
+0.5%, and all steps go back to 0 only when the owner sets a new
+`RiskEpochDate` after a payout or for a new account (no monthly reset). The formula below then uses
 that percent instead of a fixed 0.5%. With `LadderEnabled` = false the bot
 uses the fixed `RiskPercent` as before.
 
