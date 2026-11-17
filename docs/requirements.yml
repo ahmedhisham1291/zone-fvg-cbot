@@ -1077,7 +1077,7 @@ requirements:
     wp: WP22
     spec: "11"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Repeat limits for the Log (owner acceptance of 2026-11-17), so that a
       lasting condition cannot fill the cTrader Log. (1) Recovery that keeps

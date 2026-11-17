@@ -24,7 +24,7 @@ signed this record (docs/test-records/README.md).
 | Item | Evidence |
 |---|---|
 | The existing PLT-005 tests (snapshots are read-only copies, gap age, restart equality, reading changes nothing) | `build-test` job, tests tagged `PLT-005` |
-| `ChartPainter` removes remembered names that are not drawn again, after the existing removal over `Chart.Objects` | Diff of `src/ZoneFvg.Bot/ChartPainter.cs` in pull request #47 |
+| `ChartPainter` removes remembered names that are not drawn again, after the existing removal over `Chart.Objects` | Diff of `src/ZoneFvg.Bot/ChartPainter.cs` in pull request #49 |
 
 ## Preparation
 

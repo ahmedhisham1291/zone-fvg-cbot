@@ -254,6 +254,25 @@ public class LogRepeatLimitTests
         Assert.Equal(Times(Bar(0), Bar(4), Bar(5), Bar(9)), RiskLineTimes(h));
     }
 
+    [Fact]
+    [Trait("Req", "OPS-008")]
+    public void RiskUnavailable_NewOutageWithTheSameTextAfterEntriesWereAllowed_WrittenAgain()
+    {
+        // Owner answer of 2026-11-17: the last text is forgotten when entries are allowed again.
+        var h = new BotHarness();
+        h.Start(A);
+        h.Port.History = _ => throw new InvalidOperationException("history unavailable");
+        h.FeedTo(Bar(1));
+        h.Port.History = null;
+        h.FeedTo(Bar(2));
+
+        h.Port.History = _ => throw new InvalidOperationException("history unavailable");
+        h.FeedTo(Bar(4));
+
+        Assert.Equal(Times(Bar(0), Bar(3)), RiskLineTimes(h));
+        Assert.Equal(2, h.Alerts(AlertKind.RiskDataUnavailable));
+    }
+
     // ------------------------------------------------------------------ the limits alone
 
     [Fact]
@@ -290,6 +309,9 @@ public class LogRepeatLimitTests
         Assert.True(limits.RiskUnavailable("b", A.AddMinutes(59.0)));
         Assert.True(limits.RiskUnavailable("a", A.AddMinutes(60.0)));
         Assert.True(limits.RiskUnavailable("a", A.AddMinutes(120.0)));
+        Assert.False(limits.RiskUnavailable("a", A.AddMinutes(121.0)));
+        limits.RiskAvailable();
+        Assert.True(limits.RiskUnavailable("a", A.AddMinutes(122.0)));
     }
 
     /// <summary>A key-value store whose writes throw while <see cref="Fault"/> is set.</summary>

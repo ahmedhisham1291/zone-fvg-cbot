@@ -343,7 +343,6 @@ public sealed class BotCore
         CheckLiveGap(timeFrame, bar, now);
         IReadOnlyList<Zone> zonesBefore = _engine.Zones;
         IReadOnlyList<Signal> signals = _engine.OnBarClosed(timeFrame, bar, false);
-        CountZoneOutcomes(timeFrame, close, _engine.LastActivity);
         _lastBars[rank] = bar;
         _hasFed = true;
         _lastFedCloseUtc = close;
@@ -351,6 +350,7 @@ public sealed class BotCore
         if (timeFrame != TimeFrame.M15)
         {
             // D1 and H4 bars close together with an M15 bar, which comes last (SIG-004); the duties run once, there.
+            CountZoneOutcomes(timeFrame, close, _engine.LastActivity);
             return;
         }
 
@@ -369,6 +369,9 @@ public sealed class BotCore
         ApplyState("M15 bar closed at " + Minute(close), now);
         ResolvePending(guard, now);
         PlaceSignals(signals, zonesBefore, guard, now);
+
+        // OPS-009 is journal only: counted after the bar state is updated and its signals are placed, so a failure here cannot lose a signal.
+        CountZoneOutcomes(timeFrame, close, _engine.LastActivity);
         CheckRequestLimit(now);
         TouchLastSeen(now);
     }
@@ -446,7 +449,7 @@ public sealed class BotCore
     {
         // At least 30 days of history, so the 21-day warning has data (OPS-006, WP09).
         DateTime since = now.AddDays(-InactivityHistoryDays);
-        RestoreLastInactivityAlert();
+        RestoreLastInactivityAlert(now);
         InactivityStatus status;
         try
         {
@@ -464,9 +467,10 @@ public sealed class BotCore
         }
     }
 
-    private void RestoreLastInactivityAlert()
+    private void RestoreLastInactivityAlert(DateTime now)
     {
-        // OPS-006: read once after a start; a missing value means no limit, an unreadable one is journaled once and ignored.
+        // OPS-006: read once after a start; a missing value means no limit, an unreadable one (or one later than the
+        // server time) is journaled once and ignored.
         if (_inactivityAlertRestored)
         {
             return;
@@ -479,7 +483,7 @@ public sealed class BotCore
             return;
         }
 
-        if (TryParseUtc(text, out DateTime lastAlert))
+        if (TryParseUtc(text, out DateTime lastAlert) && lastAlert <= now)
         {
             _ops.Inactivity.RestoreLastAlert(lastAlert);
             return;
@@ -726,6 +730,9 @@ public sealed class BotCore
         if (guard.EntriesAllowed)
         {
             _riskDataAlertSent = false;
+
+            // OPS-008 (3), owner answer of 2026-11-17: a new outage is written again, whatever its text.
+            _limits.RiskAvailable();
             return;
         }
 

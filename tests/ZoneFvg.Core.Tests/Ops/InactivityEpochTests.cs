@@ -89,6 +89,18 @@ public class InactivityEpochTests
         Assert.True(CheckAt(monitor, Now).AlertRaised);
     }
 
+    [Fact]
+    [Trait("Req", "OPS-006")]
+    public void RestoreLastAlert_NearDateTimeMaxValue_DoesNotThrowAndAlertsNoMore()
+    {
+        InactivityMonitor monitor = Create(out _);
+
+        monitor.RestoreLastAlert(DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc));
+        monitor.RestoreLastAlert(DateTime.SpecifyKind(DateTime.MaxValue.AddDays(-2.0), DateTimeKind.Utc));
+
+        Assert.False(CheckAt(monitor, Now).AlertRaised);
+    }
+
     // ------------------------------------------------------------------ BotCore
 
     private static readonly DateTime A = RecoveryData.Activation;
@@ -145,6 +157,39 @@ public class InactivityEpochTests
 
         Assert.Equal(1, InactivityLines(h));
         Assert.Equal(1, h.Journal.Count("ops", "event=stored-inactivity-alert-ignored value=not\\sa\\stime reason=unreadable"));
+    }
+
+    [Theory]
+    [Trait("Req", "OPS-006")]
+    [InlineData("2026-03-05T08:00:00.0000000Z")]
+    [InlineData("2026-03-04T08:01:00.0000001Z")]
+    [InlineData("9999-12-31T23:59:59.9999999Z")]
+    public void Restart_WithAStoredTimeLaterThanTheServerTime_TreatedAsUnreadable(string stored)
+    {
+        var h = new BotHarness();
+        h.Store.Values[BotCore.InactivityAlertKey] = stored;
+        h.Start(A);
+
+        h.Timer(A.AddMinutes(1.0));
+        h.Timer(A.AddMinutes(2.0));
+
+        Assert.Equal(1, InactivityLines(h));
+        Assert.Equal(1, h.Journal.Count("ops", "event=stored-inactivity-alert-ignored value=" + stored + " reason=unreadable"));
+        Assert.Empty(h.Journal.Lines("error"));
+    }
+
+    [Fact]
+    [Trait("Req", "OPS-006")]
+    public void Restart_WithAStoredTimeEqualToTheServerTime_NoAlert()
+    {
+        var h = new BotHarness();
+        h.Store.Values[BotCore.InactivityAlertKey] = A.AddMinutes(1.0).ToString("o", System.Globalization.CultureInfo.InvariantCulture);
+        h.Start(A);
+
+        h.Timer(A.AddMinutes(1.0));
+
+        Assert.Equal(0, InactivityLines(h));
+        Assert.Equal(0, h.Journal.Count("ops", "stored-inactivity-alert-ignored"));
     }
 
     [Fact]

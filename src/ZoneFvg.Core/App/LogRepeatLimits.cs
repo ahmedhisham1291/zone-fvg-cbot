@@ -84,7 +84,8 @@ internal sealed class LogRepeatLimits
 
     /// <summary>
     /// Decides whether a risk-unavailable line is written (OPS-008 (3)): when its text differs from
-    /// the last one written, or when <see cref="RiskInterval"/> has passed since that line.
+    /// the last one written, when <see cref="RiskInterval"/> has passed since that line, or when
+    /// entries were allowed again since then (<see cref="RiskAvailable"/>).
     /// </summary>
     /// <param name="text">The text of the line.</param>
     /// <param name="nowUtc">Server time.</param>
@@ -99,6 +100,15 @@ internal sealed class LogRepeatLimits
         _riskText = text;
         _riskWrittenUtc = nowUtc;
         return true;
+    }
+
+    /// <summary>
+    /// Forgets the last risk-unavailable text when entries are allowed again (OPS-008 (3), owner
+    /// answer of 2026-11-17), so the first line of a new outage is always written.
+    /// </summary>
+    internal void RiskAvailable()
+    {
+        _riskText = null;
     }
 
     private void Forget(DateTime nowUtc)

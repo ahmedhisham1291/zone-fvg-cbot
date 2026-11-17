@@ -70,11 +70,15 @@ public sealed class InactivityMonitor
     /// <summary>
     /// The server time of the last inactivity alert, as stored before a restart (OPS-006). No
     /// alert is raised before that time plus <see cref="OpsParameters.InactivityRepeatDays"/> days.
+    /// A time within 3 days of <see cref="DateTime.MaxValue"/> does not throw; the caller rejects
+    /// stored times later than the server time.
     /// </summary>
     /// <param name="lastAlertUtc">Server time of the last alert, kind UTC.</param>
     public void RestoreLastAlert(DateTime lastAlertUtc)
     {
-        _quietUntilUtc = lastAlertUtc.AddDays(OpsParameters.InactivityRepeatDays);
+        // A time within 3 days of DateTime.MaxValue cannot be moved forward; it then means "never again".
+        TimeSpan repeat = TimeSpan.FromDays(OpsParameters.InactivityRepeatDays);
+        _quietUntilUtc = lastAlertUtc > DateTime.MaxValue - repeat ? DateTime.MaxValue : lastAlertUtc + repeat;
     }
 
     /// <summary>
