@@ -458,7 +458,7 @@ requirements:
     wp: WP24
     spec: "2, 4.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Gold in the currency cap (owner decision D of 2026-11-17). XAUUSD is
       handled by RSK-005 like a pair with base XAU and quote USD: a gold buy
@@ -601,7 +601,7 @@ requirements:
     wp: WP24
     spec: "6.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Gold news (owner decision D of 2026-11-17). For XAUUSD the relevant
       currencies of NWS-001 are XAU and USD. No feed and no embedded history
@@ -1263,7 +1263,7 @@ requirements:
     wp: WP24
     spec: "13.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Acceptance report. Produces every measure of spec 13.1 from trade logs
       and states pass or fail against each threshold. Changed on 2026-11-17
