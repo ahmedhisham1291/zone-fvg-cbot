@@ -43,6 +43,13 @@ public sealed class BotCore
     /// <summary>Key-value store key of the start times of the last eight days, for the daily summary (OPS-003).</summary>
     internal const string StartsKey = "app.starts";
 
+    /// <summary>
+    /// Key-value store key of the server time of the last inactivity alert (OPS-006, changed on
+    /// 2026-11-17). After a restart no inactivity alert is raised within 3 days of it; a lost or
+    /// unreadable value only removes this limit.
+    /// </summary>
+    internal const string InactivityAlertKey = "ops.lastInactivityAlertUtc";
+
     private const double InactivityHistoryDays = 30.0;
 
     // OPS-002: M15 bars read for the moves of one closed trade, at most 30 days. A longer trade gets NA.
@@ -85,6 +92,8 @@ public sealed class BotCore
     private readonly TradeJournal _tradeJournal;
     private readonly RecoveryService _recovery;
     private readonly BotStateMachine _machine = new BotStateMachine();
+    private readonly LogRepeatLimits _limits = new LogRepeatLimits();
+    private readonly ZoneOutcomeCounts _zoneCounts = new ZoneOutcomeCounts();
     private readonly Bar?[] _lastBars = new Bar?[3];
     private readonly List<Bar> _recentM15 = new List<Bar>();
     private readonly SortedSet<string> _newsSourcesDown = new SortedSet<string>(StringComparer.Ordinal);
@@ -102,6 +111,7 @@ public sealed class BotCore
     private bool _dataGap;
     private bool _dataAlertSent;
     private bool _riskDataAlertSent;
+    private bool _inactivityAlertRestored;
     private bool _calendarUnavailable;
     private bool _weekendClosePending;
     private DateTime? _budgetBlockedDayUtc;
@@ -136,6 +146,7 @@ public sealed class BotCore
         _startedUtc = broker.ServerTimeUtc;
         _lastKnownServerTimeUtc = _startedUtc;
         _ops = new Operations(parameters.Ops, parameters.Risk, parameters.Symbol, broker, http, journal, _startedUtc);
+        _ops.Inactivity.CountNoEarlierThan(parameters.Risk.RiskEpochDate);
         _isBacktest = isBacktest;
         _symbol = parameters.Symbol;
         _newsEnabled = parameters.News.NewsEnabled;
@@ -284,6 +295,9 @@ public sealed class BotCore
         ArgumentNullException.ThrowIfNull(history);
         _history = history;
         _disconnected = false;
+
+        // OPS-008: the first failed recovery after a start or a reconnect is written again.
+        _limits.ResetRecovery();
         DateTime now = Now();
         Write(
             "start",
@@ -349,6 +363,7 @@ public sealed class BotCore
         if (timeFrame != TimeFrame.M15)
         {
             // D1 and H4 bars close together with an M15 bar, which comes last (SIG-004); the duties run once, there.
+            CountZoneOutcomes(timeFrame, close, _engine.LastActivity);
             return;
         }
 
@@ -367,8 +382,26 @@ public sealed class BotCore
         ApplyState("M15 bar closed at " + Minute(close), now);
         ResolvePending(guard, now);
         PlaceSignals(signals, zonesBefore, guard, now);
+
+        // OPS-009 is journal only: counted after the bar state is updated and its signals are placed, so a failure here cannot lose a signal.
+        CountZoneOutcomes(timeFrame, close, _engine.LastActivity);
         CheckRequestLimit(now);
         TouchLastSeen(now);
+    }
+
+    // OPS-009, journal only: at the first live M15 bar of a later CE(S)T day the earlier days are written,
+    // before this bar's own counts are added. Bars replayed by recovery never come here.
+    private void CountZoneOutcomes(TimeFrame timeFrame, DateTime close, ZoneActivity activity)
+    {
+        if (timeFrame == TimeFrame.M15)
+        {
+            foreach ((string Key, string? Value)[] fields in _zoneCounts.TakeDaysBefore(close))
+            {
+                Write("zones", fields);
+            }
+        }
+
+        _zoneCounts.Add(close, activity);
     }
 
     private void Timer()
@@ -429,14 +462,47 @@ public sealed class BotCore
     {
         // At least 30 days of history, so the 21-day warning has data (OPS-006, WP09).
         DateTime since = now.AddDays(-InactivityHistoryDays);
+        RestoreLastInactivityAlert(now);
+        InactivityStatus status;
         try
         {
-            _ops.Inactivity.Check(now, _broker.GetHistory(since), since, _broker.GetPositions());
+            status = _ops.Inactivity.Check(now, _broker.GetHistory(since), since, _broker.GetPositions());
         }
         catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
         {
             Write("ops", ("event", "inactivity-unavailable"), ("reason", exception.GetType().Name + ": " + OneLine(exception.Message)));
+            return;
         }
+
+        if (status.AlertRaised)
+        {
+            _store.Set(InactivityAlertKey, now.ToString("o", CultureInfo.InvariantCulture));
+        }
+    }
+
+    private void RestoreLastInactivityAlert(DateTime now)
+    {
+        // OPS-006: read once after a start; a missing value means no limit, an unreadable one (or one later than the
+        // server time) is journaled once and ignored.
+        if (_inactivityAlertRestored)
+        {
+            return;
+        }
+
+        _inactivityAlertRestored = true;
+        string? text = _store.Get(InactivityAlertKey);
+        if (text == null)
+        {
+            return;
+        }
+
+        if (TryParseUtc(text, out DateTime lastAlert) && lastAlert <= now)
+        {
+            _ops.Inactivity.RestoreLastAlert(lastAlert);
+            return;
+        }
+
+        Write("ops", ("event", "stored-inactivity-alert-ignored"), ("value", OneLine(text)), ("reason", "unreadable"));
     }
 
     private void RecordStart(DateTime now)
@@ -524,24 +590,7 @@ public sealed class BotCore
         _lastRecoveryAttemptUtc = now;
         RecoveryReport report = _recovery.Run(_history!);
         LastReport = report;
-        _ops.Journal.Recovery(new RecoveryJournalEntry(
-            now,
-            _symbol,
-            reason,
-            report.PositionsAdopted.Count,
-            report.OrdersKept.Count,
-            report.OrdersCancelled.Count,
-            report.Strangers.Count,
-            report.ActiveZones.Count,
-            report.Downtime,
-            report.State));
-        Write("report", ("trigger", reason), ("text", report.Text));
-        foreach (AcceptedGapList gaps in report.AcceptedGaps)
-        {
-            // REC-003 (owner decision A of 2026-11-17): one line per timeframe with gaps kept after the reload.
-            Write("recovery", ("event", "gaps-accepted"), ("timeframe", gaps.TimeFrame.ToString()), ("count", Text(gaps.Count)), ("newest", gaps.NewestText));
-        }
-
+        JournalRecovery(report, now, reason);
         AlertKind recovered = reason == "start" ? AlertKind.Started : AlertKind.Recovered;
         if (!report.DataComplete)
         {
@@ -559,6 +608,50 @@ public sealed class BotCore
         if (report.Strangers.Count > 0)
         {
             Alert(AlertKind.Stranger, "kept with their stop and target: " + string.Join(", ", report.Strangers), now);
+        }
+    }
+
+    // OPS-008 (1): a completed run is always written; a failed run only when the repeat limit lets it through.
+    private void JournalRecovery(RecoveryReport report, DateTime now, string reason)
+    {
+        int? failedRuns = report.DataComplete ? null : _limits.FailedRecovery(now);
+        if (report.DataComplete)
+        {
+            _limits.ResetRecovery();
+        }
+        else if (!failedRuns.HasValue)
+        {
+            return;
+        }
+
+        _ops.Journal.Recovery(new RecoveryJournalEntry(
+            now,
+            _symbol,
+            reason,
+            report.PositionsAdopted.Count,
+            report.OrdersKept.Count,
+            report.OrdersCancelled.Count,
+            report.Strangers.Count,
+            report.ActiveZones.Count,
+            report.Downtime,
+            report.State)
+        {
+            FailedRuns = failedRuns,
+        });
+        if (failedRuns.HasValue)
+        {
+            Write("report", ("trigger", reason), ("text", report.Text), ("failed-runs", Text(failedRuns.Value)));
+        }
+        else
+        {
+            Write("report", ("trigger", reason), ("text", report.Text));
+        }
+
+        foreach (AcceptedGapList gaps in report.AcceptedGaps)
+        {
+            // REC-003 (owner decision A of 2026-11-17): one line per timeframe with gaps kept after the reload.
+            // Written with the run's report, so a failed run's gap lines follow the OPS-008 limit too.
+            Write("recovery", ("event", "gaps-accepted"), ("timeframe", gaps.TimeFrame.ToString()), ("count", Text(gaps.Count)), ("newest", gaps.NewestText));
         }
     }
 
@@ -659,10 +752,18 @@ public sealed class BotCore
         if (guard.EntriesAllowed)
         {
             _riskDataAlertSent = false;
+
+            // OPS-008 (3), owner answer of 2026-11-17: a new outage is written again, whatever its text.
+            _limits.RiskAvailable();
             return;
         }
 
-        Write("risk", ("event", "unavailable"), ("guards", guard.Text));
+        if (_limits.RiskUnavailable(guard.Text, now))
+        {
+            // OPS-008 (3): written when the text changes or 60 minutes after the last written line.
+            Write("risk", ("event", "unavailable"), ("guards", guard.Text));
+        }
+
         if (!_riskDataAlertSent)
         {
             _riskDataAlertSent = true;
@@ -1101,12 +1202,9 @@ public sealed class BotCore
     private void RecordError(string handler, Exception exception)
     {
         // Never throws: this is the last line of defence of every handler (REC-011). WP09's journal never throws.
-        DateTime now = SafeNow();
+        DateTime now = SafeNow(out bool timeKnown);
         CircuitBreakerDecision decision = _errors.Record(now);
-        _ops.Journal.Error(now, handler, exception);
-        string text = "handler=" + handler + " type=" + exception.GetType().Name + " message=" + OneLine(exception.Message)
-            + " errors-last-hour=" + decision.LastHourCount.ToString(CultureInfo.InvariantCulture);
-        TryAlert(AlertKind.Error, text, now);
+        JournalError(handler, exception, now, timeKnown, decision);
         if (!decision.Halt)
         {
             return;
@@ -1135,8 +1233,35 @@ public sealed class BotCore
         return now;
     }
 
-    private DateTime SafeNow()
+    // OPS-008 (2): the error is counted for RSK-010 above in every case; a repeat of the group's last written
+    // error within 60 minutes is neither journaled nor alerted. When the server time could not be read the
+    // interval cannot be measured, so the error is always written.
+    private void JournalError(string handler, Exception exception, DateTime now, bool timeKnown, CircuitBreakerDecision decision)
     {
+        int? leftOut = timeKnown ? _limits.Error(handler, exception, now) : 0;
+        if (!leftOut.HasValue)
+        {
+            return;
+        }
+
+        string text = "handler=" + handler + " type=" + exception.GetType().Name + " message=" + OneLine(exception.Message)
+            + " errors-last-hour=" + decision.LastHourCount.ToString(CultureInfo.InvariantCulture);
+        if (leftOut.Value > 0)
+        {
+            _ops.Journal.Error(now, handler, exception, leftOut.Value);
+            text += " left-out=" + Text(leftOut.Value);
+        }
+        else
+        {
+            _ops.Journal.Error(now, handler, exception);
+        }
+
+        TryAlert(AlertKind.Error, text, now);
+    }
+
+    private DateTime SafeNow(out bool known)
+    {
+        known = true;
         try
         {
             return Now();
@@ -1147,6 +1272,7 @@ public sealed class BotCore
             // failure is journaled with it.
             DateTime fallback = _lastKnownServerTimeUtc ?? FallbackTimeUtc;
             _ops.Journal.Error(fallback, "time", exception);
+            known = false;
             return fallback;
         }
     }

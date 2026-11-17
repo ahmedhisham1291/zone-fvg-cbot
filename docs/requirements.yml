@@ -1050,7 +1050,7 @@ requirements:
     wp: WP22
     spec: "11, 15.2"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Inactivity warning. An alert is raised when 21 days have passed since
       the account's last opened trade, in every state, and again every 3
@@ -1077,7 +1077,7 @@ requirements:
     wp: WP22
     spec: "11"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Repeat limits for the Log (owner acceptance of 2026-11-17), so that a
       lasting condition cannot fill the cTrader Log. (1) Recovery that keeps
@@ -1091,16 +1091,19 @@ requirements:
       less than 60 minutes earlier, is counted for RSK-010 as before but is
       neither journaled nor alerted; the first such error 60 minutes or more
       after the group's last written line is journaled and alerted with the
-      number left out since. (3) The risk-unavailable line is written when
-      its text differs from the last one written or when 60 minutes have
-      passed since that line. The limits are fixed values, not parameters.
+      number left out since. Errors while the server time cannot be read are
+      always written. (3) The risk-unavailable line is written when its text
+      differs from the last one written or when 60 minutes have passed since
+      that line; the last text is forgotten when entries are allowed again,
+      so a new outage is always written (owner answer of 2026-11-17). The
+      limits are fixed values, not parameters.
       No trading decision changes.
 
   - id: OPS-009
     wp: WP22
     spec: "11, 3.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Zone outcome counts, journal only (owner acceptance of 2026-11-17).
       For bars fed live (not replayed) the bot counts per CE(S)T day the
