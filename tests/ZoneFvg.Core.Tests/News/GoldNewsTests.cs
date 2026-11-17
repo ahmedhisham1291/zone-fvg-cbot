@@ -113,7 +113,9 @@ public class GoldNewsTests
         NewsService service = Service();
 
         Assert.Equal(NewsBlockReason.InsideWindow, service.CheckEntry(Gold, Wednesday(15, 0), EarlyGap()).Reason);
-        Assert.Contains(new NewsWindow(Wednesday(14, 30), Wednesday(15, 30)), service.CalendarAt(Wednesday(15, 0)).WindowsFor(Gold));
+        // The window starts 30 minutes before the event (it merges with the XAU blackout after it).
+        Assert.False(service.CalendarAt(Wednesday(14, 29, 59)).IsInWindow(Gold, Wednesday(14, 29, 59)));
+        Assert.True(service.CalendarAt(Wednesday(14, 30)).IsInWindow(Gold, Wednesday(14, 30)));
     }
 
     [Theory]
