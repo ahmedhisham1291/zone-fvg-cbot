@@ -5,6 +5,7 @@ using cAlgo.API;
 using cAlgo.API.Internals;
 using ZoneFvg.Core.Execution.Ports;
 using CoreSymbolInfo = ZoneFvg.Core.Execution.Ports.SymbolInfo;
+using CoreTradingSession = ZoneFvg.Core.Execution.Ports.TradingSession;
 using Side = ZoneFvg.Core.Domain.Side;
 
 namespace ZoneFvg.Bot
@@ -102,6 +103,12 @@ namespace ZoneFvg.Bot
                 // https://help.ctrader.com/ctrader-algo/references/MarketData/Symbols/Symbol/
                 Digits = s.Digits,
                 TickSize = s.TickSize,
+
+                // REC-016: Sessions is deliberately left empty (no session reported: the gap check uses the
+                // weekend and holiday model alone). The reference pages of MarketHours and TradingSession
+                // do not state the time zone of StartTime and EndTime, and the core needs UTC, so the
+                // sessions are only printed by DescribeCosts until the owner confirms their time zone
+                // (WP24, decision for the owner). Then this becomes: Sessions = Sessions(s).
             };
         }
 
@@ -132,7 +139,25 @@ namespace ZoneFvg.Bot
                 + " commissionPath " + costs.CommissionPath()
                 + " roundTripCommissionPerLot " + Number(costs.RoundTripCommissionPerUnit() * s.LotSize)
                 + " spread " + Number(s.Spread)
-                + " volumeMin " + Number(s.VolumeInUnitsMin) + " step " + Number(s.VolumeInUnitsStep) + " max " + Number(s.VolumeInUnitsMax);
+                + " volumeMin " + Number(s.VolumeInUnitsMin) + " step " + Number(s.VolumeInUnitsStep) + " max " + Number(s.VolumeInUnitsMax)
+                + " sessionsAsReported " + CoreTradingSession.ListText(Sessions(s)) + " (time zone not documented; not passed to the core)";
+        }
+
+        // REC-016: Symbol.MarketHours.Sessions as reported, StartDay/StartTime/EndDay/EndTime copied
+        // unchanged. References (neither page states the time zone of the times):
+        // https://help.ctrader.com/ctrader-algo/references/MarketData/Symbols/MarketHours/
+        // https://help.ctrader.com/ctrader-algo/references/MarketData/Symbols/TradingSession/
+        private static IReadOnlyList<CoreTradingSession> Sessions(Symbol s)
+        {
+            var reported = s.MarketHours.Sessions;
+            var result = new List<CoreTradingSession>(reported.Count);
+            for (int i = 0; i < reported.Count; i++)
+            {
+                var session = reported[i];
+                result.Add(new CoreTradingSession(session.StartDay, session.StartTime, session.EndDay, session.EndTime));
+            }
+
+            return result.AsReadOnly();
         }
 
         /// <summary>All open positions of the account (EXE-002, EXE-011).</summary>
