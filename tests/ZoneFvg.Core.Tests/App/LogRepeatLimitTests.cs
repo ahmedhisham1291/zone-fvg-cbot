@@ -58,7 +58,7 @@ public class LogRepeatLimitTests
         Assert.StartsWith(JournalFormat.Time(nextDay) + " ", recoveries[1], StringComparison.Ordinal);
         Assert.EndsWith(" failed-runs=1", recoveries[0], StringComparison.Ordinal);
         Assert.EndsWith(" failed-runs=96", recoveries[1], StringComparison.Ordinal);
-        Assert.Empty(h.Journal.Lines("report").Where(line => line.StartsWith(JournalFormat.Time(nextDay.AddMinutes(-15.0)), StringComparison.Ordinal)));
+        Assert.DoesNotContain(h.Journal.Lines("report"), line => line.StartsWith(JournalFormat.Time(nextDay.AddMinutes(-15.0)), StringComparison.Ordinal));
 
         // The 15-minute retry is unchanged: the last run was the one at 08:00 on the next day.
         Assert.Contains(" at=" + JournalFormat.Time(nextDay) + " ", h.Core.LastReport!.Text, StringComparison.Ordinal);
