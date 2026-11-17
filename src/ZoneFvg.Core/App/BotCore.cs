@@ -56,6 +56,7 @@ public sealed class BotCore
     private static readonly TimeSpan RecoveryRetryInterval = TimeSpan.FromMinutes(15.0);
     private static readonly IReadOnlyList<Zone> NoZones = Array.AsReadOnly(Array.Empty<Zone>());
     private static readonly IReadOnlyList<Fvg> NoFvgs = Array.AsReadOnly(Array.Empty<Fvg>());
+    private static readonly IReadOnlyList<TradingSession> NoSessions = Array.AsReadOnly(Array.Empty<TradingSession>());
     private static readonly DateTime FallbackTimeUtc = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     // The news filter is switched off by a calendar that covers 2000 to 2099 with low-impact events
@@ -294,7 +295,8 @@ public sealed class BotCore
             ("news", _newsEnabled ? "enabled" : "disabled"),
             ("backtest", _isBacktest ? "yes" : "no"),
             ("riskEpoch", _risk.RiskEpochDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-            ("holidays", string.Join(",", _marketHolidays)));
+            ("holidays", string.Join(",", _marketHolidays)),
+            ("sessions", SessionsText()));
         if (reason == "start")
         {
             RecordStart(now);
@@ -522,7 +524,7 @@ public sealed class BotCore
 
         _recoveryPending = true;
         _lastRecoveryAttemptUtc = now;
-        RecoveryReport report = _recovery.Run(_history!);
+        RecoveryReport report = _recovery.Run(_history!, SessionsNow());
         LastReport = report;
         _ops.Journal.Recovery(new RecoveryJournalEntry(
             now,
@@ -845,6 +847,12 @@ public sealed class BotCore
             return;
         }
 
+        // REC-016: sessions only add closed time, so they can only remove a gap; they are read only then.
+        if (!BarSeriesCheck.IsGap(timeFrame, previous, bar, _fridayCloseUtc, _marketHolidays, SessionsNow()))
+        {
+            return;
+        }
+
         string detail = timeFrame + " bars missing between " + Minute(previous.OpenTimeUtc) + " and " + Minute(bar.OpenTimeUtc);
         Write("bar", ("event", "gap"), ("detail", detail));
         if (!_dataGap)
@@ -982,6 +990,21 @@ public sealed class BotCore
         }
 
         return null;
+    }
+
+    // REC-016: the symbol's weekly trading sessions, read from the broker at the moment of the check and
+    // never stored. When the symbol cannot be read (journaled by SymbolOrNull) the check runs without
+    // sessions: more gaps, never fewer.
+    private IReadOnlyList<TradingSession> SessionsNow()
+    {
+        return SymbolOrNull()?.Sessions ?? NoSessions;
+    }
+
+    // REC-016: the start line's sessions field.
+    private string SessionsText()
+    {
+        SymbolInfo? info = SymbolOrNull();
+        return info == null ? "unavailable" : TradingSession.ListText(info.Sessions);
     }
 
     private SymbolInfo? SymbolOrNull()

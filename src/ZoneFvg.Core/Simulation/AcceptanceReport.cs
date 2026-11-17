@@ -59,8 +59,9 @@ public static class AcceptanceReport
         rows.Add(hold == null ? Missing(DrawdownMeasure(inputs.DrawdownRiskPercent), Holdout, "6% or less", "no holdout log") : DrawdownRow(hold, Holdout, inputs.DrawdownRiskPercent));
         rows.Add(ProbabilityRow("Challenge simulation: chance of passing the Challenge phase", inputs.ChallengePassProbability, 0.70, true, "70% or higher"));
         rows.Add(ProbabilityRow("Challenge simulation: chance of breaching an FTMO floor", inputs.ChallengeBreachProbability, 0.10, false, "10% or lower"));
-        rows.Add(ProfitableSymbolsRow(dev, Development));
-        rows.Add(hold == null ? Missing("Profitable symbols", Holdout, "3 of 4", "no holdout log") : ProfitableSymbolsRow(hold, Holdout));
+        int symbols = SymbolCount(dev);
+        rows.Add(ProfitableSymbolsRow(dev, Development, symbols));
+        rows.Add(hold == null ? Missing("Profitable symbols", Holdout, ProfitableSymbolsText(symbols), "no holdout log") : ProfitableSymbolsRow(hold, Holdout, symbols));
         rows.Add(ShareRow(dev));
         rows.Add(StressRow(inputs.DevelopmentCostStress));
         rows.Add(BenchmarkRow(dev, inputs.DevelopmentBenchmark, Development, inputs.InitialCapital));
@@ -209,6 +210,18 @@ public static class AcceptanceReport
         return count;
     }
 
+    /// <summary>
+    /// The profitable-symbols threshold for <paramref name="symbols"/> distinct development symbols
+    /// (SIM-005, owner decision D of 2026-11-17): max(3, N - 1), so 3 of 4 for the four forex pairs
+    /// and 4 of 5 with gold.
+    /// </summary>
+    /// <param name="symbols">N, the number of distinct symbols in the development log.</param>
+    /// <returns>The smallest number of profitable symbols that passes.</returns>
+    public static int ProfitableSymbolsThreshold(int symbols)
+    {
+        return Math.Max(3, symbols - 1);
+    }
+
     /// <summary>Number of distinct symbols (SIM-005).</summary>
     /// <param name="trades">The trades.</param>
     /// <returns>The count.</returns>
@@ -314,11 +327,17 @@ public static class AcceptanceReport
         return atLeast ? AtLeast(measure, Development, probability.Value, threshold, value, thresholdText) : AtMost(measure, Development, probability.Value, threshold, value, thresholdText);
     }
 
-    private static AcceptanceRow ProfitableSymbolsRow(IReadOnlyList<TradeRecord> trades, string segment)
+    // SIM-005 (owner decision D of 2026-11-17): both segments use the threshold of the development log's N symbols.
+    private static AcceptanceRow ProfitableSymbolsRow(IReadOnlyList<TradeRecord> trades, string segment, int developmentSymbols)
     {
         int profitable = ProfitableSymbols(trades);
         string value = SimText.Int(profitable) + " of " + SimText.Int(SymbolCount(trades));
-        return AtLeast("Profitable symbols", segment, profitable, 3.0, value, "3 of 4");
+        return AtLeast("Profitable symbols", segment, profitable, ProfitableSymbolsThreshold(developmentSymbols), value, ProfitableSymbolsText(developmentSymbols));
+    }
+
+    private static string ProfitableSymbolsText(int developmentSymbols)
+    {
+        return SimText.Int(ProfitableSymbolsThreshold(developmentSymbols)) + " of " + SimText.Int(developmentSymbols);
     }
 
     private static AcceptanceRow ShareRow(IReadOnlyList<TradeRecord> trades)
