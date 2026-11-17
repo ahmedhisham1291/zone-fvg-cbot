@@ -96,7 +96,13 @@ namespace ZoneFvg.Bot
                 s.VolumeInUnitsMax,
                 s.Spread,
                 open,
-                costs.RoundTripCommissionPerUnit());
+                costs.RoundTripCommissionPerUnit())
+            {
+                // EXE-017: the price grid. Symbol.Digits and Symbol.TickSize:
+                // https://help.ctrader.com/ctrader-algo/references/MarketData/Symbols/Symbol/
+                Digits = s.Digits,
+                TickSize = s.TickSize,
+            };
         }
 
         /// <summary>
@@ -113,6 +119,8 @@ namespace ZoneFvg.Bot
             return "symbol " + s.Name
                 + " account " + _robot.Account.Asset.Name
                 + " pipSize " + Number(s.PipSize)
+                + " digits " + s.Digits.ToString(CultureInfo.InvariantCulture)
+                + " tickSize " + Number(s.TickSize)
                 + " platformPipValue " + Number(s.PipValue)
                 + " bid " + Number(s.Bid)
                 + " pipValuePerUnit " + Number(costs.PipValuePerUnit())

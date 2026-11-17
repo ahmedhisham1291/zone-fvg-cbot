@@ -24,8 +24,10 @@ namespace ZoneFvg.Core.Execution;
 /// (RSK-001, RSK-002) with the ladder percent of RSK-013 when LadderEnabled is true; the broker's
 /// maximum volume; the account limits of
 /// <see cref="RiskEngine.CheckNewTrade"/> (RSK-003 to RSK-006, RSK-010).</para>
-/// <para>Levels: entry, stop and target are put on the symbol's price grid
-/// (<see cref="PriceGrid"/>); for a sell the current spread is added to the stop first (EXE-007).
+/// <para>Levels: entry, stop and target are rounded to the broker's tick size
+/// (<see cref="PriceGrid.RoundToTick"/>, EXE-017); for a sell the current spread is added to the
+/// stop first (EXE-007). A symbol whose digits or tick size are not usable is skipped as
+/// BrokerDataInvalid.
 /// Every check from EXE-003 on, sizing, the comment and the order use these levels.</para>
 /// <para>Every skip is passed to <see cref="IExecutionEvents.Skipped"/> once, with one reason and
 /// its measured values (EXE-014); a sanity-cap skip (RSK-002) also raises one alert.</para>
@@ -241,9 +243,9 @@ public sealed class PreTradeFilters
         SymbolInfo info = c.Info!;
         Signal s = c.Signal;
         double rawStop = s.Side == Side.Sell ? s.Stop + info.Spread : s.Stop;
-        c.Entry = PriceGrid.Round(s.Entry, info.PipSize);
-        c.Stop = PriceGrid.Round(rawStop, info.PipSize);
-        c.Target = PriceGrid.Round(s.Target, info.PipSize);
+        c.Entry = PriceGrid.RoundToTick(s.Entry, info.TickSize);
+        c.Stop = PriceGrid.RoundToTick(rawStop, info.TickSize);
+        c.Target = PriceGrid.RoundToTick(s.Target, info.TickSize);
         if (!OnLossSide(s.Side, c.Entry, c.Stop))
         {
             return c.Skip(SkipReason.StopOnWrongSide, c.Stop, c.Entry, "stop " + Text(c.Stop) + " entry " + Text(c.Entry));
@@ -425,11 +427,13 @@ public sealed class PreTradeFilters
     private PlannedOrder Build(Candidate c)
     {
         SymbolInfo info = c.Info!;
-        int digits = PriceGrid.Digits(info.PipSize);
         SizingResult sizing = c.Sizing!;
-        string comment = OrderComment.Build(new CommentPlan(c.Entry, c.Stop, c.Target, sizing.RiskMoney, _parameterHash), digits);
+        string comment = OrderComment.Build(new CommentPlan(c.Entry, c.Stop, c.Target, sizing.RiskMoney, _parameterHash), info.Digits);
         string label = OrderLabel.Build(c.Context.Symbol, c.Signal.ZoneId);
-        return new PlannedOrder(c.Signal, c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, c.Target, sizing.VolumeUnits, sizing.RiskMoney, c.StopPips, c.Expiry, digits, label, comment, c.Now);
+        return new PlannedOrder(c.Signal, c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, c.Target, sizing.VolumeUnits, sizing.RiskMoney, c.StopPips, c.Expiry, info.Digits, label, comment, c.Now)
+        {
+            TickSize = info.TickSize,
+        };
     }
 
     private static string? SymbolProblem(SymbolInfo info, string symbol)
@@ -444,7 +448,15 @@ public sealed class PreTradeFilters
             && IsPrice(info.VolumeMinUnits) && IsPrice(info.VolumeStepUnits) && IsPrice(info.VolumeMaxUnits)
             && double.IsFinite(info.Spread) && info.Spread >= 0.0
             && double.IsFinite(info.RoundTripCommissionPerUnit) && info.RoundTripCommissionPerUnit >= 0.0;
-        return usable ? null : "symbol data of " + symbol + " is not usable";
+        if (!usable)
+        {
+            return "symbol data of " + symbol + " is not usable";
+        }
+
+        // EXE-017: the price grid comes from the broker; without a usable one no order is sent.
+        return PriceGrid.IsUsableGrid(info.Digits, info.TickSize)
+            ? null
+            : "price grid of " + symbol + " is not usable: digits " + Text(info.Digits) + " tick size " + Text(info.TickSize);
     }
 
     private static bool OnLossSide(Side side, double entry, double price)
