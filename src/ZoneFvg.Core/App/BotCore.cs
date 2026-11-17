@@ -1094,18 +1094,33 @@ public sealed class BotCore
     }
 
     // REC-016: the symbol's weekly trading sessions, read from the broker at the moment of the check and
-    // never stored. When the symbol cannot be read (journaled by SymbolOrNull) the check runs without
-    // sessions: more gaps, never fewer.
+    // never stored. When the symbol cannot be read the check runs without sessions: more gaps, never fewer.
     private IReadOnlyList<TradingSession> SessionsNow()
     {
-        return SymbolOrNull()?.Sessions ?? NoSessions;
+        return SymbolForSessions()?.Sessions ?? NoSessions;
     }
 
     // REC-016: the start line's sessions field.
     private string SessionsText()
     {
-        SymbolInfo? info = SymbolOrNull();
+        SymbolInfo? info = SymbolForSessions();
         return info == null ? "unavailable" : TradingSession.ListText(info.Sessions);
+    }
+
+    // REC-016 (owner answer of 2026-11-17 on #50): any failure of the symbol read gives "no sessions" and never
+    // aborts the handler. A data problem is journaled by SymbolOrNull; any other exception is journaled, counted
+    // and alerted as an error (REC-011), and the caller goes on.
+    private SymbolInfo? SymbolForSessions()
+    {
+        try
+        {
+            return SymbolOrNull();
+        }
+        catch (Exception exception)
+        {
+            RecordError("symbol-sessions", exception);
+            return null;
+        }
     }
 
     private SymbolInfo? SymbolOrNull()

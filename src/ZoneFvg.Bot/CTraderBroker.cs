@@ -140,7 +140,21 @@ namespace ZoneFvg.Bot
                 + " roundTripCommissionPerLot " + Number(costs.RoundTripCommissionPerUnit() * s.LotSize)
                 + " spread " + Number(s.Spread)
                 + " volumeMin " + Number(s.VolumeInUnitsMin) + " step " + Number(s.VolumeInUnitsStep) + " max " + Number(s.VolumeInUnitsMax)
-                + " sessionsAsReported " + CoreTradingSession.ListText(Sessions(s)) + " (time zone not documented; not passed to the core)";
+                + " sessionsAsReported " + SessionsText(s) + " (time zone not documented; not passed to the core)";
+        }
+
+        // REC-016 (owner answer of 2026-11-17 on #50): a failed session read must not lose the rest of the
+        // cost line; the sessions are then shown as unavailable, with the exception type and message.
+        private static string SessionsText(Symbol s)
+        {
+            try
+            {
+                return CoreTradingSession.ListText(Sessions(s));
+            }
+            catch (Exception exception)
+            {
+                return "unavailable (" + exception.GetType().Name + ": " + (exception.Message ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ') + ")";
+            }
         }
 
         // REC-016: Symbol.MarketHours.Sessions as reported, StartDay/StartTime/EndDay/EndTime copied
