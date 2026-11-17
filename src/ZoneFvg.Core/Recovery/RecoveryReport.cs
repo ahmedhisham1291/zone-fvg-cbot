@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Signals;
@@ -12,6 +13,22 @@ namespace ZoneFvg.Core.Recovery;
 /// <param name="Bias">D1 bias when the signal was confirmed.</param>
 /// <param name="Skip">The skip record with reason SignalFromReplay.</param>
 public sealed record ReplayedSignal(Signal Signal, Bias Bias, SkipRecord Skip);
+
+/// <summary>
+/// The gaps of one timeframe that were still in the broker's history after the reload and were
+/// accepted (REC-003, owner decision A of 2026-11-17).
+/// </summary>
+/// <param name="TimeFrame">Timeframe of the series.</param>
+/// <param name="Count">Number of accepted gaps in the loaded series.</param>
+/// <param name="Newest">The three newest gaps (fewer when there are fewer), newest first.</param>
+public sealed record AcceptedGapList(TimeFrame TimeFrame, int Count, IReadOnlyList<BarGap> Newest)
+{
+    /// <summary>Most gaps listed in <see cref="Newest"/> (REC-003).</summary>
+    public const int Listed = 3;
+
+    /// <summary>The newest gaps as text, newest first, separated by commas (REC-003).</summary>
+    public string NewestText => string.Join(",", Newest.Select(gap => gap.Text));
+}
 
 /// <summary>
 /// What recovery found, handed to the bot before it enters its next state (REC-001, REC-009,
@@ -94,6 +111,12 @@ public sealed class RecoveryReport
     /// <summary>Problems of the bar series (REC-003).</summary>
     public IReadOnlyList<string> DataProblems { get; init; } = Array.Empty<string>();
 
+    /// <summary>
+    /// Gaps accepted per timeframe, in the order D1, H4, M15; only timeframes with at least one
+    /// accepted gap are listed (REC-003, owner decision A of 2026-11-17).
+    /// </summary>
+    public IReadOnlyList<AcceptedGapList> AcceptedGaps { get; init; } = Array.Empty<AcceptedGapList>();
+
     /// <summary>Ids of the non-terminal zones after the replay, ordered by id (REC-004, REC-010).</summary>
     public IReadOnlyList<string> ActiveZones { get; init; } = Array.Empty<string>();
 
@@ -148,6 +171,7 @@ public sealed class RecoveryReport
         + " at=" + AtUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)
         + " downtime=" + (Downtime.HasValue ? Downtime.Value.TotalMinutes.ToString("0.##", CultureInfo.InvariantCulture) + "min" : "unknown")
         + " data=" + (DataComplete ? "complete" : "incomplete") + List(DataProblems)
+        + GapsText()
         + " zones=" + List(ActiveZones)
         + " replay-signals=" + ReplaySignals.ToString(CultureInfo.InvariantCulture)
         + " adopted=" + List(PositionsAdopted)
@@ -164,6 +188,17 @@ public sealed class RecoveryReport
         + " news=" + (NewsEnabled ? "enabled" : "disabled")
         + " hash=" + ParameterHash
         + " version=" + BuildInfo.Version;
+
+    // REC-003: " gaps=H4:1,M15:2" when gaps were accepted; nothing otherwise, so a report without gaps keeps its form.
+    private string GapsText()
+    {
+        if (AcceptedGaps.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return " gaps=" + string.Join(",", AcceptedGaps.Select(gaps => gaps.TimeFrame + ":" + gaps.Count.ToString(CultureInfo.InvariantCulture)));
+    }
 
     private static string List(IReadOnlyList<string> items)
     {
