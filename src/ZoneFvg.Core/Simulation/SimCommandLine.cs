@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ZoneFvg.Core.Risk;
 
 namespace ZoneFvg.Core.Simulation;
@@ -164,11 +165,21 @@ public static class SimCommandLine
     private static SimCommandResult Accept(CommandContext c)
     {
         ulong seed = c.Options.Seed();
-        PortfolioResult development = c.Combined("--dev");
+        IReadOnlyList<IReadOnlyList<TradeRecord>> developmentLogs = c.Logs("--dev");
+        if (developmentLogs.All(log => log.Count == 0))
+        {
+            // SIM-005 (owner answer of 2026-11-17): an empty input is refused, never reported as "3 of 0".
+            throw new SimInputException(ExitInvalid, "The --dev logs contain no trade, so there is nothing to evaluate. Give the development trade logs of the backtests (SIM-005).");
+        }
+
+        PortfolioResult development = c.Combine(developmentLogs);
+        IReadOnlyList<IReadOnlyList<TradeRecord>>? holdoutLogs = c.Options.All("--holdout").Count == 0 ? null : c.Logs("--holdout");
         ChallengeSummary challenge = FtmoChallengeSimulator.Simulate(development.Trades, FtmoParameters(c.Options), seed);
         var inputs = new AcceptanceInputs(development.Trades)
         {
-            Holdout = c.CombinedOrNull("--holdout"),
+            DevelopmentSymbolCount = AcceptanceReport.SymbolsCovered(developmentLogs),
+            Holdout = holdoutLogs == null ? null : c.Combine(holdoutLogs).Trades,
+            HoldoutSymbolCount = holdoutLogs == null ? null : AcceptanceReport.SymbolsCovered(holdoutLogs),
             DevelopmentCostStress = c.CombinedOrNull("--stress"),
             DevelopmentBenchmark = c.CombinedOrNull("--benchmark"),
             HoldoutBenchmark = c.CombinedOrNull("--benchmark-holdout"),
@@ -229,6 +240,12 @@ public static class SimCommandLine
 
         internal PortfolioResult Combined(string option)
         {
+            return Combine(Logs(option));
+        }
+
+        // The trade logs of an option, one per file, as read (before combining).
+        internal IReadOnlyList<IReadOnlyList<TradeRecord>> Logs(string option)
+        {
             IReadOnlyList<string> paths = Options.All(option);
             if (paths.Count == 0)
             {
@@ -241,6 +258,11 @@ public static class SimCommandLine
                 logs.Add(ReadLog(path));
             }
 
+            return logs.AsReadOnly();
+        }
+
+        internal PortfolioResult Combine(IReadOnlyList<IReadOnlyList<TradeRecord>> logs)
+        {
             var parameters = new PortfolioParameters
             {
                 InitialCapital = Options.Number("--initial-capital", 100000.0),
@@ -442,7 +464,9 @@ public static class SimCommandLine
                 case "accept":
                     return new CommandSpec(name, new[] { "--dev", "--holdout", "--stress", "--benchmark", "--benchmark-holdout" }, ftmoOptions, "Usage: sim accept --dev <file> [--dev <file> ...] --seed <n> [options]\n\n"
                         + "Acceptance report against spec 13.1 (SIM-005). Each group of logs is combined first.\n\n"
-                        + "  --dev <file>                Development trade log; repeat for each symbol\n"
+                        + "  --dev <file>                Development trade log; repeat for each symbol. Every symbol\n"
+                        + "                              given counts in \"profitable symbols\"; a log without\n"
+                        + "                              trades counts as one symbol that is not profitable\n"
                         + "  --holdout <file>            Holdout trade log; repeat for each symbol\n"
                         + "  --stress <file>             Development log under cost stress\n"
                         + "  --benchmark <file>          Benchmark log, development period\n"
