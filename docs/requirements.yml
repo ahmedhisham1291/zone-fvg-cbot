@@ -1285,7 +1285,7 @@ requirements:
     wp: WP25
     spec: "3.7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Breakout reference (owner request of 2026-11-22). In Breakout mode the
       reference is the last closed D1 bar: its high, its low and its UTC open
@@ -1301,7 +1301,7 @@ requirements:
     wp: WP25
     spec: "3.1, 3.7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Breakout confirmation. While the reference is Armed, at the close of a
       checked M15 bar c1: with bias Long, close(c1) above the reference high
@@ -1316,7 +1316,7 @@ requirements:
     wp: WP25
     spec: "3.7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Breakout levels (buy). Entry = high(c1) + EntryBufferAtr x ATR(M15).
       Stop = entry - StopAtrMult x ATR(H4). Target = entry + RewardRisk x
@@ -1334,7 +1334,7 @@ requirements:
     wp: WP25
     spec: "3.7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Breakout identity. The id is "BH-yyyyMMdd-HHmm" for a buy (break of the
       high) and "BL-yyyyMMdd-HHmm" for a sell (break of the low), built from
