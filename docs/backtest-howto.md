@@ -9,6 +9,11 @@ What happens, in short: you run a backtest in your cTrader app, copy its
 **Log** tab into a text file, and the `sim` tool on your Mac turns that file
 into a trade list and computes the numbers.
 
+The bot has two entry modes (spec v0.10, parameter `EntryMode`): **Breakout**
+(the default) and **ZoneFvg**. Both are backtested, each as its own series,
+and each is judged by itself (spec 12.1 and 13.1). So you do Parts 2 and 3
+twice, once per mode.
+
 Why the Log tab: the cBot runs without file access (`AccessRights.None`), so it
 cannot write files itself. During a backtest it prints one line per closed
 trade into the Log, starting with `tradelog seq=`. cTrader's own backtest
@@ -55,14 +60,23 @@ described is the HTML report).
    The first run takes a minute (it builds the tool). It prints a list of
    commands starting with `extract`. Everything after `--` goes to the tool.
 
-## Part 2. Run one backtest per symbol
+## Part 2. Run one backtest per symbol and per mode
 
 Spec 12.1 asks for each symbol separately: the four forex pairs (EURUSD,
-GBPUSD, USDJPY, AUDUSD) and gold (XAUUSD).
+GBPUSD, USDJPY, AUDUSD) and gold (XAUUSD). From v0.10 it also asks for one
+series per entry mode, with the same period, data and costs (spec 12.1,
+step 1).
 
 6. Open an **M15** chart of the symbol and add an instance of `ZoneFvgBot` to
    it, with the default parameters, except these (in the instance's parameter
    panel):
+   - **EntryMode:** `Breakout` or `ZoneFvg` (exactly so, with this spelling).
+     Run the whole of Part 2 once with `Breakout` and once with `ZoneFvg`,
+     with the same period, data, commission and spread in both series. Keep
+     the files of the two modes apart: put the mode into every file name,
+     for example `eurusd-breakout-dev.csv` and `eurusd-zonefvg-dev.csv`.
+     Leave `BreakoutEntryBufferAtr` (0.1) and `BreakoutStopAtr` (1.0) at
+     their defaults; in ZoneFvg mode they are not used.
    - **InitialCapital:** 100000, the same number as the Starting capital in
      step 7. With a different starting capital the FTMO emergency guard
      fires at once (10,000 against 100,000 is already 90% below), and from
@@ -75,7 +89,9 @@ GBPUSD, USDJPY, AUDUSD) and gold (XAUUSD).
      history is in the bot. Without it, a backtest with the news filter on
      has no events to block.
    - **DrawObjects:** true only if you want to see the zones and gaps on the
-     chart; it needs Visual mode on (step 7).
+     chart; it needs Visual mode on (step 7). The drawings exist in ZoneFvg
+     mode only: in Breakout mode the bot keeps no zones and no gaps, so
+     nothing is drawn.
    - **Gold (XAUUSD) only:** MaxSpreadPips 40, MinStopPips 800,
      MaxVolumeUnits 200. Everything else as for the forex pairs.
 7. Open the **Backtesting** tab of that instance (to the right of the chart
@@ -91,7 +107,8 @@ GBPUSD, USDJPY, AUDUSD) and gold (XAUUSD).
      November 2024 to November 2026 yet: that is the holdout, used once at
      the very end (spec 12.1 and 13.1).
    - **Start at least 10 months before the period you want judged.** The
-     bot needs about 9.5 months of daily bars before it can find zones, and
+     bot needs about 9.5 months of daily bars before it can find zones (in
+     Breakout mode too: it loads the same history in both modes, spec 7), and
      cTrader cannot load older history during a backtest (Spotware staff on
      the cTrader forum: loading more history "is not currently supported in
      backtesting ... start backtesting from a previous date",
@@ -119,7 +136,8 @@ GBPUSD, USDJPY, AUDUSD) and gold (XAUUSD).
 9. **Save the Log.** Click the **Log** tab under the chart. Click one line in
    it, press **Cmd+A** (select all) and **Cmd+C** (copy). Open **TextEdit**,
    choose **Format > Make Plain Text**, press **Cmd+V**, and save the file as
-   `eurusd-dev-log.txt` (for EURUSD) in the `zone-fvg-cbot-main` folder.
+   `eurusd-breakout-dev-log.txt` (for EURUSD in Breakout mode; in ZoneFvg
+   mode `eurusd-zonefvg-dev-log.txt`) in the `zone-fvg-cbot-main` folder.
    If Cmd+A does not select the lines, right-click the Log and look for a
    **Copy** or **Copy all** entry. If neither works, tell the developer: this
    step could not be tried on a Mac before this guide was written.
@@ -127,7 +145,7 @@ GBPUSD, USDJPY, AUDUSD) and gold (XAUUSD).
     `zone-fvg-cbot-main` folder:
 
     ```
-    dotnet run --project tools/sim -- extract --in eurusd-dev-log.txt --out eurusd-dev.csv
+    dotnet run --project tools/sim -- extract --in eurusd-breakout-dev-log.txt --out eurusd-breakout-dev.csv
     ```
 
     It prints `Extracted N trades ...`. **Check N** against the number of
@@ -136,16 +154,19 @@ GBPUSD, USDJPY, AUDUSD) and gold (XAUUSD).
     (users report a limit of 50,000 Log lines per backtest:
     [cTrader forum, 2023](https://communityuat.ctrader.com/forum/ctrader-algo/41642)).
     Then split the period, for example one backtest per two years, save and
-    extract each run into its own file (`eurusd-dev-1.csv`,
-    `eurusd-dev-2.csv` ...), and give all of them to the commands below.
+    extract each run into its own file (`eurusd-breakout-dev-1.csv`,
+    `eurusd-breakout-dev-2.csv` ...), and give all of them to the commands
+    below.
     A position still open when the backtest ends has no line; that can make
     N one smaller than the platform's count.
 
     If `extract` stops with an error, it says which trade and why. Two runs
     pasted into one file, or a missing trade, are refused on purpose.
 11. Repeat steps 6 to 10 for GBPUSD, USDJPY and AUDUSD, and for XAUUSD
-    (with its own values from step 6). Add `--log xauusd-dev.csv`
-    (or `--dev xauusd-dev.csv` for `accept`) to the commands below.
+    (with its own values from step 6). Add `--log xauusd-breakout-dev.csv`
+    (or `--dev xauusd-breakout-dev.csv` for `accept`) to the commands below.
+    Then do steps 6 to 11 again with `EntryMode` = `ZoneFvg`, which gives
+    the files `eurusd-zonefvg-dev.csv` and so on.
 
 ## Part 3. Compute the numbers
 
@@ -154,16 +175,20 @@ command first merges the files it gets by time and removes the trades the
 account limits would have refused (spec 12.1 step 7). `--seed 1` makes a
 result repeatable; keep it the same.
 
+Run each command once per mode: once with the `...-breakout-dev.csv` files
+(as shown) and once with the `...-zonefvg-dev.csv` files. Never mix the files
+of the two modes in one command, except as `--benchmark` in step 15.
+
 12. **Portfolio, drawdown and caps** (spec 12.1 step 7):
 
     ```
-    dotnet run --project tools/sim -- combine --log eurusd-dev.csv --log gbpusd-dev.csv --log usdjpy-dev.csv --log audusd-dev.csv
+    dotnet run --project tools/sim -- combine --log eurusd-breakout-dev.csv --log gbpusd-breakout-dev.csv --log usdjpy-breakout-dev.csv --log audusd-breakout-dev.csv
     ```
 
 13. **Monte Carlo** (step 8):
 
     ```
-    dotnet run --project tools/sim -- montecarlo --log eurusd-dev.csv --log gbpusd-dev.csv --log usdjpy-dev.csv --log audusd-dev.csv --seed 1
+    dotnet run --project tools/sim -- montecarlo --log eurusd-breakout-dev.csv --log gbpusd-breakout-dev.csv --log usdjpy-breakout-dev.csv --log audusd-breakout-dev.csv --seed 1
     ```
 
     Write down the 1st and 5th percentile of the 30-trade average R: live
@@ -171,13 +196,23 @@ result repeatable; keep it the same.
 14. **FTMO challenge simulation** at 0.5%, 0.75% and 1% risk (step 9):
 
     ```
-    dotnet run --project tools/sim -- ftmo --log eurusd-dev.csv --log gbpusd-dev.csv --log usdjpy-dev.csv --log audusd-dev.csv --seed 1
+    dotnet run --project tools/sim -- ftmo --log eurusd-breakout-dev.csv --log gbpusd-breakout-dev.csv --log usdjpy-breakout-dev.csv --log audusd-breakout-dev.csv --seed 1
     ```
 
 15. **Acceptance report** (spec 13.1):
 
+    Breakout mode:
+
     ```
-    dotnet run --project tools/sim -- accept --dev eurusd-dev.csv --dev gbpusd-dev.csv --dev usdjpy-dev.csv --dev audusd-dev.csv --seed 1
+    dotnet run --project tools/sim -- accept --dev eurusd-breakout-dev.csv --dev gbpusd-breakout-dev.csv --dev usdjpy-breakout-dev.csv --dev audusd-breakout-dev.csv --seed 1
+    ```
+
+    ZoneFvg mode, with the Breakout development files as the benchmark
+    (spec 12.1 step 10: the Breakout mode is the benchmark bot of the
+    ZoneFvg mode):
+
+    ```
+    dotnet run --project tools/sim -- accept --dev eurusd-zonefvg-dev.csv --dev gbpusd-zonefvg-dev.csv --dev usdjpy-zonefvg-dev.csv --dev audusd-zonefvg-dev.csv --benchmark eurusd-breakout-dev.csv --benchmark gbpusd-breakout-dev.csv --benchmark usdjpy-breakout-dev.csv --benchmark audusd-breakout-dev.csv --seed 1
     ```
 
     Optional extra inputs, each made like the development files: `--stress`
@@ -186,11 +221,21 @@ result repeatable; keep it the same.
     `--holdout` and `--benchmark-holdout`. Without them the report marks those
     rows as missing (INCOMPLETE), not as passed.
 
+    **Read this for the Breakout report.** The Breakout mode has no
+    benchmark yet (spec 12.1 step 10), so its report always shows the rows
+    "Versus benchmark (return-to-drawdown)" with the value "no benchmark log"
+    and the result NOT EVALUATED, and the last line then says
+    `Overall: INCOMPLETE` unless another row fails. That is expected and is
+    not a failure of the other rows. Spec 13.1 says the row "Versus
+    benchmark" is not applied to the Breakout mode; every other row is. So
+    judge the Breakout mode by all the other rows.
+
 To save any report to a file, add `> report.md` at the end of the command.
 
 ## Part 4. Which numbers decide
 
-The `accept` report states pass or fail for each line of spec 13.1:
+The `accept` report states pass or fail for each line of spec 13.1. The
+table is applied to each mode separately (spec 13.1, "Two entry modes"):
 
 | Measure | Development | Holdout |
 |---|---|---|
@@ -205,13 +250,22 @@ The `accept` report states pass or fail for each line of spec 13.1:
 | Profit factor under cost stress | Above 1.10 | n/a |
 | Versus benchmark | Better return-to-drawdown ratio | Same |
 
-How to act on it (spec 12.1 and 13.4):
+For the Breakout mode the row "Versus benchmark" is not applied (see
+step 15).
+
+How to act on it (spec 12.1, 13.1 and 13.4):
 
 - **Baseline unprofitable across symbols:** stop. The rules are revisited with
   the developer; a losing baseline is not optimised into a winner.
-- **Development passes:** robustness, variants, then the holdout, once.
+- **Two modes:** a mode may go live only if it passes by itself. If only one
+  passes, that mode is the candidate. If both pass, the mode with the better
+  return-to-drawdown ratio on the development data is chosen.
+- **Development passes:** robustness, variants, then the holdout, once, and
+  for the chosen mode only. Running both modes on the holdout and keeping
+  the better one would turn the holdout into a tuning step (spec 13.1).
 - **Holdout fails:** the strategy is rejected or redesigned; the holdout is
   not used again for tuning.
 
-Send the developer the four `-dev.csv` files and the reports, together with
-the settings you used (period, commission, spread, data source).
+Send the developer the `-dev.csv` files of both modes and the reports,
+together with the settings you used (period, commission, spread, data
+source).
