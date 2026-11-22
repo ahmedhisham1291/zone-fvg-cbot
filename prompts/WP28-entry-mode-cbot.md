@@ -7,8 +7,9 @@
 (the row "Entry mode" of 2026-11-22); the requirement texts below;
 `src/ZoneFvg.Bot/ZoneFvgBot.cs` and `ParameterText.cs`; `deploy/README.md`,
 `deploy/params/*.cbotset.example`, `docs/backtest-howto.md` and
-`README.md`. Depends on WP25, WP26 and WP27; WP29 (order guards) is merged
-before this package starts.
+`README.md`. Depends on WP25, WP26 and WP27; WP29 (order and recovery
+guards) and WP30 (a reference serves one day) are merged before this
+package starts.
 
 ## Requirements to implement
 
