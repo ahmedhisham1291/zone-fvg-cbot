@@ -60,7 +60,12 @@ None.
    stop-order call"): before an instance trades in Breakout mode on the
    Challenge account, the owner has run and signed the stop-order record
    `docs/test-records/WP26-stop-orders.md` (PLT-011) on a demo or Free
-   Trial account.
+   Trial account. And it says what "flat" means (spec 10.2): no open
+   position and no pending order of the bot. A pending order placed under
+   the old parameter values is kept across the restart with its old levels
+   and size, so before a change of parameters or of the mode no bot order
+   is pending (an entry order lives two hours at most) or it is cancelled
+   by hand.
 3. **PLT-013, backtest guide.** In `docs/backtest-howto.md`:
    - step 6: `EntryMode` is `Breakout` or `ZoneFvg`; run the whole of Part 2
      once per mode with the same period, data, commission and spread, and
