@@ -5,18 +5,23 @@ under a strict process: numbered requirements, tests first, an independent
 validator agent, CI gates, and an orchestrating session that merges when the
 gates are green and reports every merge to the owner.
 
-**Status:** skeleton only. No trading logic exists yet.
-
-> This repository skeleton was written without a .NET SDK, so the project
-> files and the first CI run are **unverified**. Work package WP00 exists to
-> make them green. Expect a few small fixes there.
+**Status:** the bot is built: the core logic, the cTrader adapter, the
+simulation tools and the deployment files. It has two entry modes, chosen
+per instance with the parameter `EntryMode` (spec v0.10): **Breakout**, the
+default, and **ZoneFvg**. `docs/requirements.yml` holds 126 requirements;
+116 are implemented (count of `python3 tools/check_traceability.py`). Of the
+other ten, nine are checked by hand on cTrader and wait for the owner's
+signed test records (`docs/test-records/`), and one (REC-016, symbol trading
+sessions) is still planned. No backtest result is recorded yet, so nothing here
+says whether either mode is profitable. How to run the backtests:
+`docs/backtest-howto.md`. How to deploy: `deploy/README.md`.
 
 ## What is here
 
 | Path | What it is |
 |---|---|
-| `docs/spec.md` | The specification (v0.8) |
-| `docs/requirements.yml` | 94 numbered requirements, each tied to a work package and a way of proving it |
+| `docs/spec.md` | The specification (v0.10) |
+| `docs/requirements.yml` | 126 numbered requirements, each tied to a work package and a way of proving it |
 | `docs/architecture.md` | Layers and type contracts all work packages share |
 | `AGENTS.md` | Rules every agent must follow |
 | `prompts/WP00` … `WP11` | One detailed implementation prompt per work package |
