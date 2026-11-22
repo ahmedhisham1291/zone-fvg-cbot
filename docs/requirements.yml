@@ -1513,6 +1513,38 @@ requirements:
       mode the core's start line ends with mode=Breakout; in ZoneFvg mode
       every journal line is as before.
 
+  - id: REC-018
+    wp: WP29
+    spec: "8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      The D1 series in Breakout mode (decided 2026-11-22 after the review of
+      WP27). In Breakout mode the last closed D1 bar is the reference, so
+      recovery treats the D1 series as stale when at least one bar length of
+      open-market time has passed since the close of its last bar. In
+      ZoneFvg mode, and for the H4 and M15 series in both modes, the limit of
+      REC-003 stays at two bar lengths. A D1 series that lacks the bar that
+      closed last therefore fails recovery in Breakout mode as stale data:
+      the bot stays in Recovering, alerts and tries again as REC-003 says,
+      and sends no order. Open-market time is counted as in REC-003.
+
+  - id: REC-019
+    wp: WP29
+    spec: "12.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Fault scenarios in Breakout mode (decided 2026-11-22 after the review
+      of WP27). Fault scenarios 5, 6, 8 and 14 of spec 12.3 also pass as
+      automated FakeBroker scenarios through the core in Breakout mode, with
+      zero duplicate orders (never a second order for one breakout id) and
+      zero positions left without a stop loss. Scenario 6 includes the case
+      of EXE-021: the placement with an unclear outcome was applied, filled
+      and closed before the next bar, and nothing is sent again. On the sell
+      side of recovery a pending sell stop with a known BL- id is kept
+      across a restart and a sell position with a known BL- id is adopted.
+
   - id: PLT-012
     wp: WP28
     spec: "7"

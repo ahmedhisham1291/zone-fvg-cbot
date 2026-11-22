@@ -51,6 +51,7 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | F. Stop-entry orders | Breakout entries are stop orders with stop loss, take profit and expiry attached at placement. They are placed, verified, recovered and cancelled by the same rules as limit orders | 5.2, 5.3, 6.1, 8.3 |
 | G. Which mode goes live | Both modes are backtested on the same data and costs. A mode may go live only if it passes section 13.1 by itself. The Breakout mode is the simple trend-following benchmark that the ZoneFvg mode has to beat; the Breakout mode itself has no benchmark yet | 12.1, 13.1 |
 | H. Order guards (added on 22 November 2026, after the review of the stop-order code) | After an unclear outcome nothing is resent when the broker's history since the signal's confirmation holds a closed trade with the label, or when that history cannot be read. An order whose type does not fit its signal's mode is never sent | 5.2, 5.3 |
+| I. Recovery in Breakout mode (added on 22 November 2026, after the review of the wiring) | A D1 series that lacks the bar that closed last does not pass recovery in Breakout mode, because that bar is the reference. The automated fault scenarios 5, 6, 8 and 14 also run in Breakout mode. "Flat" for a deployment or a parameter change means no open position and no pending order of the bot | 8.3, 10.2, 12.3 |
 | Proposed, marked in the plan pull request | Breakout values: entry buffer 0.1 x ATR(M15), stop 1.0 x ATR(H4), target 2R, order life 8 bars. No trailing stop in the baseline (it is the first variant to test). Symbols unchanged; index CFDs are an open question | 3.7, 7, 12.4, 14 |
 | FTMO wording | The gap-trading rule is restated as FTMO's page reads on 22 November 2026: two separate situations joined by "or" | 15.2 |
 
@@ -513,7 +514,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 
 Runs at every start and after every reconnect. The bot is in state **Recovering** and cannot trade until it finishes.
 
-1. **Wait for connection and data.** Confirm the server is connected and the latest closed M15 bar is recent. Load at least 300 D1 bars, 500 H4 bars and 3,000 M15 bars, loading more history if needed. If there are too few bars or the data is stale, stay in Recovering and alert. A gap that is still there after reloading the history is the broker's data (an early close, a broker outage): it is accepted and reported, not a reason to stay in Recovering (v0.9, decision A). Time outside the symbol's trading sessions, such as gold's daily break, is not a gap.
+1. **Wait for connection and data.** Confirm the server is connected and the latest closed M15 bar is recent. Load at least 300 D1 bars, 500 H4 bars and 3,000 M15 bars, loading more history if needed. If there are too few bars or the data is stale, stay in Recovering and alert. A gap that is still there after reloading the history is the broker's data (an early close, a broker outage): it is accepted and reported, not a reason to stay in Recovering (v0.9, decision A). Time outside the symbol's trading sessions, such as gold's daily break, is not a gap. In Breakout mode the D1 series is stale after one bar length of open-market time since the close of its last bar, not two: the last closed D1 bar is the reference, and a series without it must not pass (v0.10, added on 22 November 2026).
 2. **Rebuild the signal layer.** Replay the stored bars through the same detection code with trading switched off. This restores every zone and its state exactly as if the bot had never stopped.
 3. **Read the broker.** List positions, pending orders and recent history carrying the bot's label for this symbol.
 4. **Adopt positions.** For each position: match it to its zone by id, read its plan from the comment, and check it has a stop loss and take profit. Missing stop: set it from the comment. Cannot set: close the position and alert.
@@ -636,7 +637,7 @@ The cloud remains a fallback. One of the news feeds offers a WebSocket route tha
 - **Persistence:** a mounted volume for the bot's local storage and logs.
 - **Credentials:** the cTrader ID password sits in a file readable only by the service user. Secure the VPS (key-only SSH, firewall, automatic security updates).
 - **Version control:** pin the CLI image version. Upgrade only after the fault-injection tests pass on demo with the new version.
-- **Deployments:** deploy a new bot version only when flat, or after confirming on demo that the new version adopts the old version's trades.
+- **Deployments:** deploy a new bot version only when flat, or after confirming on demo that the new version adopts the old version's trades. Flat means no open position and no pending order of the bot. The same holds for a change of parameters: a position opened under the old values becomes a stranger, and a pending order placed under the old values is kept across the restart with its old levels and size (v0.10, added on 22 November 2026).
 
 cTrader's documentation does not describe what the CLI does after a crash, reboot or disconnect, so the restart behaviour must be proven on a demo account (section 12.3).
 
@@ -764,7 +765,7 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 | 13 | Force repeated exceptions | Bot halts; does not crash or loop |
 | 14 | Restart ten times in ten minutes | Calendar fetched at most once; no orders duplicated |
 
-In Breakout mode "limit order" in tests 2 and 3 reads "stop order" (v0.10). The tests are run in the mode that goes live.
+In Breakout mode "limit order" in tests 2 and 3 reads "stop order" (v0.10). The tests are run in the mode that goes live. The automated scenarios of tests 5, 6, 8 and 14 also exist in Breakout mode (v0.10, added on 22 November 2026).
 
 **Soak test.** Four weeks of continuous demo running on the VPS with at least ten forced restarts at random times.
 
