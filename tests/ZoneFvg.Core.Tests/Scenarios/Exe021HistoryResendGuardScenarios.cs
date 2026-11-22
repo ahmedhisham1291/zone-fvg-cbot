@@ -309,11 +309,32 @@ public class Exe021HistoryResendGuardScenarios
         ScenarioAssert.Global(h.Broker);
     }
 
+    [Fact]
+    [Trait("Req", "EXE-021")]
+    public void HistoryWithAMissingEntry_TheEntryIsSkippedAndTheClosedTradeStillFound()
+    {
+        ExecutionHarness h = ExecutionData.BreakoutHarness(ExecutionData.BuyQuote());
+        var broker = new HistoryBroker(h.Broker) { Mode = HistoryMode.NullEntryFirst };
+        var orders = new OrderManager(broker, h.Counter, h.Events);
+        h.Broker.Script(BrokerCall.Place, BrokerFault.UnclearApplied, "Timeout");
+        Assert.Equal(PlaceOutcome.Unclear, orders.TryPlace(h.OrderOf(ExecutionData.BreakoutBuy())).Outcome);
+        ClosedTradeInfo trade = FillAndClose(h, 1.0862, 1.0864, 1.0823, 1.0825, 1.0864, 1.0823);
+        h.Broker.AdvanceTo(NextClose);
+
+        PlaceResult resolved = Assert.Single(orders.ResolvePending(new[] { NextBar(1.0862, 1.0823) }));
+
+        Assert.Equal(PlaceOutcome.Placed, resolved.Outcome);
+        Assert.Equal("filled and closed as position " + Id(trade.PositionId), resolved.Detail);
+        Assert.Equal(1, h.Broker.Count(BrokerCall.Place));
+        Assert.Equal(0, orders.UnresolvedCount);
+    }
+
     private enum HistoryMode
     {
         Inner,
         Null,
         Throw,
+        NullEntryFirst,
     }
 
     /// <summary>A <see cref="FakeBroker"/> whose history can be missing or fail; every history read is recorded.</summary>
@@ -349,6 +370,7 @@ public class Exe021HistoryResendGuardScenarios
             {
                 HistoryMode.Null => null!,
                 HistoryMode.Throw => throw new InvalidOperationException("history unavailable"),
+                HistoryMode.NullEntryFirst => new ClosedTradeInfo[] { null! }.Concat(_inner.GetHistory(sinceUtc)).ToList().AsReadOnly(),
                 _ => _inner.GetHistory(sinceUtc),
             };
         }
