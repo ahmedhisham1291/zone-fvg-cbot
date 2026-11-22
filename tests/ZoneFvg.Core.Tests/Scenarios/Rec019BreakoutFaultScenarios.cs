@@ -188,10 +188,13 @@ public class Rec019BreakoutFaultScenarios
     {
         string document = NewsTestData.OneEventDocument("Non-Farm Employment Change", "USD", "2026-03-06T08:30:00-05:00", "High");
         var http = new FakeTransport(NewsTestData.Ok(document));
-        var broker = new FakeBroker(Data.Start, ExecutionData.Account(), Data.Quote());
+        // The first start is 45 minutes before the confirmation, as in the REC-013 scenario: every restart
+        // then lies within the 60-minute minimum between calendar fetches at a start (NWS-006).
+        DateTime start = Data.Confirmation.AddMinutes(-45.0);
+        var broker = new FakeBroker(start, ExecutionData.Account(), Data.Quote());
         broker.MarginPerUnit = 0.04;
         var h = new BotHarness(Data.Bars(), broker, isBacktest: false, http: http);
-        h.Start(Data.Start, Data.Parameters());
+        h.Start(start, Data.Parameters());
         h.FeedTo(Data.Confirmation);
         PendingOrderInfo order = Assert.Single(h.Broker.GetPendingOrders());
         Assert.Equal(Data.BuyLabel, order.Label);
