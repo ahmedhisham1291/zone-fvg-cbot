@@ -26,7 +26,7 @@ REQUIRED_APPROVALS="${REQUIRED_APPROVALS:-0}"
 
 echo "==> Labels"
 gh label create "human-approved-infra" --repo "$REPO" --color B60205 \
-  --description "Owner approves changes to protected paths in this pull request" --force
+  --description "Protected-path changes in this pull request are approved (orchestrating session or owner)" --force
 gh label create "work-package" --repo "$REPO" --color 0E8A16 \
   --description "Implements one work package" --force
 gh label create "validator-fail" --repo "$REPO" --color D93F0B \

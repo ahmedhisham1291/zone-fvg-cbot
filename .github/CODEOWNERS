@@ -1,7 +1,9 @@
-# The owner reviews everything. Agents never approve or merge.
+# The owner is the code owner of record. Since 2026-11-22 the orchestrating
+# session merges without the owner's review (AGENTS.md, "Who merges").
+# Implementer and validator agents never approve or merge.
 *                       @ahmedhisham1291
 
-# Rules, checks and the specification: owner only.
+# Rules, checks and the specification: protected paths (label human-approved-infra).
 /.github/               @ahmedhisham1291
 /.claude/               @ahmedhisham1291
 /tools/                 @ahmedhisham1291

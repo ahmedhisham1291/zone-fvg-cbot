@@ -50,8 +50,8 @@ pull request. Never claim a command passed without running it.
 ## Hard rules
 
 1. **The spec decides.** If the spec, a requirement and your prompt disagree,
-   or something is not specified, stop and ask the human. Do not guess, and do
-   not "improve" a trading rule.
+   or something is not specified, stop and ask. Do not guess, and do not
+   "improve" a trading rule. Who answers is in "Who merges" below.
 2. **One work package per pull request.** Implement only the requirement ids
    listed in your prompt. No drive-by refactoring.
 3. **Tests first.** Write the tests for a requirement before its
@@ -118,7 +118,8 @@ pull request. Never claim a command passed without running it.
 
 ## When to stop and ask
 
-Stop, write down the question, and wait for the human when:
+Stop, write down the question, and wait for the answer (the orchestrating
+session gives it; see "Who merges") when:
 
 - a requirement is ambiguous or contradicts another;
 - a requirement cannot be tested as written;
@@ -132,21 +133,51 @@ Every pull request is checked by CI and by the validator agent
 (`prompts/validator.md`). The validator did not write your code and will not
 take your word for anything: it reads the diff and re-runs the checks.
 
-### Who merges (owner decision of 2026-11-13)
+### Who merges (owner decision of 2026-11-22)
 
-Implementer and validator agents never merge.
+The owner does not review or merge pull requests. This replaces the rule of
+2026-11-13, under which protected paths and open decisions waited for the
+owner.
 
-The orchestrating session may merge a work-package pull request for the owner
-only when all of these hold:
+Implementer and validator agents never merge and never add a label.
 
-- `ci` and `guard` are green on the head commit;
-- the validator verdict for that exact head commit is PASS;
-- the validator report has no open question for the owner, and "Decisions for
-  the human" has no item waiting for an answer;
-- the pull request changes no protected path.
+The orchestrating session merges every pull request for the owner, also one
+that changes a protected path, when all of these hold on the head commit:
 
-Everything else is merged by the human owner: any change to a protected path,
-any pull request with an open question or decision, and any pull request
-without a PASS verdict. The orchestrating session reports every merge it makes
-to the owner, with a plain-language summary of anything that touches orders,
-risk or money.
+- `build-test` and `repo-checks` are green;
+- `protected-paths` is green. A pull request that changes a protected path
+  needs the label `human-approved-infra` for that. The orchestrating session
+  adds the label itself, after it has read every protected change in the
+  diff;
+- for a work-package pull request that changes `src/` or `tests/`: the
+  validator verdict for that head commit is PASS. If the validator cannot be
+  run at that time (for example because of a usage limit), the pull request
+  is merged on green CI and the validator runs on `main` afterwards; what it
+  finds is fixed in a new pull request (owner decision of 2026-11-14);
+- no question of the implementer or of the validator is left without an
+  answer.
+
+**Questions and decisions.** When an agent stops and asks, or lists
+something under "Decisions for the human" or `questions_for_owner`, the
+orchestrating session answers. A decision that binds later work is recorded
+in `docs/architecture.md` section 10 with its date. Where this file or a
+prompt says "ask the human" or "ask the owner", it now means: ask the
+orchestrating session.
+
+**What the owner is told.** After every merge the orchestrating session
+reports to the owner in plain language: what was merged; anything that
+touches orders, risk or money; every protected path that changed; every
+decision it made; and every existing test or check that was changed, and
+why. The owner can reverse any of it. A reversal is a new pull request.
+
+**What stays with the owner.** None of these is a merge, and no agent does
+or decides them:
+
+- the money decisions recorded in the spec: the account, the symbols, the
+  risk per trade and the ladder, the account limits and the FTMO guard
+  values. They change only when the owner asks for the change;
+- the gates that need the owner's cTrader application or account: the
+  backtests and their go or no-go, the manual test records (requirements
+  with `verify: manual` or `backtest`), the fault-injection tests and the
+  start of the FTMO Challenge (`prompts/00-orchestrator.md`);
+- secrets and credentials.

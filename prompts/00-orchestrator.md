@@ -6,10 +6,15 @@ This file is for the human owner and for any agent that coordinates others.
 
 | Role | Who | May do | May not do |
 |---|---|---|---|
-| Implementer | An AI coding agent, one per work package | Write code and tests inside the paths its prompt allows; open a pull request | Touch protected paths; merge; review its own work |
-| Validator | A separate AI agent session with `prompts/validator.md` | Read the diff, run checks, write a verdict | Change any file other than its report |
+| Implementer | An AI coding agent, one per work package | Write code and tests inside the paths its prompt allows; open a pull request | Touch protected paths; merge; add a label; review its own work |
+| Validator | A separate AI agent session with `prompts/validator.md` | Read the diff, run checks, write a verdict | Change any file other than its report; merge; add a label |
 | CI | GitHub Actions | Build, test, coverage, traceability, architecture, secrets, protected paths | n/a |
-| Owner | The human | Answer questions, approve decisions, merge | n/a |
+| Orchestrator | The orchestrating session: the chat session the owner talks to | Write plans (spec, requirements, prompts); start implementer and validator sessions; answer their questions and record binding decisions in `docs/architecture.md` section 10; add the label `human-approved-infra` after reading every protected change; merge by the rule in `AGENTS.md`, "Who merges"; report every merge to the owner | Validate a change it wrote; merge on a red check; weaken a check; change one of the owner's money decisions; pass a gate from the table below |
+| Owner | The human | Money decisions; the gates in the table below; secrets and credentials; reverse anything that was merged | n/a |
+
+The owner does not review or merge pull requests (owner decision of
+2026-11-22). `AGENTS.md`, section "Who merges", is the rule; this file says
+how the loop runs under it.
 
 The implementer and the validator must be different sessions. The validator
 must not be shown the implementer's reasoning, only the repository.
@@ -33,23 +38,38 @@ is sequential.
 
 ## Loop for one work package
 
-1. Owner creates the branch `wp/NN-short-name` from an up-to-date `main`.
-2. Owner starts a fresh implementer session and says:
+1. The orchestrating session creates the branch `wp/NN-short-name` from an
+   up-to-date `main`.
+2. It starts a fresh implementer session and says:
    `Implement prompts/WPNN-<name>.md`.
 3. Implementer works until every item of the prompt's "Definition of done"
-   holds, then opens a pull request using the template.
+   holds, then opens a pull request using the template. When the implementer
+   stops and asks, the orchestrating session answers in the pull request (or
+   in the hand-over to the next implementer session) and records a decision
+   that binds later work in `docs/architecture.md` section 10.
 4. CI runs. The implementer fixes failures without weakening any check.
-5. The validator runs (automatically in CI, or locally in a fresh session:
-   `Use the validator subagent on this branch against main`).
-6. On a FAIL verdict the owner passes the validator's findings, unchanged, to
-   a fresh implementer session. Repeat from step 3. After three FAIL rounds on
-   the same pull request, stop and review by hand: the prompt or the spec is
-   probably unclear.
-7. On PASS the owner reads the "Decisions for the human" section, reads the
-   diff of anything touching orders or risk, and merges.
-8. Owner updates `docs/progress.md` (one line per merged work package).
+5. The validator runs in a fresh session:
+   `Use the validator subagent on this branch against main`. The GitHub
+   workflow for it is switched off (owner decision of 2026-11-13). If the
+   validator cannot be run at that time, see `AGENTS.md`, "Who merges".
+6. On a FAIL verdict the orchestrating session passes the validator's
+   findings, unchanged, to a fresh implementer session. Repeat from step 3.
+   After three FAIL rounds on the same pull request, stop the rounds: the
+   prompt or the spec is probably unclear. The orchestrating session reads
+   the diff and the three reports, corrects the prompt or the spec in a plan
+   pull request of its own, and names this in its report to the owner.
+7. On PASS the orchestrating session answers every item under "Decisions for
+   the human" and `questions_for_owner`, reads the diff of anything touching
+   orders or risk, adds the label `human-approved-infra` if a protected path
+   changed and it has read each such change, and merges when the conditions
+   of `AGENTS.md`, "Who merges", hold.
+8. The orchestrating session reports the merge to the owner in plain language
+   (`AGENTS.md`, "What the owner is told").
 
 ## Gates that no agent can pass alone
+
+These are not merges. The owner decision of 2026-11-22 does not change them:
+each needs the owner's cTrader application or account, and the owner decides.
 
 | Gate | After | Who decides |
 |---|---|---|

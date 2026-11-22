@@ -11,7 +11,10 @@ Labels come from the PR_LABELS environment variable (comma separated).
 
 Rules
   * Protected paths may change only when the pull request carries the label
-    `human-approved-infra`, which only the owner applies.
+    `human-approved-infra`. The orchestrating session applies it after
+    reading every protected change (AGENTS.md, "Who merges", owner decision of
+    2026-11-22); the owner may apply it too. Implementer and validator agents
+    never do.
   * docs/requirements.yml may change without the label only if every changed
     line is a `status:` line going from `planned` to `implemented`.
 
@@ -111,7 +114,7 @@ def main() -> int:
         print(f"  ok   {note}")
 
     if violations and OVERRIDE_LABEL in labels:
-        print(f"\nProtected changes ALLOWED by label '{OVERRIDE_LABEL}'. The owner must review each one:")
+        print(f"\nProtected changes ALLOWED by label '{OVERRIDE_LABEL}'. Each one is named in the merge report to the owner:")
         for violation in violations:
             print(f"  -    {violation}")
         return 0
@@ -120,7 +123,7 @@ def main() -> int:
         print(f"\nPROTECTED PATH CHECK FAILED ({len(violations)} problem(s)):")
         for violation in violations:
             print(f"  -    {violation}")
-        print(f"\nOnly the owner may approve these, by adding the label '{OVERRIDE_LABEL}'.")
+        print(f"\nThe orchestrating session (or the owner) approves these by adding the label '{OVERRIDE_LABEL}'.")
         return 1
 
     print("protected path check passed")
