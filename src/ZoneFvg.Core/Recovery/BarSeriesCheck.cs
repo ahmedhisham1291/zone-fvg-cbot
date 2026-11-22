@@ -150,7 +150,7 @@ public static class BarSeriesCheck
     {
         if (staleBarLengths < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(staleBarLengths), staleBarLengths, "The number of bar lengths after which the last bar is stale must be at least 1.");
+            throw new ArgumentOutOfRangeException(nameof(staleBarLengths), "The number of bar lengths after which the last bar is stale must be at least 1 but was " + Text(staleBarLengths) + ".");
         }
 
         return FirstProblem(timeFrame, bars, required, nowUtc, fridayCloseUtc, holidays, WeeklyOpen(sessions), false, staleBarLengths);
