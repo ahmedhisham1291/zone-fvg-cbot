@@ -120,12 +120,75 @@ None.
    evening UTC and running 24 hours; there is no short daily bar for
    Sunday; H4 bars follow every four hours from the weekly open; a bar's
    close is its open plus 24 hours or 4 hours; at the daily close the
-   journal shows the D1 bar processed before the H4 bar and the H4 bar
-   before the M15 bar. If the D1 bars open at 00:00 UTC or a short Sunday
+   bot writes no `error` line about a rejected bar around the daily close
+   (it prints no line for a processed bar; take the exact text of the
+   rejection from the code). If the D1 bars open at 00:00 UTC or a short Sunday
    bar exists, the owner records it, and Breakout mode does not go live
    before a follow-up. Keep the "Observed" and "Pass / fail" lines; change
    nothing else in that file. `deploy/README.md` names this record as the
    second go-live condition of Breakout mode, beside the stop-order record.
+
+## Additions after the first review (decided by the orchestrating session on 2026-11-23)
+
+The validator of pull request 64 failed the package for one sentence of the
+deployment guide and listed smaller points. This section widens the package
+for the fix round. The decisions are in `docs/architecture.md` section 10
+(rows of 2026-11-23) and spec 13.1 ("What goes live" and the holdout
+benchmark).
+
+**More allowed paths, for this round only:**
+
+- `docs/test-records/WP08-adapter.md`: steps 1, 2, 3 and 5, to bring their
+  expected texts in line with what the code prints and the panel shows
+  (take every text from the code); nothing else in that file
+- `docs/test-records/WP11-fault-injection.md`: say that the record is run
+  in the mode that goes live, and that the pending order of tests 2 and 3
+  is a limit order in ZoneFvg mode and a stop order in Breakout mode (spec
+  12.3); nothing else in that file
+- `docs/runbook.md`: one sentence, where parameters are changed, that
+  `EntryMode` is a parameter and is changed only when flat, with a pointer
+  to `deploy/README.md`; nothing else in that file
+
+**What to change:**
+
+7. **What goes live** (the blocking finding). `deploy/README.md`: remove
+   the clause that tells the owner to leave the three "Entry mode" values
+   at their default. Say, in the section "Entry mode" and where the five
+   files are prepared, what spec 13.1 says: `EntryMode` in the files of the
+   instances that go live is the mode chosen by the acceptance procedure
+   (`docs/backtest-howto.md`, Part 4); the files also carry the accepted
+   settings; every other value stays at its default; the laptop stage, the
+   fault tests and the soak run with these files; the hash in the start
+   line must equal, symbol by symbol, the hash of the accepted backtest
+   run (say which values the hash covers, from `ParameterHash`); the example
+   files carry `Breakout` only because it is the cBot default. A mode that
+   did not pass or was not chosen is never set on the Challenge account.
+   Check the laptop part of the guide and the preparation it refers to for
+   the same mistake.
+8. **Holdout benchmark** (spec 13.1). `docs/backtest-howto.md`, Part 4: if
+   ZoneFvg is the chosen mode, Breakout is run once on the holdout, after
+   the choice, with the same data and costs and its accepted settings, and
+   its trade logs are the benchmark-holdout input of the ZoneFvg report;
+   its result changes nothing about the choice.
+9. **Adapter.** Restore the order of the refusals that existed before this
+   package (the timeframe names are parsed before the time texts, as on
+   `main` before WP28). Replace the "everything that is not Breakout is
+   ZoneFvg" expression by one that names both known values and refuses any
+   other with the invalid-parameter message for `EntryMode`.
+10. **The remaining points of the review**, each checked against the code
+    before you write it: the WP28 record's backtest step points to the
+    backtest guide's step that sets `RiskEpochDate` and `InitialCapital`;
+    its parameter-file step proves that the keys are read (one start from
+    a copy with `EntryMode=ZoneFvg`) and states the expected hashes, which
+    you compute with the core's own rule and say how; the wording of the
+    Breakout acceptance report in the backtest guide is what
+    `AcceptanceReport` and the command line print (both benchmark rows, and
+    what follows the overall line); with gold, the ZoneFvg command also
+    takes the gold Breakout log as benchmark, and the "do steps again"
+    sentence names the right steps; a pending order is kept after a change
+    of values but cancelled after a change of the mode; where the D1 gate
+    is signed; the three small wordings of the record; the README rows on
+    the prompts and the order of work.
 
 ## Tests required
 
