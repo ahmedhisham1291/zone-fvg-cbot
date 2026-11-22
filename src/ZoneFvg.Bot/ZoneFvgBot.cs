@@ -9,6 +9,7 @@ using ZoneFvg.Core.News;
 using ZoneFvg.Core.Ops;
 using ZoneFvg.Core.Risk;
 using ZoneFvg.Core.Signals;
+using CoreEntryMode = ZoneFvg.Core.App.EntryMode;
 using CoreNewsFailMode = ZoneFvg.Core.News.NewsFailMode;
 using CoreTimeFrame = ZoneFvg.Core.Domain.TimeFrame;
 
@@ -36,6 +37,18 @@ namespace cAlgo.Robots
         // ------------------------------------------------------------------ parameters (spec section 7, PLT-006)
         // Parameter attribute (Name, DefaultValue, Group): https://help.ctrader.com/ctrader-algo/references/Attributes/ParameterAttribute/
         // Parameter types: https://help.ctrader.com/ctrader-algo/guides/parameter-types
+
+        /// <summary>Entry mode of this instance, Breakout or ZoneFvg (PLT-012, spec 3.7 and 7).</summary>
+        [Parameter("EntryMode", DefaultValue = "Breakout", Group = "Entry mode")]
+        public string EntryMode { get; set; } = "Breakout";
+
+        /// <summary>Breakout entry beyond the confirming bar in ATR(M15) (PLT-012, SIG-024).</summary>
+        [Parameter("BreakoutEntryBufferAtr", DefaultValue = 0.1, Group = "Entry mode")]
+        public double BreakoutEntryBufferAtr { get; set; }
+
+        /// <summary>Breakout stop distance in ATR(H4) (PLT-012, SIG-024).</summary>
+        [Parameter("BreakoutStopAtr", DefaultValue = 1.0, Group = "Entry mode")]
+        public double BreakoutStopAtr { get; set; }
 
         /// <summary>Trend filter timeframe (SIG-005). Fixed: D1.</summary>
         [Parameter("BiasTimeFrame", DefaultValue = "D1", Group = "Signal")]
@@ -460,7 +473,7 @@ namespace cAlgo.Robots
             var http = new HttpTransport(Http, log);
             _painter = CreatePainter(broker, isBacktest, log);
 
-            log.Info("version " + BuildInfo.Version + ", symbol " + SymbolName + ", backtest " + (isBacktest ? "yes" : "no"));
+            log.Info("version " + BuildInfo.Version + ", symbol " + SymbolName + ", backtest " + (isBacktest ? "yes" : "no") + ", mode " + parameters.Mode);
             LogCosts(broker, log);
             return new BotCore(parameters, broker, store, http, log, isBacktest);
         }
@@ -511,11 +524,16 @@ namespace cAlgo.Robots
         private BotParameters BuildParameters(bool isBacktest)
         {
             ParameterText.Fixed(nameof(DayResetZone), DayResetZone, "Europe/Prague");
+            CoreEntryMode mode = ParameterText.EnumName<CoreEntryMode>(nameof(EntryMode), EntryMode);
+            ExecutionParameters execution = BuildExecution();
             return new BotParameters
             {
                 Symbol = SymbolName,
                 Signal = BuildSignal(),
-                Execution = BuildExecution(),
+                Execution = execution,
+
+                // PLT-012: the mode selects whether the breakout parameters are passed; the core checks their values.
+                Breakout = mode == CoreEntryMode.Breakout ? BuildBreakout(execution) : null,
                 Risk = BuildRisk(),
                 News = BuildNews(),
 
@@ -557,6 +575,18 @@ namespace cAlgo.Robots
                 EntryLevelPct = EntryLevelPct,
                 StopBufferAtr = StopBufferAtr,
                 RewardRisk = RewardRisk,
+            };
+        }
+
+        private BreakoutParameters BuildBreakout(ExecutionParameters execution)
+        {
+            // PLT-012, REC-017: the breakout window is the session window, as parsed for the execution parameters.
+            return new BreakoutParameters
+            {
+                EntryBufferAtr = BreakoutEntryBufferAtr,
+                StopAtrMult = BreakoutStopAtr,
+                WindowStartUtc = execution.SessionStartUtc,
+                WindowEndUtc = execution.SessionEndUtc,
             };
         }
 
