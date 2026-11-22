@@ -19,6 +19,18 @@ how the loop runs under it.
 The implementer and the validator must be different sessions. The validator
 must not be shown the implementer's reasoning, only the repository.
 
+When the orchestrating session starts both (as it has since 2026-11-22),
+the separation is one of contexts: the implementer is a separate agent
+session with a fresh context, the validator is another fresh agent session
+(`.claude/agents/validator.md`) that is given the branch, the base and the
+facts about the environment and never the implementer's report. The
+orchestrating session writes plans, answers questions and merges; it writes
+no line under `src/` or `tests/` in a work package. Commits and pull request
+texts of all three may carry the link of the one chat session they were
+started from; that link does not mean that one context wrote and reviewed
+the change. The orchestrating session has seen both sides and decides on a
+PASS with questions, so it tells the owner how each review was separated.
+
 ## Order
 
 ```
@@ -78,6 +90,7 @@ each needs the owner's cTrader application or account, and the owner decides.
 | Holdout backtest | After baseline | Owner |
 | Fault-injection tests on a real account (spec 12.3) | WP11 | Owner |
 | Stop-order check on a demo or Free Trial account (PLT-011, `docs/test-records/WP26-stop-orders.md`), before any instance trades in Breakout mode | WP28 | Owner |
+| Open hour of the platform's D1 bars written into `docs/test-records/WP08-adapter.md` step 3 (expected 21:00 or 22:00 UTC, no short Sunday bar), before any instance trades in Breakout mode | WP28 | Owner |
 | Start of the FTMO Challenge | All of the above | Owner |
 
 ## Cost and context hygiene

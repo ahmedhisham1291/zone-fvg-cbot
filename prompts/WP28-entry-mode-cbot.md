@@ -26,6 +26,7 @@ into `BotParameters.Breakout` or leaves it null.
 - `deploy/**`
 - `docs/backtest-howto.md`, `README.md`
 - a new file `docs/test-records/WP28-entry-mode.md`
+- `docs/test-records/WP08-adapter.md`: step 3 only, as item 6 says
 - `tests/ZoneFvg.Core.Tests/**` (only if you add a core helper that needs a
   test; none is expected)
 
@@ -105,8 +106,26 @@ None.
      `BreakoutStopAtr=0`: refuses and names it;
    - a short backtest in each mode on EURUSD produces `signal` lines with
      `kind=breakout` in one and zone ids in the other;
-   - each parameter file in `deploy/params/` loads without an error.
+   - each parameter file in `deploy/params/` loads without an error;
+   - the open time (UTC) of the last three D1 bars, read from the chart or
+     the journal, and whether a short daily bar of about two hours exists
+     for Sunday (see item 6).
    Each step has "Observed" and "Pass / fail" lines.
+6. **The D1 boundary** (`docs/architecture.md` section 10, row "Daily and
+   H4 bar boundaries on cTrader"). In `docs/test-records/WP08-adapter.md`,
+   step 3, replace the expectation (it says D1 bars open at 00:00 UTC and
+   H4 bars at 00:00, 04:00 ...; that was wrong for cTrader) with: D1 bars
+   open at 21:00 UTC while New York is on daylight saving time and at
+   22:00 UTC otherwise, five a week, the first of the week on Sunday
+   evening UTC and running 24 hours; there is no short daily bar for
+   Sunday; H4 bars follow every four hours from the weekly open; a bar's
+   close is its open plus 24 hours or 4 hours; at the daily close the
+   journal shows the D1 bar processed before the H4 bar and the H4 bar
+   before the M15 bar. If the D1 bars open at 00:00 UTC or a short Sunday
+   bar exists, the owner records it, and Breakout mode does not go live
+   before a follow-up. Keep the "Observed" and "Pass / fail" lines; change
+   nothing else in that file. `deploy/README.md` names this record as the
+   second go-live condition of Breakout mode, beside the stop-order record.
 
 ## Tests required
 
