@@ -520,6 +520,7 @@ public class Rec017BreakoutModeScenarios
         BrokerRequest request = Assert.Single(h.Broker.Requests);
         Assert.Null(request.StopOrder);
         Assert.Equal("f681dff2", OrderComment.TryParse(request.Order!.Comment)!.ParameterHash);
+        ScenarioAssert.Global(h.Broker);
     }
 
     [Fact]
@@ -535,6 +536,7 @@ public class Rec017BreakoutModeScenarios
         Assert.EndsWith(" mode=Breakout", withMode, StringComparison.Ordinal);
         Assert.DoesNotContain("mode=", without, StringComparison.Ordinal);
         Assert.Equal(without.Replace(" hash=f681dff2 ", " hash=119a3864 ", StringComparison.Ordinal) + " mode=Breakout", withMode);
+        ScenarioAssert.Global(breakout.Broker);
     }
 
     [Fact]
@@ -550,6 +552,7 @@ public class Rec017BreakoutModeScenarios
         Assert.Equal(2, lines.Count);
         Assert.Contains(" start event=reconnect ", lines[1], StringComparison.Ordinal);
         Assert.EndsWith(" mode=Breakout", lines[1], StringComparison.Ordinal);
+        ScenarioAssert.Global(h.Broker);
     }
 
     [Theory]
@@ -575,6 +578,8 @@ public class Rec017BreakoutModeScenarios
         {
             CultureInfo.CurrentCulture = original;
         }
+
+        ScenarioAssert.Global(Started(Data.Start).Broker);
     }
 
     // ------------------------------------------------------------------ the rules that stay the same

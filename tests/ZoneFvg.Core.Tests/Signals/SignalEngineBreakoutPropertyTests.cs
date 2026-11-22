@@ -136,6 +136,7 @@ public class SignalEngineBreakoutPropertyTests
             }
 
             _output.WriteLine("seed " + Text(seed) + ": " + Text(signals) + " signals compared, " + Text(withheld) + " setups during the warm-up");
+            Assert.True(signals > 0, "seed " + Text(seed) + ": no signal was compared");
         });
     }
 
