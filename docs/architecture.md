@@ -242,8 +242,12 @@ no trading rule, no threshold and no state other than references.
 
 ## 10. Owner decisions recorded during implementation
 
-Decisions the spec does not settle, accepted by the owner. They bind later
-work packages. A validator treats them as part of the contract.
+Decisions the spec does not settle. They bind later work packages. A
+validator treats them as part of the contract. Until 2026-11-22 each was
+accepted by the owner. Since the owner decision of that day (`AGENTS.md`,
+"Who merges") the orchestrating session decides and tells the owner; such a
+row says so in its last column. The owner's money decisions are not decided
+here.
 
 | Date | Topic | Decision | Reason |
 |---|---|---|---|
@@ -310,3 +314,5 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-22 | Stop-entry orders (EXE-018 to EXE-020) | A breakout signal becomes a stop order through `IBroker.PlaceStopOrder`; the order manager picks the port call from the planned order's entry type. Spread: added to the entry of a buy, because a buy stop triggers on the ask, and by EXE-007 to the stop of a sell; nothing else moves. The check "entry already reached" reads `SymbolInfo.Bid` and `Ask` and runs right after the stop bounds. ZoneFvg signals and limit orders are untouched | A stop order placed at or through the market is rejected or fills at once |
 | 2026-11-22 | Parameter hash in the two modes | `ParameterHash.Canonical` and `Compute` take the breakout parameters as an optional third argument. Null gives exactly the v0.9 text and hash (`f681dff2` for the defaults). A value appends `EntryMode=Breakout;BreakoutEntryBufferAtr=<R>;BreakoutStopAtr=<R>;BreakoutWindowStartUtc=<c>;BreakoutWindowEndUtc=<c>;` in that order, numbers in the round-trip format and times of day in the "c" format | Trades placed in the other mode, or under other breakout values, are strangers after a restart; ZoneFvg trades of v0.9 stay adoptable |
 | 2026-11-22 | Journal in Breakout mode (OPS-010) | A breakout signal's line has the keys of OPS-001 in the same order, with `zoneProximal`, `zoneDistal`, `fvgUpper` and `fvgLower` written as `NA`, followed by `kind=breakout` and `level=<price>`. A ZoneFvg line is unchanged byte for byte. In Breakout mode the core's start line ends with `mode=Breakout`; in ZoneFvg mode it is unchanged | Existing journal tests keep their expected text |
+| 2026-11-22 | Breakout levels fail closed (SIG-024, review of WP25) | After a confirmation `BreakoutTracker.OnM15Closed` returns no setup, with the reference finished, when ATR(M15) or ATR(H4) is null, not finite or not greater than zero (the text of SIG-024), and also when a computed entry, stop or target is not finite or not greater than zero (item 3 of the WP25 prompt). The engine returns no signal in either case | Decided by the orchestrating session on the validator's question in pull request 53. The second half was written only in the prompt. It only fails closed (hard rule 10); no requirement text changes |
+| 2026-11-22 | Per-file coverage in the CI log | `tools/check_coverage.py` prints, after the gate result, the covered and total lines and branches of every file of the package, marked `full` or `PART`. Information only: the gate, its thresholds and the exit code are unchanged. Where a work package asks that its new files are fully covered, the proof is these lines in the `build-test` log of the head commit | Decided by the orchestrating session on the validator's question in pull request 53: the CI artifact with the coverage report cannot be downloaded from the agents' sessions |
