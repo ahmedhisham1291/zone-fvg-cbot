@@ -1365,6 +1365,24 @@ requirements:
       SIG-021) hold in this mode. A SignalEngine created without breakout
       parameters behaves exactly as before, and its signals have Kind ZoneFvg.
 
+
+  - id: SIG-027
+    wp: WP30
+    spec: "3.7"
+    verify: unit
+    status: planned
+    text: >-
+      A reference serves one day of M15 bars (decided 2026-11-22 after the
+      review of WP29). The tracker notes the open time of the first M15 bar
+      it receives that opens at or after the reference bar's close. An M15
+      bar that opens 24 hours or more after that first bar is not checked:
+      it confirms nothing and changes nothing, whatever it closes at, until
+      a D1 bar closes and gives a new reference. Bars inside those 24 hours
+      are checked as SIG-022 and SIG-023 say. So when the D1 series is one
+      bar behind, the bars of the following day are not checked against the
+      range of the day before. The rule needs no calendar and is the same in
+      the replay and live.
+
   - id: EXE-018
     wp: WP26
     spec: "3.7, 5.2"
@@ -1452,6 +1470,20 @@ requirements:
       InvalidSignal, with the entry type and the kind in the detail, and its
       result is Abandoned (fail closed).
 
+
+  - id: EXE-023
+    wp: WP30
+    spec: "5.3"
+    verify: scenario
+    status: planned
+    text: >-
+      A history list with a missing entry (decided 2026-11-22 after the
+      review of WP29). When the history read of EXE-021 returns a list that
+      has a missing entry, the list counts as no history list: nothing is
+      resent and the placement is abandoned and recorded as
+      UnclearOutcomeNotResent, also when another entry of the list carries
+      the order's label (fail closed, an unexpected value).
+
   - id: NWS-014
     wp: WP26
     spec: "3.7, 6.1"
@@ -1525,9 +1557,15 @@ requirements:
       open-market time has passed since the close of its last bar. In
       ZoneFvg mode, and for the H4 and M15 series in both modes, the limit of
       REC-003 stays at two bar lengths. A D1 series that lacks the bar that
-      closed last therefore fails recovery in Breakout mode as stale data:
-      the bot stays in Recovering, alerts and tries again as REC-003 says,
-      and sends no order. Open-market time is counted as in REC-003.
+      closed last therefore fails recovery in Breakout mode as stale data
+      once that much open-market time has passed: the bot stays in
+      Recovering, alerts and tries again as REC-003 says, and sends no
+      order. Open-market time is counted as in REC-003, so closed time in
+      between delays the check (with the default FridayCloseUtc a missing
+      Friday bar is seen only from Monday 02:00 UTC on). In that time
+      SIG-027 keeps the bot from trading on such a reference; this
+      requirement is the early alert (wording corrected 2026-11-22 after
+      the review of WP29; the rule is unchanged).
 
   - id: REC-019
     wp: WP29
