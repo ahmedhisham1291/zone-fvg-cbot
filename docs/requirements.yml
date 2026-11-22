@@ -1,4 +1,4 @@
-# Numbered requirements extracted from docs/spec.md (v0.9).
+# Numbered requirements extracted from docs/spec.md (v0.10).
 #
 # Rules for this file
 # - The text of a requirement may only be changed by the human owner.
@@ -1277,3 +1277,231 @@ requirements:
       2026-11-17). Development logs with no trade at all are refused. The
       threshold applies to both segments: 3 of 4 for the four forex pairs,
       4 of 5 with gold.
+
+  # ---------------------------------------------------------------- BREAKOUT MODE (spec v0.10)
+  - id: SIG-022
+    wp: WP25
+    spec: "3.7"
+    verify: unit
+    status: planned
+    text: >-
+      Breakout reference (owner request of 2026-11-22). In Breakout mode the
+      reference is the last closed D1 bar: its high, its low and its UTC open
+      time. A D1 bar that closes replaces the reference and makes the new one
+      Armed. An M15 bar is checked against the reference only if (a) its open
+      time is at or after the reference bar's close time (open time plus 24
+      hours), so the M15 bar that closes at the same instant as the D1 bar is
+      not checked, and (b) the time of day of its close (open time plus 15
+      minutes) is at or after WindowStartUtc (07:00) and before WindowEndUtc
+      (17:00). Before the first D1 bar there is no reference and no signal.
+
+  - id: SIG-023
+    wp: WP25
+    spec: "3.1, 3.7"
+    verify: unit
+    status: planned
+    text: >-
+      Breakout confirmation. While the reference is Armed, at the close of a
+      checked M15 bar c1: with bias Long, close(c1) above the reference high
+      confirms a buy; with bias Short, close(c1) below the reference low
+      confirms a sell; with bias Neutral nothing confirms. Above and below are
+      strict and use PriceMath with its default tolerance. A close beyond the
+      level on the side the bias does not trade changes nothing. On a
+      confirmation the reference becomes Done, whether or not a result is
+      returned, and stays Done until the next D1 bar closes.
+
+  - id: SIG-024
+    wp: WP25
+    spec: "3.7"
+    verify: unit
+    status: planned
+    text: >-
+      Breakout levels (buy). Entry = high(c1) + EntryBufferAtr x ATR(M15).
+      Stop = entry - StopAtrMult x ATR(H4). Target = entry + RewardRisk x
+      (entry - stop). Sell mirrors this from low(c1). ATR(M15) and ATR(H4)
+      are the latest values at the close of c1. If either is missing, not
+      finite or not greater than zero, the reference becomes Done and no
+      result is returned (fail closed). The result carries the id of SIG-025,
+      side, entry, stop, target, Level (the reference high for a buy, the
+      reference low for a sell), the close time of c1 and the ATR(H4) used.
+      EntryBufferAtr (default 0.1) must be finite and not negative;
+      StopAtrMult (default 1.0) must be finite and greater than zero; the
+      window times must be times of day with the end after the start.
+
+  - id: SIG-025
+    wp: WP25
+    spec: "3.7"
+    verify: unit
+    status: planned
+    text: >-
+      Breakout identity. The id is "BH-yyyyMMdd-HHmm" for a buy (break of the
+      high) and "BL-yyyyMMdd-HHmm" for a sell (break of the low), built from
+      the UTC open time of the reference D1 bar with invariant formatting. A
+      reference produces at most one result. The same bars, bias and ATR
+      values always produce the same results (determinism), and reflecting
+      every price around a constant while swapping Long and Short turns each
+      buy result into the sell result with reflected levels and the other id
+      prefix (mirror symmetry).
+
+  - id: SIG-026
+    wp: WP26
+    spec: "3.3, 3.7, 9.4"
+    verify: unit
+    status: planned
+    text: >-
+      Engine in Breakout mode. A SignalEngine created with breakout parameters
+      applies SIG-001, SIG-003, SIG-004 (intake order), SIG-005 (bias) and
+      SIG-020 (the same warm-up requirement and gate) unchanged, detects no
+      zones (Zones is always empty and no zone activity is reported), feeds
+      the tracker of SIG-022 to SIG-025 with each D1 bar and each M15 bar, and
+      returns each result as a Signal with Kind Breakout, the breakout id in
+      ZoneId, no Fvg, Level, the confirmation close, the replay flag and the
+      ATR(H4) used. While the engine is not ready a confirmation still makes
+      the reference Done and returns no signal. Determinism (as SIG-002),
+      replay equals live (as SIG-019: the same reference, the same Armed or
+      Done state and the same signals after T) and mirror symmetry (as
+      SIG-021) hold in this mode. A SignalEngine created without breakout
+      parameters behaves exactly as before, and its signals have Kind ZoneFvg.
+
+  - id: EXE-018
+    wp: WP26
+    spec: "3.7, 5.2"
+    verify: scenario
+    status: planned
+    text: >-
+      Stop-entry orders (owner request of 2026-11-22). A signal of Kind
+      Breakout is placed as a stop order (buy stop for Buy, sell stop for
+      Sell) with stop loss, take profit and expiry attached at placement,
+      through the broker port's PlaceStopOrder. Label and comment follow
+      EXE-008 with the breakout id in place of the zone id. EXE-009, EXE-010,
+      EXE-011, EXE-012, EXE-013, EXE-015 and EXE-017 apply to stop orders as
+      they do to limit orders. A signal of Kind ZoneFvg is placed as a limit
+      order exactly as before.
+
+  - id: EXE-019
+    wp: WP26
+    spec: "3.6, 3.7"
+    verify: scenario
+    status: planned
+    text: >-
+      Pre-trade checks of a breakout signal. (a) Inputs: a Breakout signal
+      must have no Fvg and a finite Level greater than zero, and a ZoneFvg
+      signal must have its Fvg; otherwise it is skipped as InvalidSignal.
+      (b) EXE-005 and EXE-006 are not applied to a Breakout signal. (c) Spread
+      on the entry: for a Buy the current spread is added to the signal's
+      entry before rounding to the price grid, so the buy stop triggers when
+      the bid reaches the signal's entry; stop and target stay the signal's.
+      For a Sell EXE-007 applies unchanged. EXE-003, EXE-004, sizing, the
+      comment and the order use these levels. (d) Entry already reached:
+      directly after EXE-003, a Buy is skipped when the broker's current ask
+      is at or above the order's entry and a Sell when the current bid is at
+      or below it, with the reason EntryAlreadyReached; a bid or ask that is
+      not finite or not greater than zero, or an ask below the bid, is
+      BrokerDataInvalid. Every other check and the order of the checks are
+      unchanged.
+
+  - id: EXE-020
+    wp: WP26
+    spec: "5.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Unclear outcome of a stop order (EXE-009 in Breakout mode). When
+      nothing with the label exists at the broker, the order is resent once
+      only if the signal is at most one M15 bar old, at least one M15 bar has
+      closed since its confirmation, at least 15 minutes of order life are
+      left, and no M15 bar closed since the confirmation reached the signal's
+      entry (the level before the spread was added): for a Buy no such bar
+      has a high at or above it, for a Sell none has a low at or below it.
+      Otherwise the placement is abandoned and recorded as
+      UnclearOutcomeNotResent. The rule for limit orders is unchanged.
+
+  - id: NWS-014
+    wp: WP26
+    spec: "3.7, 6.1"
+    verify: unit
+    status: planned
+    text: >-
+      Breakout bar and news (owner request of 2026-11-22). A Breakout signal
+      is skipped when the calendar is unavailable (NWS-008), when server time
+      is inside a news window of its symbol (NWS-009), or when its confirming
+      bar, from its close time minus 15 minutes to its close time, overlaps a
+      news window of the symbol; the last case has the skip reason
+      NewsBreakoutBar. The three-bar rule of NWS-009 applies to ZoneFvg
+      signals only and is unchanged.
+
+  - id: OPS-010
+    wp: WP26
+    spec: "11"
+    verify: unit
+    status: planned
+    text: >-
+      Journal for breakout signals. The signal line of OPS-001 for a Breakout
+      signal has the same keys in the same order, with zone holding the
+      breakout id and zoneProximal, zoneDistal, fvgUpper and fvgLower written
+      as NA, followed by two more keys: kind=breakout and level=<the broken
+      level>. The line of a ZoneFvg signal is unchanged, byte for byte.
+
+  - id: PLT-011
+    wp: WP26
+    spec: "5.2, 9.1"
+    verify: manual
+    status: planned
+    text: >-
+      Stop orders in the adapter (owner request of 2026-11-22). CTraderBroker
+      places a stop order with stop loss and take profit given as prices,
+      expiry, label and comment in one synchronous cTrader call, maps the
+      result like a limit order (EXE-009), and reports the symbol's current
+      bid and ask in SymbolInfo. The owner confirms on a demo or Free Trial
+      account that a breakout order appears as a pending stop order with stop
+      loss, take profit and expiry, and that it triggers, expires and is
+      cancelled as expected; recorded in docs/test-records.
+
+  - id: REC-017
+    wp: WP27
+    spec: "3.7, 8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Breakout mode end to end and across a restart. With breakout parameters
+      set, the bot runs the Breakout engine live and in recovery (REC-004).
+      A breakout id is known when the replay produced a signal with it;
+      REC-005, REC-006 and REC-007 then apply unchanged: a bot position with
+      a known id and the current parameter hash is adopted, a pending stop
+      order with stop, target, expiry and a known id is kept, any other is a
+      stranger or is cancelled. The parameter hash covers the entry mode and
+      the breakout parameters, so trades placed in the other mode or under
+      other breakout values are strangers; in ZoneFvg mode the hash is the
+      one of v0.9. Breakout parameters whose window differs from
+      SessionStartUtc and SessionEndUtc are refused at start. In Breakout
+      mode the core's start line ends with mode=Breakout; in ZoneFvg mode
+      every journal line is as before.
+
+  - id: PLT-012
+    wp: WP28
+    spec: "7"
+    verify: manual
+    status: planned
+    text: >-
+      Entry mode parameters of the cBot (owner request of 2026-11-22). The
+      cBot exposes EntryMode (default Breakout; the other value is ZoneFvg),
+      BreakoutEntryBufferAtr (default 0.1) and BreakoutStopAtr (default 1.0),
+      validates them at start and refuses to start with a clear message on
+      any other value. In Breakout mode it passes the breakout parameters to
+      the core with the window taken from SessionStartUtc and SessionEndUtc;
+      in ZoneFvg mode it passes none. The adapter's start line names the
+      mode.
+
+  - id: PLT-013
+    wp: WP28
+    spec: "10.2, 12.1, 13.1"
+    verify: manual
+    status: planned
+    text: >-
+      Deployment files and guides for the entry mode. Every parameter file
+      under deploy/params sets EntryMode, BreakoutEntryBufferAtr and
+      BreakoutStopAtr. deploy/README.md, docs/backtest-howto.md and README.md
+      describe the two modes, one backtest series per mode on the same data
+      and costs, the Breakout trade logs as the benchmark input of the
+      ZoneFvg acceptance report, and that the benchmark row is not applied
+      to the Breakout mode (spec 12.1 and 13.1).

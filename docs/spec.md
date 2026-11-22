@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.9 · 17 November 2026 (v0.8 implementation baseline of 13 November 2026, with the owner decisions of 17 November 2026)
+Version 0.10 · 22 November 2026 (v0.9 of 17 November 2026, with the owner's request of 22 November 2026 for a breakout entry mode)
 
 ## 0. What changed in v0.2
 
@@ -43,13 +43,23 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | D. Gold | XAUUSD is a fifth instance with its own spread, stop and volume limits; only USD news blocks it; a gold buy counts as short USD; the gap check uses the symbol's trading sessions (gold's daily break); prices are rounded to the symbol's tick size | 2, 4.3, 5.1, 6.1, 7, 8.3, 13.1 |
 | Fixes without a rule change | Old chart drawings removed by name; repeated Log lines limited; refuse to start when RiskEpochDate is after the server time or, in a backtest, the starting balance differs from InitialCapital; no Friday close request while the market is closed (the weekend close does it at the reopen); daily counts of why zones end | 5.5, 9.4, 11 |
 
+**Changes in v0.10 (owner request of 22 November 2026: a breakout entry mode)**
+
+| Topic | Decision | Section |
+|---|---|---|
+| E. Entry mode | The bot has two entry modes, chosen per instance with `EntryMode`. **Breakout** (new, the default): in the direction of the D1 trend, the first M15 bar that closes beyond the previous day's high or low inside the trading window arms a stop order beyond that bar. **ZoneFvg**: the zone and gap entry of sections 3.2 to 3.5, unchanged. Everything outside section 3 (sizing, limits, news, recovery, FTMO guards, alerts) is the same in both modes | 1, 2, 3, 3.7, 7 |
+| F. Stop-entry orders | Breakout entries are stop orders with stop loss, take profit and expiry attached at placement. They are placed, verified, recovered and cancelled by the same rules as limit orders | 5.2, 5.3, 6.1, 8.3 |
+| G. Which mode goes live | Both modes are backtested on the same data and costs. A mode may go live only if it passes section 13.1 by itself. The Breakout mode is the simple trend-following benchmark that the ZoneFvg mode has to beat; the Breakout mode itself has no benchmark yet | 12.1, 13.1 |
+| Proposed, marked in the plan pull request | Breakout values: entry buffer 0.1 x ATR(M15), stop 1.0 x ATR(H4), target 2R, order life 8 bars. No trailing stop in the baseline (it is the first variant to test). Symbols unchanged; index CFDs are an open question | 3.7, 7, 12.4, 14 |
+| FTMO wording | The gap-trading rule is restated as FTMO's page reads on 22 November 2026: two separate situations joined by "or" | 15.2 |
+
 ## 1. Purpose and scope
 
-A cTrader cBot that trades four forex pairs and gold (XAUUSD) by waiting for price to return to a higher-timeframe supply or demand zone, then entering on a lower-timeframe fair value gap (FVG) in the direction of the higher-timeframe trend.
+A cTrader cBot that trades four forex pairs and gold (XAUUSD) in the direction of the higher-timeframe trend, with one of two entry modes per instance (section 3). **Breakout** (the default from v0.10) enters with a stop order after an M15 bar closes beyond the previous day's range. **ZoneFvg** waits for price to return to a higher-timeframe supply or demand zone, then enters on a lower-timeframe fair value gap (FVG).
 
 **In scope (v1)**
 
-- Fully mechanical detection of zones and FVGs.
+- Fully mechanical detection of breakouts, zones and FVGs.
 - One position per symbol, fixed 0.5% account risk per trade.
 - Broker-side stop loss, take profit and order expiry on every order.
 - News filter for high-impact events.
@@ -79,6 +89,7 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 | Item | Setting | Status and reason |
 |---|---|---|
 | Symbols | EURUSD, GBPUSD, USDJPY, AUDUSD, XAUUSD | Decided. Liquid majors, low spread. XAUUSD (gold) added by the owner on 17 November 2026; one instance per symbol |
+| Entry mode | `Breakout` (default) or `ZoneFvg`, one per instance | Decided on 22 November 2026 (owner request). Sections 3 and 3.7. Both modes use the bias, the M15 chart and everything from section 4 on |
 | Bias timeframe | D1 | Decided. Trend filter |
 | Zone timeframe | H4 | Decided. Higher-timeframe zones |
 | Entry timeframe | M15 (the chart the bot runs on) | Decided. Lower-timeframe FVG |
@@ -93,6 +104,8 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 
 All rules are evaluated on **closed bars only**. Long rules are shown; short rules are the mirror image. ATR means ATR(14) on the timeframe named.
 
+**Two entry modes (v0.10).** An instance runs in one mode, set by `EntryMode` and fixed while it runs. Sections 3.1 (bias), 3.3 (two layers) and 3.6 (skips), and everything from section 4 on, apply to both modes. Sections 3.2, 3.4 and 3.5 describe the ZoneFvg mode. Section 3.7 describes the Breakout mode, in which no zones are detected.
+
 **Indicator definitions (v0.8).** Every indicator depends only on a fixed window of recent bars, so a restarted bot reproduces the same values exactly.
 
 - ATR(14) is the plain average of the true range of the last 14 closed bars.
@@ -105,6 +118,7 @@ All rules are evaluated on **closed bars only**. Long rules are shown; short rul
 - Short bias: last closed D1 close is below it.
 - Only demand zones are traded in a long bias, only supply zones in a short bias.
 - Both zone types are always detected and stored, because opposing zones are needed for the room check in section 3.6.
+- In Breakout mode (3.7) a long bias allows only buys and a short bias only sells.
 
 ### 3.2 Demand zone detection (H4)
 
@@ -170,11 +184,45 @@ Naming the three most recently closed M15 bars c3, c2, c1 (c1 is the newest):
 - It is not live: its confirmation bar closed more than one bar ago (for example, it was found during a restart replay).
 - Stop distance is under `MinStopPips` (12 pips for the forex pairs, 800 pips for gold) or over 2.0 x ATR(H4).
 - **Cost check fails:** spread plus round-trip commission, in pips, is more than `CostToRiskMax` (10%) of the stop distance.
-- An active supply zone sits between entry and 1.5R above entry.
+- An active supply zone sits between entry and 1.5R above entry (ZoneFvg mode).
 - The news filter blocks it (section 6).
 - Any filter in section 5 or any limit in section 4 blocks it.
 
 Every skip is logged with its reason.
+
+In Breakout mode the two zone checks (the gap of at least 3 x the spread from 3.4, and the room to an opposing zone) do not apply, and section 3.7 adds two of its own. The stop bounds and the cost check apply as written.
+
+### 3.7 Breakout mode (v0.10)
+
+Chosen with `EntryMode` = Breakout, the default. It follows the D1 trend into a break of the previous day's range. The reason for the mode is in the plan pull request of 22 November 2026: published evidence supports trend and momentum continuation better than gap-fill entries. For this bot it is unproven until section 12 says otherwise.
+
+**Reference day.** Each time a D1 bar closes, that bar becomes the reference: its high, its low and its open time. It replaces the previous reference.
+
+**Bars that are checked.** An M15 bar is checked against the reference only if
+
+- it opened at or after the reference bar closed (so the M15 bar that closes together with the D1 bar is not checked), and
+- it closes inside the trading window: the time of day of its close is at or after `SessionStartUtc` (07:00) and before `SessionEndUtc` (17:00).
+
+**Confirmation.** With a long bias (3.1), the first checked bar that closes above the reference high confirms a buy. With a short bias, the first checked bar that closes below the reference low confirms a sell. With a neutral bias nothing confirms. A close beyond the level on the side the bias does not trade changes nothing. A reference gives at most one signal; after its confirmation, or when the next D1 bar closes, it is finished. If price is already beyond the level when the window opens, the first checked bar that closes beyond it is the confirmation.
+
+**Order levels (buy).** Naming the confirming bar c1:
+
+- **Entry:** buy stop at High(c1) + `BreakoutEntryBufferAtr` (0.1) x ATR(M15). The order fills only if price goes on beyond the confirming bar.
+- **Stop:** entry minus `BreakoutStopAtr` (1.0) x ATR(H4).
+- **Target:** entry + `RewardRisk` (2.0) x stop distance.
+- **Order expiry:** `EntryExpiryBars` (8 bars, 2 hours), shortened if a news window starts sooner (section 6), as for a limit order.
+- **Spread.** Charts show bid prices. A buy stop triggers on the ask price, so the execution layer adds the current spread to a buy entry: the order then triggers when the bid reaches the level above. A sell stop triggers on the bid; for a sell the spread is added to the stop, as in 3.5. Stop and target of a buy, and entry and target of a sell, stay the signal's.
+
+**Signal id.** `BH-yyyyMMdd-HHmm` for a break of the high (buy) and `BL-yyyyMMdd-HHmm` for a break of the low (sell), from the UTC open time of the reference D1 bar. It takes the place of the zone id in the label (5.2), in recovery (8.3), in the journal and in the trade log.
+
+**Skipped when** (besides the checks of 3.6 that apply):
+
+- The confirming bar overlaps a news window: a breakout made by news is not a signal (6.1).
+- Price has already reached the entry when the order is about to be placed.
+
+**What stays the same.** One position or pending order per symbol, sizing and the ladder, every account limit and circuit breaker, the session and Friday rules, the news windows, order expiry, idempotent placement, recovery, Friday close, alerts and the simulation tools.
+
+**What the baseline does not have.** No trailing stop, no break-even move and no partial close: a trade ends at its stop, its target or the Friday close, as in ZoneFvg mode. Every exit therefore stays at the broker and works with the bot offline, and results come as clean wins and losses, which the ladder of 4.1 is built on. A trailing stop is the first variant to test (12.4).
 
 ## 4. Risk and position sizing
 
@@ -271,8 +319,8 @@ Protection against code errors rather than market risk.
 
 ### 5.2 Order format
 
-- Limit order with stop loss, take profit and expiry attached at placement. These live on the broker's server and keep working when the bot is offline.
-- **Label:** `ZFVG|v1|<symbol>|<zoneId>`. Identifies the bot, its version, and the zone.
+- A pending order with stop loss, take profit and expiry attached at placement: a limit order in ZoneFvg mode, a stop order in Breakout mode (v0.10). These live on the broker's server and keep working when the bot is offline.
+- **Label:** `ZFVG|v1|<symbol>|<zoneId>`. Identifies the bot, its version, and the zone. In Breakout mode the breakout id of 3.7 takes the place of the zone id.
 - **Comment:** planned entry, stop, target, risk amount and a short hash of the parameters. This is the trade's memory; it is stored at the broker and comes back in positions and history.
 
 ### 5.3 Idempotent placement
@@ -281,7 +329,7 @@ Protection against code errors rather than market risk.
 2. Send the order with a synchronous call and read the result.
 3. On success, verify the order now appears with the expected stop, target and expiry.
 4. On failure with a clear rejection (bad volume, market closed, no money): log, mark Skipped, do not retry.
-5. On an unclear outcome (timeout, disconnected, technical error): **do not resend.** At the next bar close, repeat step 1. Resend only if nothing exists at the broker, the signal is at most one bar old and price has not traded through the entry.
+5. On an unclear outcome (timeout, disconnected, technical error): **do not resend.** At the next bar close, repeat step 1. Resend only if nothing exists at the broker, the signal is at most one bar old and price has not traded through the entry. For a stop order (v0.10) "traded through" means that a closed bar reached the signal's entry: its high for a buy, its low for a sell.
 
 ### 5.4 After a fill
 
@@ -302,6 +350,7 @@ For each symbol, the relevant currencies are its base and quote (EURUSD: EUR and
 - **News window:** from `NewsBeforeMin` (30) minutes before to `NewsAfterMin` (30) minutes after every high-impact event for a relevant currency.
 - **No new orders** inside a window.
 - **FVG made by news is not a signal:** if any of the three FVG bars overlaps a window, the signal is skipped.
+- **Breakout made by news is not a signal (v0.10):** in Breakout mode, if the confirming bar overlaps a window, the signal is skipped.
 - **Pending orders never sit through news:** when an order is placed, its expiry is set to the earlier of the normal expiry and the next window's start. If that leaves under 15 minutes, the signal is skipped. Because expiry is enforced by the broker, this works even if the bot is offline.
 - **Open positions** are left alone in the baseline; their stops are at the broker. Closing before news is a variant to test (section 12.4).
 
@@ -381,8 +430,13 @@ If you later want a single paid provider with an account and support, Financial 
 
 Only the four marked **Optimise** are searched. New in v0.2 are marked (new).
 
+In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingStrength, ImpulseAtrMult, MaxImpulseBars, MaxBaseBars, RequireBos, MinZoneAtr, MaxZoneAtr, ConfirmWindowBars, MinFvgAtr, EntryLevelPct, StopBufferAtr, MinFvgSpreadMult, MinRoomR); they still set the amount of history the bot loads, which is the same in both modes. The searched parameters are three: BiasEmaPeriod, BreakoutStopAtr and RewardRisk.
+
 | Parameter | Default | Role | Test range |
 |---|---|---|---|
+| EntryMode (new in 0.10) | Breakout | Entry mode of the instance: Breakout or ZoneFvg (section 3) | Both are backtested |
+| BreakoutEntryBufferAtr (new in 0.10) | 0.1 | Breakout entry beyond the confirming bar (x ATR M15) | Fixed |
+| BreakoutStopAtr (new in 0.10) | 1.0 | Breakout stop distance (x ATR H4) | **Optimise** (Breakout mode) 0.75 to 1.5, step 0.25 |
 | BiasTimeFrame | D1 | Trend filter timeframe | Fixed |
 | ZoneTimeFrame | H4 | Zone timeframe | Fixed |
 | BiasEmaPeriod | 50 | Trend EMA | **Optimise** 50, 100, 200 |
@@ -515,7 +569,8 @@ Every event handler is wrapped so that one error is logged and counted but canno
 | ZoneDetector | Section 3.2; creates zones with deterministic ids |
 | ZoneBook | Signal-layer state (section 3.3) |
 | FvgDetector | Section 3.4 |
-| SignalEngine | Produces signals; identical in live, replay and backtest |
+| BreakoutTracker | Section 3.7: reference day, confirmation and levels (v0.10) |
+| SignalEngine | Produces signals in the instance's entry mode; identical in live, replay and backtest |
 | NewsProvider | Live feed, embedded history, manual list; validation and cache |
 | RiskManager | Sizing, limits and circuit breakers, all from broker data |
 | OrderManager | Idempotent placement, verification, cancellation |
@@ -530,7 +585,7 @@ The signal-side modules (detectors, ZoneBook, SignalEngine, sizing maths) are pl
 
 - **Zone:** id, type, proximal, distal, created time, ATR at creation, touch time, lowest low since touch, state.
 - **Fvg:** type, upper, lower, time, height.
-- **Signal:** zone id, FVG, entry, stop, target, stop pips, bar time.
+- **Signal:** zone id, FVG, entry, stop, target, stop pips, bar time. A breakout signal (v0.10) has the breakout id, no FVG, and the level that was broken.
 - **Setup:** signal, volume, order id, state, skip reason.
 - **NewsEvent:** time (UTC), currency, impact, title.
 
@@ -541,9 +596,9 @@ The signal-side modules (detectors, ZoneBook, SignalEngine, sizing maths) are pl
 | Start | Validate parameters; run recovery (8.3) |
 | Server disconnected | Mark state; stop requests |
 | Server connected | Run recovery (8.3) |
-| D1 bar closed | Recompute bias |
-| H4 bar closed | Update swings; detect zones; expire zones |
-| M15 bar closed | Update zone states; detect FVG; produce signal; filters; place order; resolve unclear orders (5.3); check limits |
+| D1 bar closed | Recompute bias. Breakout mode: new reference day |
+| H4 bar closed | Update swings; detect zones; expire zones (ZoneFvg mode) |
+| M15 bar closed | ZoneFvg mode: update zone states; detect FVG. Breakout mode: check the confirmation. Both: produce signal; filters; place order; resolve unclear orders (5.3); check limits |
 | Timer, every minute | Heartbeat; calendar refresh when due; Friday close; news-window state |
 | Position or order event | Verify stops (5.4); update setup; journal |
 | Error or exception | Log, count, alert; halt at threshold |
@@ -666,7 +721,7 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 
 **Sequence**
 
-1. Baseline run with default parameters on all five symbols, no optimisation (gold with its own spread, stop and volume values, section 7).
+1. Baseline run with default parameters on all five symbols, no optimisation (gold with its own spread, stop and volume values, section 7). From v0.10: one series per entry mode, with the same period, data and costs. Steps 2 to 9 are then done for each mode that is still in the running.
 2. If the baseline is unprofitable across symbols, revisit the rules. Do not optimise a losing baseline into a winner.
 3. Coarse optimisation of the four **Optimise** parameters. Prefer broad plateaus of good results.
 4. Re-run chosen settings as a single backtest; optimisation passes and single runs sometimes disagree.
@@ -675,14 +730,14 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 7. Combine the five symbols' trade lists by time for portfolio drawdown and exposure caps.
 8. Monte Carlo: reshuffle the trade order 1,000 times to estimate the range of drawdowns and of 30-trade results (used in 13.3).
 9. Challenge simulation: replay the backtest's trades through FTMO's exact rules several thousand times to estimate the chance of passing each phase and the time it takes, at 0.5%, 0.75% and 1.0% risk per trade (section 15.5).
-10. Benchmark: a simple D1 trend-following bot on the same data and costs.
-11. Holdout run, once.
+10. Benchmark: a simple D1 trend-following bot on the same data and costs. From v0.10 the Breakout mode is that bot for the ZoneFvg mode: the Breakout baseline trade logs are the benchmark input of the ZoneFvg acceptance report. The Breakout mode itself has no benchmark yet.
+11. Holdout run, once, for the mode chosen in 13.1.
 
 ### 12.2 Code tests
 
 | Test | Pass condition |
 |---|---|
-| Unit tests on zone, FVG and sizing logic | Hand-built bar sequences give the expected zones, signals and volumes |
+| Unit tests on zone, FVG, breakout and sizing logic | Hand-built bar sequences give the expected zones, breakout references, signals and volumes |
 | Visual check | 50 or more drawn zones and FVGs match the written definitions |
 | Determinism | Two identical backtests produce identical trade lists |
 | Replay equals live | Backtests started on different dates show identical zone states from the point where their histories overlap |
@@ -708,6 +763,8 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 | 13 | Force repeated exceptions | Bot halts; does not crash or loop |
 | 14 | Restart ten times in ten minutes | Calendar fetched at most once; no orders duplicated |
 
+In Breakout mode "limit order" in tests 2 and 3 reads "stop order" (v0.10). The tests are run in the mode that goes live.
+
 **Soak test.** Four weeks of continuous demo running on the VPS with at least ten forced restarts at random times.
 
 ### 12.4 Strategy variants
@@ -724,6 +781,15 @@ Candidates, in order:
 6. Volatility filter: skip when H4 ATR is unusually low or high.
 7. London-only or New York-only entries.
 8. Time stop after 96 bars.
+
+Breakout mode candidates (v0.10), in order:
+
+1. Trailing stop moved at H4 closes, in place of the fixed target.
+2. The opening range of the London or New York session in place of the previous day's range.
+3. Range filter: skip when the reference day's range is under 0.5 or over 2.0 x ATR(D1).
+4. Extension cap: skip when the confirming bar closes more than 1.0 x ATR(H4) beyond the level.
+5. Break-even at +1R.
+6. Close open positions before high-impact news.
 
 The number of variants tried is recorded, because every extra attempt raises the chance of a result that is only luck.
 
@@ -745,6 +811,8 @@ The number of variants tried is recorded, because every extra attempt raises the
 | Versus benchmark | Better return-to-drawdown ratio | Same |
 
 If the holdout fails, the strategy is rejected or redesigned; the holdout is not reused for tuning.
+
+**Two entry modes (v0.10).** The development column is applied to each mode separately. A mode may go live only if it passes by itself. For the ZoneFvg mode the benchmark is the Breakout mode (12.1 step 10). For the Breakout mode the row "Versus benchmark" is not applied until a simpler benchmark exists; every other row applies. If both pass, the mode with the better return-to-drawdown ratio on development data is chosen. The holdout is then run once, for the chosen mode only: running both modes on the holdout and keeping the better one would turn the holdout into a tuning step.
 
 ### 13.2 Reliability thresholds
 
@@ -775,7 +843,7 @@ Every quarter, re-run the backtest including the latest data and compare live re
 2. **Signal layer.** Detection code as a tested library, with chart drawings. Code tests in 12.2.
 3. **Execution, recovery and safety.** Sections 4, 5, 8 and 11. Confirm platform behaviour under the CLI.
 4. **News module** and the historical event file.
-5. **Baseline backtest.** Go / no-go 1.
+5. **Baseline backtest**, one series per entry mode (v0.10). Go / no-go 1.
 6. **Robustness, benchmark and variants.**
 7. **Holdout.** Go / no-go 2.
 8. **Laptop stage on an FTMO Free Trial (10.5), then VPS deployment (10.2).** Fault-injection tests at each stage. Go / no-go 3.
@@ -787,6 +855,7 @@ Every quarter, re-run the backtest including the latest data and compare live re
 
 1. On what date did you buy the Challenge? It decides which option in section 15.7 is open to you.
 2. Will this account be used only by the bot?
+3. Index CFDs (for example US500 and US100) for the Breakout mode (v0.10). They are not part of v0.10: the bot accepts only symbols that start with six letters, and an index needs its own news currency, exposure cap, stop and spread values. To add them, the developer needs the symbol line the cBot prints at start on your FTMO cTrader account for each index (name, digits, tick size, lot size, volume steps, commission, sessions).
 
 **Resolved:** account (FTMO 2-Step, Swing, cTrader, 100,000 USD, bought and not started), symbols (four majors, plus gold from v0.9), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
 
@@ -833,7 +902,7 @@ During the Challenge and Verification neither type has news or weekend restricti
 - Bots are allowed, with no approval step. The strategy must be your own; widely shared third-party bots risk refusal.
 - Server limits: 200 orders at a time, 2,000 positions a day, and more than 2,000 server requests a day counts as forbidden hyperactivity.
 - At most 50 lots per forex order.
-- No opening trades in the two hours before a market closure of two hours or more when major events are scheduled.
+- Gap trading is forbidden. FTMO's page, read again on 22 November 2026, names two situations joined by "or": opening trades when major news, macroeconomic events or earnings that can affect the market are scheduled, or opening trades two hours or less before a market closes for two hours or more. The page names no exception for the Swing type. The bot opens nothing inside its news windows, lets no pending order sit through one (6.1), and opens nothing after Friday 12:00 UTC. From Monday to Thursday the daily breaks of the five symbols are shorter than two hours (gold: about one hour).
 - Position sizes and risk per trade should stay consistent.
 - The account is for your personal use only. A VPS is allowed, but not from a United States location.
 - Reported: an account with no trade for 30 days can be closed.
@@ -938,5 +1007,8 @@ Before choosing option 2, ask FTMO support to confirm in writing that a never-ac
 - FTMO: holding positions overnight and over the weekend — https://ftmo.oanda.com/faq/do-i-have-to-close-my-positions-overnight-or-before-weekend
 - FTMO: instruments, strategies and server limits — https://ftmo.com/au/faq/which-instruments-can-i-trade-and-what-strategies-am-i-allowed-to-use/
 - FTMO: forbidden trading practices — https://ftmo.oanda.com/forbidden-trading-practices/
+- FTMO: forbidden trading practices, global site, read on 22 November 2026 — https://ftmo.com/en/forbidden-trading-practices/
+- FTMO: trading objectives, read on 22 November 2026 — https://ftmo.com/en/trading-objectives
+- Research behind the Breakout mode (v0.10): Hurst, Ooi and Pedersen, "A Century of Evidence on Trend-Following Investing" — https://www.aqr.com/Insights/Research/Journal-Article/A-Century-of-Evidence-on-Trend-Following-Investing ; Zarattini, Aziz and Barbon, "Beat the Market: An Effective Intraday Momentum Strategy for S&P500 ETF (SPY)" — https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4824172 ; a fair value gap test on futures that found no edge after costs — https://mpmmarkets.com/research/does-the-fair-value-gap-strategy-work
 - FTMO rules summary with sources (third party) — https://proea.app/en/blog/ftmo-rules
 - FTMO news rule explained (third party) — https://proea.app/en/blog/ftmo-news-trading
