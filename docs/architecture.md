@@ -21,7 +21,7 @@ packages. Changing a contract here needs the human's approval.
 |   Domain/       Bar, TimeFrame, Zone, Fvg, Signal, enums     |
 |   Indicators/   Atr, Ema, SwingDetector                      |
 |   Signals/      ZoneDetector, ZoneBook, FvgDetector,         |
-|                 SignalEngine                                 |
+|                 BreakoutTracker, SignalEngine                |
 |   Risk/         PositionSizer, RiskEngine, CestClock         |
 |   News/         parsers, NewsCalendar, NewsService           |
 |   Execution/    Ports, OrderManager, TradeManager, filters   |
@@ -83,6 +83,14 @@ public sealed record Signal(
     string ZoneId, Side Side, double Entry, double Stop, double Target,
     Fvg Fvg, DateTime ConfirmationCloseUtc, bool FromReplay, double AtrH4);
     // AtrH4 (added in WP06): the ATR(H4) used for this signal, for EXE-003.
+
+// Spec v0.10, added in WP26 (section 10, rows of 2026-11-22). In Signal the
+// parameter Fvg becomes `Fvg? Fvg` (null for a breakout signal), and the record
+// gains two init-only members outside the positional list:
+//     public SignalKind Kind { get; init; }   // default ZoneFvg
+//     public double? Level { get; init; }     // Breakout: the reference high or low that was broken
+// For a breakout signal ZoneId holds the breakout id "BH-..." or "BL-..." (SIG-025).
+public enum SignalKind { ZoneFvg, Breakout }
 ```
 
 ```csharp
@@ -103,6 +111,32 @@ public sealed class SignalEngine
     /// Bars must arrive in increasing close-time order, D1 then H4 then M15 at equal
     /// close times. Any other bar throws InvalidOperationException and changes nothing (SIG-004).
     public IReadOnlyList<Signal> OnBarClosed(TimeFrame timeFrame, Bar bar, bool replay);
+
+    // Spec v0.10, added in WP26 (SIG-026). With breakout parameters the engine runs in
+    // Breakout mode: no zones, breakout signals at M15 closes. With null it is the engine above.
+    public SignalEngine(SignalParameters parameters, BreakoutParameters? breakout);
+    public BreakoutReference? Reference { get; }      // Breakout mode: the reference day; null otherwise and before the first D1 bar
+}
+
+// Spec v0.10, WP25 (SIG-022 to SIG-025). Pure, closed bars only.
+public sealed record BreakoutParameters
+{
+    public double EntryBufferAtr { get; init; } = 0.1;                       // x ATR(M15)
+    public double StopAtrMult { get; init; } = 1.0;                          // x ATR(H4)
+    public TimeSpan WindowStartUtc { get; init; } = TimeSpan.FromHours(7.0);   // must equal SessionStartUtc (WP27)
+    public TimeSpan WindowEndUtc { get; init; } = TimeSpan.FromHours(17.0);    // must equal SessionEndUtc (WP27)
+    public void Validate();
+}
+public sealed record BreakoutReference(DateTime DayOpenUtc, double High, double Low, bool Armed);
+public sealed record BreakoutSetup(
+    string Id, Side Side, double Entry, double Stop, double Target,
+    double Level, DateTime ConfirmationCloseUtc, double AtrH4);
+public sealed class BreakoutTracker
+{
+    public BreakoutTracker(BreakoutParameters parameters, double rewardRisk);
+    public BreakoutReference? Reference { get; }
+    public void OnD1Closed(Bar bar);                                           // new Armed reference
+    public BreakoutSetup? OnM15Closed(Bar bar, Bias bias, double? atrM15, double? atrH4);
 }
 ```
 
@@ -120,6 +154,7 @@ public interface IBroker
     IReadOnlyList<ClosedTradeInfo> GetHistory(DateTime sinceUtc);   // closed trades with balance after close
     double EstimateMargin(string symbol, Side side, double volumeUnits);
     OrderResult PlaceLimitOrder(LimitOrderRequest request);         // synchronous
+    OrderResult PlaceStopOrder(StopOrderRequest request);           // synchronous; spec v0.10, added in WP26 (EXE-018). Same fields as LimitOrderRequest
     OrderResult CancelOrder(long orderId);
     OrderResult ModifyPositionProtection(long positionId, double? stopLoss, double? takeProfit);
     OrderResult ClosePosition(long positionId);
@@ -150,6 +185,9 @@ public sealed class BotCore
     public void OnTradeEvent();                          // any position or order event
     public void OnException(Exception exception);
 }
+
+// Spec v0.10, added in WP27: BotParameters gains `BreakoutParameters? Breakout`.
+// Null (the default) is ZoneFvg mode; a value is Breakout mode. One mode per instance.
 ```
 
 ## 4. Time
@@ -179,7 +217,9 @@ public sealed class BotCore
 
 ## 7. Labels and comments (EXE-008)
 
-- Label: `ZFVG|v1|<symbol>|<zoneId>`
+- Label: `ZFVG|v1|<symbol>|<zoneId>`. In Breakout mode (spec v0.10) the
+  breakout id `BH-yyyyMMdd-HHmm` or `BL-yyyyMMdd-HHmm` stands in the zone id's
+  place; the bot name and the format do not change.
 - Comment: `e=<entry>;s=<stop>;t=<target>;r=<riskMoney>;h=<hash8>` with
   invariant formatting, at most 100 characters.
 
@@ -264,3 +304,9 @@ work packages. A validator treats them as part of the contract.
 | 2026-11-17 | Gold (decision D, WP24) | XAUUSD is a fifth instance: MaxSpreadPips 40, MinStopPips 800, MaxVolumeUnits 200 oz, all other parameters as for the forex pairs (no other parameter is in pips; the ATR and R multiples scale by themselves). News: USD, "All" and manual USD/XAU entries only (NWS-013). Currency cap: a gold buy is long XAU and short USD (RSK-015). Gap check: the symbol's weekly trading sessions from the broker add closed time (REC-016). Acceptance: profitable symbols max(3, N - 1) of N (SIM-005). Proposed and marked in the plan pull request: 4 of 5 profitable symbols; 300/60 trades and the 60% single-symbol share unchanged; 15 pips of stress slippage and live slippage alert for gold; gold keeps the forex values of the four optimised parameters | Owner decision ("Accept all") on both audits' gold sections |
 | 2026-11-17 | Contract additions (WP22, WP24) | `SymbolInfo` gains `Digits` (int) and `TickSize` (double) in WP22 and `Sessions` (weekly trading sessions, record `TradingSession` in `Execution/Ports`) in WP24, as init-only members outside the positional list; the adapter fills them from `Symbol.Digits`, `Symbol.TickSize` and `Symbol.MarketHours.Sessions` and prints them in the start line. `SignalEngine` reports the zones created and the zones that ended, with their reason, at each `OnBarClosed` (journal only, OPS-009). A start check (RSK-014) is a core function the adapter calls before `OnStart`; a refusal uses the adapter's existing "refused to start" path. `PriceGrid`'s pip-size functions stay (internal if unused) so their tests keep running | Needed for EXE-017, REC-016, OPS-009 and RSK-014 |
 | 2026-11-17 | Fixes without a rule change (WP22) | Accepted by the owner: drawings removed by remembered name (PLT-005); Log repeat limits of 1 hour for errors and risk-unavailable lines and 24 hours for a waiting recovery (OPS-008); inactivity count starts no earlier than RiskEpochDate and a restart does not repeat a warning within 3 days (OPS-006); refuse to start when RiskEpochDate is after the server time, or in a backtest when the balance differs from InitialCapital by more than 0.01 (RSK-014); no Friday close request against a closed market (EXE-016); prices on the broker's tick grid (EXE-017); daily zone outcome counts (OPS-009) | Adapter audit W1, N1, N2, N4, W3; core audit F3, F5, F9, F10 |
+| 2026-11-22 | Entry mode (spec v0.10, decision E) | One mode per instance, fixed at start. In the core `BotParameters.Breakout` selects it: null (the default) is ZoneFvg, so every existing fixture and test keeps running the old mode unchanged; a value is Breakout. The cBot parameter `EntryMode` (default Breakout) decides whether the adapter sets it. `BotParameters.Validate` refuses breakout parameters whose window differs from `SessionStartUtc` and `SessionEndUtc` | Owner request of 2026-11-22 |
+| 2026-11-22 | Breakout signal layer (SIG-022 to SIG-026) | `BreakoutTracker` holds one reference, the last closed D1 bar, and is fed by the engine: each D1 close, then each M15 close with the current bias and the latest ATR(M15) and ATR(H4). An M15 bar is checked when it opened at or after the reference bar's nominal close and the time of day of its own nominal close is at or after `WindowStartUtc` and before `WindowEndUtc`. A confirmation finishes the reference whatever follows: during the warm-up, or without an ATR value, the reference is finished and no signal is returned. The warm-up requirement is the one of ZoneFvg mode (SIG-020), so recovery loads the same history in both modes. In Breakout mode the engine keeps no zones and reports no zone activity | Exact rebuild after a restart; one code path for bar intake |
+| 2026-11-22 | Contract additions (WP25 to WP27) | New in `Signals` (WP25): `BreakoutParameters`, `BreakoutReference`, `BreakoutSetup`, `BreakoutTracker`. WP26: `SignalEngine` gains the constructor `(SignalParameters, BreakoutParameters?)` and `Reference`; `Signal.Fvg` becomes nullable and `Signal` gains the init-only members `Kind` (`SignalKind`, default ZoneFvg) and `Level`; `IBroker` gains `PlaceStopOrder(StopOrderRequest)`; `SymbolInfo` gains the init-only members `Bid` and `Ask` (default 0, filled by the adapter from `Symbol.Bid` and `Symbol.Ask`); `PlannedOrder` gains an init-only entry type (limit or stop); `SkipReason` gains `NewsBreakoutBar` and `EntryAlreadyReached` at the end; `NewsBlockReason` gains `BreakoutBarInWindow` at the end. WP27: `BotParameters` gains `Breakout` | Needed for SIG-022 to SIG-026, EXE-018 to EXE-020, NWS-014 and REC-017 |
+| 2026-11-22 | Stop-entry orders (EXE-018 to EXE-020) | A breakout signal becomes a stop order through `IBroker.PlaceStopOrder`; the order manager picks the port call from the planned order's entry type. Spread: added to the entry of a buy, because a buy stop triggers on the ask, and by EXE-007 to the stop of a sell; nothing else moves. The check "entry already reached" reads `SymbolInfo.Bid` and `Ask` and runs right after the stop bounds. ZoneFvg signals and limit orders are untouched | A stop order placed at or through the market is rejected or fills at once |
+| 2026-11-22 | Parameter hash in the two modes | `ParameterHash.Canonical` and `Compute` take the breakout parameters as an optional third argument. Null gives exactly the v0.9 text and hash (`f681dff2` for the defaults). A value appends `EntryMode=Breakout;BreakoutEntryBufferAtr=<R>;BreakoutStopAtr=<R>;BreakoutWindowStartUtc=<c>;BreakoutWindowEndUtc=<c>;` in that order, numbers in the round-trip format and times of day in the "c" format | Trades placed in the other mode, or under other breakout values, are strangers after a restart; ZoneFvg trades of v0.9 stay adoptable |
+| 2026-11-22 | Journal in Breakout mode (OPS-010) | A breakout signal's line has the keys of OPS-001 in the same order, with `zoneProximal`, `zoneDistal`, `fvgUpper` and `fvgLower` written as `NA`, followed by `kind=breakout` and `level=<price>`. A ZoneFvg line is unchanged byte for byte. In Breakout mode the core's start line ends with `mode=Breakout`; in ZoneFvg mode it is unchanged | Existing journal tests keep their expected text |
