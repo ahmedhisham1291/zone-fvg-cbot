@@ -1,6 +1,7 @@
 using System.Globalization;
 using Xunit;
 using ZoneFvg.Core.Domain;
+using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Recovery;
 
 namespace ZoneFvg.Core.Tests;
@@ -120,6 +121,22 @@ public class BarSeriesCheckStaleLimitTests
         Assert.Equal(
             "D1: last bar closed 2026-03-03 22:00, not recent at 2026-03-05 07:00",
             BarSeriesCheck.ProblemOtherThanGap(TimeFrame.D1, D1Closing(2), 1, At(5, 7), FridayClose, MonthDay.ParseList("12-25"), staleBarLengths: 1));
+    }
+
+    [Theory]
+    [Trait("Req", "REC-018")]
+    [InlineData(22, 59, false)]
+    [InlineData(23, 0, true)]
+    public void ProblemOtherThanGap_D1LimitOne_TimeOutsideTheSessionsIsClosed(int hour, int minute, bool stale)
+    {
+        // Gold sessions (REC-016): a break from 21:00 to 22:00 on Monday to Thursday. Closed Tuesday 22:00:
+        // Tuesday 2 h, Wednesday 00:00 to 21:00 21 h, then from 22:00: 24 hours at Wednesday 23:00.
+        IReadOnlyList<TradingSession> sessions = GoldData.Sessions;
+
+        string? problem = BarSeriesCheck.ProblemOtherThanGap(TimeFrame.D1, D1Closing(2), 1, At(4, hour, minute), FridayClose, null, sessions, staleBarLengths: 1);
+
+        Assert.Equal(stale, problem != null);
+        Assert.NotNull(BarSeriesCheck.ProblemOtherThanGap(TimeFrame.D1, D1Closing(2), 1, At(4, 22), FridayClose, null, null, staleBarLengths: 1));
     }
 
     [Theory]
