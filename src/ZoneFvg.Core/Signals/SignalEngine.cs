@@ -27,6 +27,11 @@ namespace ZoneFvg.Core.Signals;
 /// <para>Until every timeframe holds its warm-up requirement (SIG-020) the engine does all of this
 /// but shows no zones and returns no signals, so its state is exact from the first ready bar
 /// (SIG-019).</para>
+/// <para>Breakout mode (SIG-026, spec 3.7), chosen by creating the engine with breakout
+/// parameters: the intake order, the bias and the warm-up gate are the same; D1 bars also go to a
+/// <see cref="BreakoutTracker"/>; H4 bars are only stored, so no zone is detected; M15 bars are
+/// stored and go to the tracker with the bias and the latest ATR(M15) and ATR(H4), and a setup
+/// becomes a <see cref="SignalKind.Breakout"/> signal when the engine is ready.</para>
 /// </remarks>
 public sealed class SignalEngine
 {
@@ -40,6 +45,7 @@ public sealed class SignalEngine
     private readonly SignalParameters _parameters;
     private readonly BarStore _bars;
     private readonly ZoneBook _book;
+    private readonly BreakoutTracker? _tracker;
 
     // Display only (PLT-005): written when a gap confirms a zone, never read by any decision.
     private readonly List<Fvg> _recentFvgs = new List<Fvg>();
@@ -51,16 +57,32 @@ public sealed class SignalEngine
     private DateTime _lastCloseUtc;
     private int _lastRank;
 
-    /// <summary>Creates an engine with no bars (SIG-020): not ready, Neutral bias, no zones.</summary>
+    /// <summary>Creates an engine in ZoneFvg mode with no bars (SIG-020): not ready, Neutral bias, no zones.</summary>
     /// <param name="parameters">The signal parameters. They are validated first.</param>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public SignalEngine(SignalParameters parameters)
+        : this(parameters, null)
+    {
+    }
+
+    /// <summary>
+    /// Creates an engine with no bars (SIG-020, SIG-026): not ready, Neutral bias, no zones. With
+    /// breakout parameters the engine runs in Breakout mode with a
+    /// <see cref="BreakoutTracker"/> of these parameters and <see cref="SignalParameters.RewardRisk"/>;
+    /// with null it is the ZoneFvg engine.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="breakout">The breakout parameters, or null for ZoneFvg mode. They are validated by the tracker.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public SignalEngine(SignalParameters parameters, BreakoutParameters? breakout)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         _parameters = parameters;
         _bars = new BarStore(parameters);
         _book = new ZoneBook(parameters);
+        _tracker = breakout is null ? null : new BreakoutTracker(breakout, parameters.RewardRisk);
         Bias = Bias.Neutral;
     }
 
@@ -78,6 +100,12 @@ public sealed class SignalEngine
     /// during the warm-up as well; it gates only the signals (SIG-015, SIG-018).
     /// </summary>
     public Bias Bias { get; private set; }
+
+    /// <summary>
+    /// Breakout mode (SIG-022, SIG-026): the tracker's reference day, null before the first D1 bar.
+    /// Always null in ZoneFvg mode.
+    /// </summary>
+    public BreakoutReference? Reference => _tracker?.Reference;
 
     /// <summary>
     /// The non-terminal zones (Active or Touched), ordered by id with ordinal comparison (SIG-014);
@@ -106,7 +134,8 @@ public sealed class SignalEngine
 
     /// <summary>
     /// Feeds one closed bar (SIG-001, SIG-004) and returns the signals it confirms, ordered by zone
-    /// id, at most one per zone (SIG-018); none while the engine is not ready (SIG-020).
+    /// id, at most one per zone (SIG-018); none while the engine is not ready (SIG-020). In
+    /// Breakout mode at most one signal, of kind Breakout (SIG-026).
     /// </summary>
     /// <remarks>
     /// Bars must arrive in strictly increasing order of the pair (close time, rank), where the close
@@ -139,13 +168,39 @@ public sealed class SignalEngine
         {
             case TimeFrame.D1:
                 Bias = BiasCalculator.Compute(_bars.Bars(TimeFrame.D1), _parameters.BiasEmaPeriod);
+                _tracker?.OnD1Closed(bar);
                 return NoSignals;
             case TimeFrame.H4:
-                OnH4Closed(bar);
+                if (_tracker is null)
+                {
+                    OnH4Closed(bar);
+                }
+
                 return NoSignals;
             default:
-                return OnM15Closed(bar, replay);
+                return _tracker is null ? OnM15Closed(bar, replay) : OnBreakoutM15Closed(_tracker, bar, replay);
         }
+    }
+
+    // SIG-026: the ATR values are computed as in OnM15Closed; a setup becomes a signal only when ready.
+    private IReadOnlyList<Signal> OnBreakoutM15Closed(BreakoutTracker tracker, Bar bar, bool replay)
+    {
+        IReadOnlyList<Bar> m15 = _bars.Bars(TimeFrame.M15);
+        IReadOnlyList<Bar> h4 = _bars.Bars(TimeFrame.H4);
+        double? atrM15 = Atr.Value(m15, m15.Count - 1, _parameters.AtrPeriod);
+        double? atrH4 = h4.Count == 0 ? null : Atr.Value(h4, h4.Count - 1, _parameters.AtrPeriod);
+        BreakoutSetup? setup = tracker.OnM15Closed(bar, Bias, atrM15, atrH4);
+        if (setup is null || !IsReady)
+        {
+            return NoSignals;
+        }
+
+        var signal = new Signal(setup.Id, setup.Side, setup.Entry, setup.Stop, setup.Target, null, setup.ConfirmationCloseUtc, replay, setup.AtrH4)
+        {
+            Kind = SignalKind.Breakout,
+            Level = setup.Level,
+        };
+        return Array.AsReadOnly(new[] { signal });
     }
 
     private void RequireIntakeOrder(TimeFrame timeFrame, DateTime closeUtc, int rank)
