@@ -130,7 +130,11 @@ alerts) is the same in both modes. The three parameters of the group
 | `BreakoutEntryBufferAtr` | `0.1` | Breakout mode: how far beyond the confirming bar the stop order is placed, in ATR(M15) |
 | `BreakoutStopAtr` | `1.0` | Breakout mode: stop distance from the entry, in ATR(H4) |
 
-In ZoneFvg mode the two `Breakout...` values are not used. The gold file
+The two `Breakout...` values are checked at start in both modes: an invalid
+value (for example `BreakoutStopAtr` = 0) makes the bot refuse to start and
+name the parameter, also with `EntryMode=ZoneFvg`. They are used in Breakout
+mode only; in ZoneFvg mode they produce no signal and are not part of the
+parameter hash. The gold file
 uses the same three values as the forex files.
 
 **Check after each start.** The first adapter line ends with the mode, for

@@ -94,13 +94,23 @@ Stop the instance between the runs, and start it after each change. Put the
 value back afterwards.
 
 a. `EntryMode` = `Abc`. Expected: `ZFVG adapter refused to start: invalid
-   parameter: EntryMode must be one of: ZoneFvg, Breakout.` (followed by the
-   parameter name), then the instance stops. No order is placed.
-b. `EntryMode` = Breakout, `BreakoutStopAtr` = 0. Expected: `ZFVG adapter
-   refused to start: invalid parameter: StopAtrMult must be a finite number
-   greater than zero but was ...`, then the instance stops. No order is
-   placed. The message uses `StopAtrMult`, the core's name of the value set
-   by `BreakoutStopAtr` (see the pull request, "Decisions for the human").
+   parameter: EntryMode must be one of: ZoneFvg, Breakout. (Parameter
+   'EntryMode')`, then the instance stops. No order is placed.
+b. `EntryMode` = Breakout, `BreakoutStopAtr` = 0. Expected:
+   `ZFVG adapter refused to start: invalid parameter: BreakoutStopAtr:
+   StopAtrMult must be a finite number greater than zero but was 0.
+   (Parameter 'StopAtrMult')`, then the instance stops. No order is placed.
+c. `EntryMode` = Breakout, `BreakoutEntryBufferAtr` = -1. Expected:
+   `ZFVG adapter refused to start: invalid parameter: BreakoutEntryBufferAtr:
+   EntryBufferAtr must be a finite number that is not negative but was -1.
+   (Parameter 'EntryBufferAtr')`, then the instance stops. No order is
+   placed.
+d. `EntryMode` = ZoneFvg, `BreakoutStopAtr` = 0. Expected: the same refusal
+   as in b, word for word: the two breakout values are checked in both
+   modes.
+
+Each expected text is one line in the Log; it is broken here only for
+reading.
 
 Observed: (fill in)
 
