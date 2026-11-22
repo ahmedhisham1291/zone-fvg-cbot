@@ -1422,7 +1422,7 @@ requirements:
     wp: WP29
     spec: "5.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Unclear outcome and a trade that already closed (decided 2026-11-22
       after the review of WP26). When a placement with an unclear outcome is
@@ -1441,7 +1441,7 @@ requirements:
     wp: WP29
     spec: "5.2"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Entry type fits the signal (decided 2026-11-22 after the review of
       WP26). A stop order is sent only for a signal of Kind Breakout whose
@@ -1517,7 +1517,7 @@ requirements:
     wp: WP29
     spec: "8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       The D1 series in Breakout mode (decided 2026-11-22 after the review of
       WP27). In Breakout mode the last closed D1 bar is the reference, so
@@ -1533,7 +1533,7 @@ requirements:
     wp: WP29
     spec: "12.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Fault scenarios in Breakout mode (decided 2026-11-22 after the review
       of WP27). Fault scenarios 5, 6, 8 and 14 of spec 12.3 also pass as
