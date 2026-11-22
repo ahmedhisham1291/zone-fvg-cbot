@@ -2,6 +2,7 @@ using Xunit;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
+using ZoneFvg.Core.Signals;
 
 namespace ZoneFvg.Core.Tests;
 
