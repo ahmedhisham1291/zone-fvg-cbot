@@ -104,7 +104,7 @@ public sealed class NewsUpdate
     public bool CalendarChanged { get; }
 }
 
-/// <summary>Why the news filter blocks an entry (NWS-008, NWS-009).</summary>
+/// <summary>Why the news filter blocks an entry (NWS-008, NWS-009, NWS-014).</summary>
 public enum NewsBlockReason
 {
     /// <summary>Not blocked.</summary>
@@ -118,9 +118,12 @@ public enum NewsBlockReason
 
     /// <summary>One of the three FVG bars overlaps a news window of the symbol (NWS-009).</summary>
     FvgBarInWindow,
+
+    /// <summary>The confirming bar of a breakout signal overlaps a news window of the symbol (NWS-014).</summary>
+    BreakoutBarInWindow,
 }
 
-/// <summary>Decision of <see cref="NewsService.CheckEntry"/> (NWS-008, NWS-009).</summary>
+/// <summary>Decision of <see cref="NewsService.CheckEntry"/> and <see cref="NewsService.CheckBreakoutEntry"/> (NWS-008, NWS-009, NWS-014).</summary>
 public sealed class NewsDecision
 {
     internal NewsDecision(NewsBlockReason reason, DateTime? barOpenUtc)
@@ -135,6 +138,6 @@ public sealed class NewsDecision
     /// <summary>The first failing check, or <see cref="NewsBlockReason.None"/>.</summary>
     public NewsBlockReason Reason { get; }
 
-    /// <summary>Open time of the first FVG bar (c3, c2, c1 order) that overlaps a window; null otherwise.</summary>
+    /// <summary>Open time of the first FVG bar (c3, c2, c1 order) or of the breakout's confirming bar that overlaps a window; null otherwise.</summary>
     public DateTime? BarOpenUtc { get; }
 }
