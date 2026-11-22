@@ -1,3 +1,6 @@
+EntryMode=Breakout
+BreakoutEntryBufferAtr=0.1
+BreakoutStopAtr=1.0
 BiasTimeFrame=D1
 ZoneTimeFrame=H4
 BiasEmaPeriod=50

@@ -8,6 +8,9 @@ administrator. Follow the steps in order and do not skip a check.
   [`docs/runbook.md`](../docs/runbook.md).
 - The 14 fault-injection tests you must pass before the Challenge:
   [`docs/test-records/WP11-fault-injection.md`](../docs/test-records/WP11-fault-injection.md).
+- The entry mode (Breakout or ZoneFvg), how to change it, and the two records
+  you sign before an instance trades in Breakout mode on the Challenge
+  account: section "Entry mode" below, before Part A.
 
 ## How to read this guide
 
@@ -107,6 +110,75 @@ administrator. Follow the steps in order and do not skip a check.
 
 ---
 
+## Entry mode (spec v0.10)
+
+The bot has two entry modes (spec 3.7 and section 7). Each instance runs
+one of them, chosen with the parameter `EntryMode` at start:
+
+- **Breakout** (the default): in the direction of the D1 trend, the bot
+  waits for an M15 bar that closes beyond the previous day's high or low
+  inside the trading window, then places a stop order beyond that bar.
+- **ZoneFvg**: the zone and fair value gap entry of spec 3.2 to 3.5.
+
+Everything else (sizing, account limits, news, recovery, FTMO guards,
+alerts) is the same in both modes. The three parameters of the group
+"Entry mode" are the first three lines of every file in `deploy/params/`:
+
+| Parameter | Value in the files | What it does |
+|---|---|---|
+| `EntryMode` | `Breakout` | `Breakout` or `ZoneFvg`. Any other text makes the bot refuse to start and name the parameter |
+| `BreakoutEntryBufferAtr` | `0.1` | Breakout mode: how far beyond the confirming bar the stop order is placed, in ATR(M15) |
+| `BreakoutStopAtr` | `1.0` | Breakout mode: stop distance from the entry, in ATR(H4) |
+
+In ZoneFvg mode the two `Breakout...` values are not used. The gold file
+uses the same three values as the forex files.
+
+**Check after each start.** The first adapter line ends with the mode, for
+example `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
+In Breakout mode the core `start` line also ends with `mode=Breakout`; in
+ZoneFvg mode it has no `mode=` field.
+
+**A change of mode is a parameter change.** Change `EntryMode` (or any other
+parameter) only when the bot is flat on that symbol (spec 10.2,
+"Deployments"). **Flat** means: no open position of the bot and no pending
+order of the bot. Why:
+
+- A position opened in the other mode (or under other values) is a
+  stranger after the restart: it is kept with its existing stop loss and
+  take profit, counted in the risk totals and the Friday close, and
+  reported (spec 8.3, step 6).
+- A pending order placed under the old values is kept across the restart
+  with its old levels and size (`docs/architecture.md` section 10, row "A
+  pending order placed under other parameter values"). So before you change
+  a parameter or the mode, wait until no bot order is pending (an entry
+  order lives two hours at most: `EntryExpiryBars` 8 bars of 15 minutes), or
+  cancel it by hand in the cTrader app.
+
+**Before Breakout mode trades on the Challenge account.** Two records must
+be run and signed by you on a demo or FTMO Free Trial account first
+(`docs/architecture.md` section 10, rows "The cTrader stop-order call" and
+"Daily and H4 bar boundaries on cTrader"):
+
+1. The stop-order record
+   [`docs/test-records/WP26-stop-orders.md`](../docs/test-records/WP26-stop-orders.md)
+   (PLT-011): the bot's stop orders are placed, trigger, expire and are
+   cancelled as expected.
+2. The D1 boundary: step 3 of
+   [`docs/test-records/WP08-adapter.md`](../docs/test-records/WP08-adapter.md),
+   with the observed open hour of the D1 bars written in. Expected is 21:00
+   UTC while New York is on daylight saving time and 22:00 UTC otherwise,
+   five daily bars a week and no short Sunday bar. If the D1 bars open at
+   00:00 UTC, or a short Sunday bar exists, write it down: Breakout mode
+   then does not go live before a follow-up decides how Monday's reference
+   day is formed. The entry-mode record
+   [`docs/test-records/WP28-entry-mode.md`](../docs/test-records/WP28-entry-mode.md)
+   asks for the same observation (its step 7).
+
+Until both are signed, no instance trades in Breakout mode on the Challenge
+account.
+
+---
+
 ## Part A. Stage 1: your laptop (spec 10.5)
 
 Goal: a few days on an FTMO Free Trial with cTrader desktop on your Mac,
@@ -143,6 +215,7 @@ before you pay for a server.
    XAUUSD (gold) with the same parameters (only `HeartbeatUrl` differs, one
    monitor per symbol). The gold instance also has its own three values (see
    "Gold (XAUUSD)" below): use `deploy/params/xauusd.cbotset.example`.
+   All five instances use the same `EntryMode` (see "Entry mode" above).
 5. Optional, one instance only: right-click it and choose **Start in external
    process**, then close the cTrader window; the cBot keeps running in a CLI
    process (source: https://help.ctrader.com/ctrader-cli/cbots/, "Launch from
@@ -481,7 +554,8 @@ service user.
 | `HeartbeatUrl` | One check per symbol at your heartbeat-monitoring service, so an alert names the symbol that stopped |
 | `ProfitTargetPercent` | 10 in the Challenge, 5 in the Verification |
 
-Leave every other value at the spec default. `MaxSpreadPips` is 1.5 for the
+Leave every other value at the spec default, including the three values of
+the group "Entry mode" (section "Entry mode" above). `MaxSpreadPips` is 1.5 for the
 four forex symbols until the broker conditions (spec 10.4) say otherwise. A value
 left as `CHANGE_ME...` makes the bot refuse to start (`RiskEpochDate`) or fail
 safely (no calendar means no entries; failed alerts are logged).
@@ -553,7 +627,8 @@ docker compose run --rm --no-deps eurusd metadata /mnt/algo/ZoneFvgBot.algo
 Sources: https://docs.docker.com/reference/cli/docker/compose/run/ (the words
 after the service name replace its command); `metadata`:
 https://help.ctrader.com/ctrader-cli/cbots/ ("Read cBot Metadata").
-Expected: the parameter list of ZoneFvgBot (BiasTimeFrame ... DrawObjects).
+Expected: the parameter list of ZoneFvgBot (EntryMode, BreakoutEntryBufferAtr,
+BreakoutStopAtr, BiasTimeFrame ... DrawObjects).
 If it says the cBot is built for an older .NET: stop here and tell the
 developer.
 
@@ -581,8 +656,9 @@ docker compose logs -f eurusd
 Sources: https://docs.docker.com/reference/cli/docker/compose/up/ ;
 https://docs.docker.com/reference/cli/docker/compose/logs/
 Press Ctrl+C to stop watching (the bot keeps running). Expected, as in WP08
-record step 1: `ZFVG adapter version ...`, `symbol EURUSD`, `backtest no`; a
-core `start` line; a recovery report; state Running (or Blocked with a reason);
+record step 1: `ZFVG adapter version ...`, `symbol EURUSD`, `backtest no`,
+`mode Breakout` (or `mode ZoneFvg`, section "Entry mode"); a core `start`
+line; a recovery report; state Running (or Blocked with a reason);
 a Telegram "Started" message; no token or address visible in the log.
 
 12.5 Local storage location and persistence (fact 6):
@@ -631,7 +707,7 @@ test (spec 12.3). Only after both, think about the Challenge (spec 15.6).
 | Log lines of the last 24 hours with times | `docker compose logs --since 24h --timestamps eurusd` | compose `logs` |
 | Stop one symbol (no new trades; stops stay at the broker) | `docker compose stop eurusd` | https://docs.docker.com/reference/cli/docker/compose/stop/ |
 | Start it again | `docker compose start eurusd` | https://docs.docker.com/reference/cli/docker/compose/start/ |
-| Restart after editing its `bot.cbotset` | `docker compose restart eurusd` | compose `restart` |
+| Restart after editing its `bot.cbotset` (only when flat, section "Entry mode") | `docker compose restart eurusd` | compose `restart` |
 | Disk use | `df -h /` and `docker system df` | standard tool; https://docs.docker.com/reference/cli/docker/system/df/ |
 
 Run every `docker compose` command from `/opt/zfvg` (`cd /opt/zfvg` first).
