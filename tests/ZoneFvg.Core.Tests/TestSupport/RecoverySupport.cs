@@ -284,6 +284,8 @@ public sealed class SwitchableBroker : IBroker
 
     public OrderResult PlaceLimitOrder(LimitOrderRequest request) => Inner.PlaceLimitOrder(request);
 
+    public OrderResult PlaceStopOrder(StopOrderRequest request) => Inner.PlaceStopOrder(request);
+
     public OrderResult CancelOrder(long orderId) => Inner.CancelOrder(orderId);
 
     public OrderResult ModifyPositionProtection(long positionId, double? stopLoss, double? takeProfit) => Inner.ModifyPositionProtection(positionId, stopLoss, takeProfit);

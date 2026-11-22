@@ -10,7 +10,7 @@ namespace ZoneFvg.Core.Execution.Ports;
 /// layer reads them here at every event and never keeps them as a record of its own (spec 8.1).
 /// </summary>
 /// <remarks>
-/// Every request (<see cref="PlaceLimitOrder"/>, <see cref="CancelOrder"/>,
+/// Every request (<see cref="PlaceLimitOrder"/>, <see cref="PlaceStopOrder"/>, <see cref="CancelOrder"/>,
 /// <see cref="ModifyPositionProtection"/>, <see cref="ClosePosition"/>) is synchronous and returns
 /// an <see cref="OrderResult"/>. A timeout, a disconnect or a technical error is reported as
 /// <see cref="OrderOutcome.Unclear"/>, never thrown (EXE-009).
@@ -56,6 +56,14 @@ public interface IBroker
     /// <param name="request">The order.</param>
     /// <returns>Success with the order id, a clear rejection with its code, or Unclear.</returns>
     OrderResult PlaceLimitOrder(LimitOrderRequest request);
+
+    /// <summary>
+    /// Places a stop order (buy stop or sell stop) with stop loss, take profit and expiry attached
+    /// (EXE-018). Synchronous; the outcome rules are those of <see cref="PlaceLimitOrder"/>.
+    /// </summary>
+    /// <param name="request">The order.</param>
+    /// <returns>Success with the order id, a clear rejection with its code, or Unclear.</returns>
+    OrderResult PlaceStopOrder(StopOrderRequest request);
 
     /// <summary>Cancels a pending order (EXE-010, EXE-013).</summary>
     /// <param name="orderId">Broker order id.</param>
@@ -108,6 +116,31 @@ public sealed record OrderResult(OrderOutcome Outcome, long? Id, string? ErrorCo
 /// <param name="Label">Label <c>ZFVG|v1|&lt;symbol&gt;|&lt;zoneId&gt;</c> (EXE-008).</param>
 /// <param name="Comment">Comment with the plan and the parameter hash (EXE-008).</param>
 public sealed record LimitOrderRequest(
+    string Symbol,
+    Side Side,
+    double VolumeUnits,
+    double EntryPrice,
+    double StopLossPrice,
+    double TakeProfitPrice,
+    DateTime ExpiryUtc,
+    string Label,
+    string Comment);
+
+/// <summary>
+/// A stop order with its protection, as sent to the broker (EXE-018): a buy stop for Buy, a sell
+/// stop for Sell. The same members as <see cref="LimitOrderRequest"/>. A data record; the
+/// execution layer builds it from a checked plan.
+/// </summary>
+/// <param name="Symbol">Symbol name.</param>
+/// <param name="Side">Direction.</param>
+/// <param name="VolumeUnits">Volume in units.</param>
+/// <param name="EntryPrice">Stop (entry) price: the order triggers when price reaches it.</param>
+/// <param name="StopLossPrice">Stop-loss price, attached at placement.</param>
+/// <param name="TakeProfitPrice">Take-profit price, attached at placement.</param>
+/// <param name="ExpiryUtc">Time at which the broker cancels the unfilled order, kind UTC (EXE-015).</param>
+/// <param name="Label">Label <c>ZFVG|v1|&lt;symbol&gt;|&lt;breakoutId&gt;</c> (EXE-008, EXE-018).</param>
+/// <param name="Comment">Comment with the plan and the parameter hash (EXE-008).</param>
+public sealed record StopOrderRequest(
     string Symbol,
     Side Side,
     double VolumeUnits,

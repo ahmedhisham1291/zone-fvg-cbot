@@ -186,6 +186,8 @@ public class StartChecksTests
 
         public OrderResult PlaceLimitOrder(LimitOrderRequest request) => _inner.PlaceLimitOrder(request);
 
+        public OrderResult PlaceStopOrder(StopOrderRequest request) => _inner.PlaceStopOrder(request);
+
         public OrderResult CancelOrder(long orderId) => _inner.CancelOrder(orderId);
 
         public OrderResult ModifyPositionProtection(long positionId, double? stopLoss, double? takeProfit) => _inner.ModifyPositionProtection(positionId, stopLoss, takeProfit);
