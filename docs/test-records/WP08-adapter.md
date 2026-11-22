@@ -71,11 +71,15 @@ Pass / fail: (fill in)
 Look at the chart's D1 and H4 bars (switch the chart timeframe temporarily, or
 read the journal).
 
-Expected: D1 bars open at 00:00 UTC and H4 bars at 00:00, 04:00, ... 20:00 UTC,
-so that a bar's close is its open plus 24 hours or 4 hours. At 00:00 UTC the
-journal shows the D1 bar processed before the H4 bar, and the H4 bar before
-the M15 bar. If D1 bars open at another hour (for example 22:00 UTC), record
-it here: the nominal close-time rule then needs the owner's review.
+Expected (`docs/architecture.md` section 10, row "Daily and H4 bar boundaries
+on cTrader"): D1 bars open at 21:00 UTC while New York is on daylight saving
+time and at 22:00 UTC otherwise, five a week, the first of the week on Sunday
+evening UTC and running 24 hours; there is no short daily bar for Sunday. H4
+bars follow every four hours from the weekly open. A bar's close is its open
+plus 24 hours or 4 hours. At the daily close the journal shows the D1 bar
+processed before the H4 bar, and the H4 bar before the M15 bar. If the D1 bars
+open at 00:00 UTC or a short Sunday bar exists, record it here: Breakout mode
+then does not go live before a follow-up.
 
 Observed D1 open hour: (fill in)  H4 open hours: (fill in)
 
