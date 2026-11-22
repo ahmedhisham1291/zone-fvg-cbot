@@ -10,15 +10,15 @@ namespace ZoneFvg.Core.Ops;
 /// The fields of spec section 11 for one signal, taken or skipped (OPS-001): time, symbol, bias,
 /// zone id and edges, FVG edges, entry, stop, target, stop pips, volume, spread, cost-to-risk,
 /// news status and skip reason. A data record; a null value is journaled as <c>NA</c>. For a
-/// breakout signal (OPS-010) the zone id is the breakout id, the gap edges are null, and
+/// breakout signal (OPS-010) the zone id is the breakout id, the zone and gap edges are null, and
 /// <see cref="Kind"/> and <see cref="Level"/> are set.
 /// </summary>
 /// <param name="TimeUtc">Server time of the decision, kind UTC.</param>
 /// <param name="Symbol">Symbol name.</param>
 /// <param name="Bias">D1 bias at the decision.</param>
 /// <param name="ZoneId">Id of the zone of the signal.</param>
-/// <param name="ZoneProximal">Proximal edge of the zone, or null when the zone is not known.</param>
-/// <param name="ZoneDistal">Distal edge of the zone, or null when the zone is not known.</param>
+/// <param name="ZoneProximal">Proximal edge of the zone, or null when the zone is not known; null for a breakout signal (OPS-010).</param>
+/// <param name="ZoneDistal">Distal edge of the zone, or null when the zone is not known; null for a breakout signal (OPS-010).</param>
 /// <param name="FvgUpper">Upper edge of the gap; null for a breakout signal (OPS-010).</param>
 /// <param name="FvgLower">Lower edge of the gap; null for a breakout signal (OPS-010).</param>
 /// <param name="Entry">Entry price: the order's for a taken signal, the signal's for a skipped one.</param>
@@ -61,7 +61,7 @@ public sealed record SignalJournalEntry(
     /// </summary>
     /// <param name="order">The planned order that passed every filter.</param>
     /// <param name="bias">D1 bias at the decision.</param>
-    /// <param name="zone">The zone of the signal, or null when not known.</param>
+    /// <param name="zone">The zone of the signal, or null when not known; not read for a breakout signal, whose zone edges are null (OPS-010).</param>
     /// <param name="symbol">Symbol data at the decision, or null when not known.</param>
     /// <param name="news">Calendar status, or null when not known.</param>
     /// <returns>The entry.</returns>
@@ -70,13 +70,14 @@ public sealed record SignalJournalEntry(
     {
         ArgumentNullException.ThrowIfNull(order);
         double? spread = SpreadPipsOf(symbol);
+        Zone? edges = ZoneOf(order.Signal, zone);
         return new SignalJournalEntry(
             order.PlannedAtUtc,
             order.Symbol,
             bias,
             order.Signal.ZoneId,
-            zone?.Proximal,
-            zone?.Distal,
+            edges?.Proximal,
+            edges?.Distal,
             order.Signal.Fvg?.Upper,
             order.Signal.Fvg?.Lower,
             order.Entry,
@@ -101,7 +102,7 @@ public sealed record SignalJournalEntry(
     /// <param name="signal">The signal.</param>
     /// <param name="symbolName">Symbol name.</param>
     /// <param name="bias">D1 bias at the decision.</param>
-    /// <param name="zone">The zone of the signal, or null when not known.</param>
+    /// <param name="zone">The zone of the signal, or null when not known; not read for a breakout signal, whose zone edges are null (OPS-010).</param>
     /// <param name="skip">The skip record (EXE-014).</param>
     /// <param name="symbol">Symbol data at the decision, or null when not known.</param>
     /// <param name="news">Calendar status, or null when not known.</param>
@@ -119,13 +120,14 @@ public sealed record SignalJournalEntry(
         }
 
         double? spread = SpreadPipsOf(symbol);
+        Zone? edges = ZoneOf(signal, zone);
         return new SignalJournalEntry(
             skip.AtUtc,
             symbolName,
             bias,
             signal.ZoneId,
-            zone?.Proximal,
-            zone?.Distal,
+            edges?.Proximal,
+            edges?.Distal,
             signal.Fvg?.Upper,
             signal.Fvg?.Lower,
             signal.Entry,
@@ -141,6 +143,12 @@ public sealed record SignalJournalEntry(
             Kind = signal.Kind,
             Level = signal.Level,
         };
+    }
+
+    // OPS-010: a breakout signal has no zone, so its zone edges are NA whatever zone the caller passes.
+    private static Zone? ZoneOf(Signal signal, Zone? zone)
+    {
+        return signal.Kind == SignalKind.Breakout ? null : zone;
     }
 
     private static double? SpreadPipsOf(SymbolInfo? symbol)

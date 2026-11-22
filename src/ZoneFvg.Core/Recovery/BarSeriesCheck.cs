@@ -39,7 +39,9 @@ public sealed record BarGap(TimeFrame TimeFrame, DateTime PreviousOpenUtc, DateT
 /// 15 minutes apart outside the weekend closure". For H4 and D1 it tolerates the one-hour shift of
 /// a broker whose bars follow a daylight-saving clock.</para>
 /// <para>The last bar is recent when less than two bar lengths of open-market time have passed
-/// since its close. One bar of slack covers a bar that closes while the history is being read.</para>
+/// since its close. One bar of slack covers a bar that closes while the history is being read.
+/// <see cref="ProblemOtherThanGap"/> takes another number of bar lengths (REC-018): recovery uses
+/// one for the D1 series in Breakout mode, where the last closed D1 bar is the reference.</para>
 /// </remarks>
 public static class BarSeriesCheck
 {
@@ -120,7 +122,7 @@ public static class BarSeriesCheck
     /// <param name="sessions">The symbol's weekly trading sessions, UTC (REC-016); null or empty means none.</param>
     public static string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null, IReadOnlyList<TradingSession>? sessions = null)
     {
-        return FirstProblem(timeFrame, bars, required, nowUtc, fridayCloseUtc, holidays, WeeklyOpen(sessions), true);
+        return FirstProblem(timeFrame, bars, required, nowUtc, fridayCloseUtc, holidays, WeeklyOpen(sessions), true, 2);
     }
 
     /// <summary>
@@ -137,10 +139,21 @@ public static class BarSeriesCheck
     /// <param name="fridayCloseUtc">UTC time of day at which the weekend closure starts on Fridays.</param>
     /// <param name="holidays">Market holidays (owner decision of 2026-11-16); null means none.</param>
     /// <param name="sessions">The symbol's weekly trading sessions, UTC (REC-016); null or empty means none.</param>
+    /// <param name="staleBarLengths">
+    /// REC-018: the number of bar lengths of open-market time since the close of the last bar at
+    /// which the last bar is not recent. Default 2, the limit of REC-003; recovery passes 1 for the
+    /// D1 series in Breakout mode.
+    /// </param>
     /// <returns>A short invariant description of the first problem, or null.</returns>
-    public static string? ProblemOtherThanGap(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null, IReadOnlyList<TradingSession>? sessions = null)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="staleBarLengths"/> is below 1.</exception>
+    public static string? ProblemOtherThanGap(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays = null, IReadOnlyList<TradingSession>? sessions = null, int staleBarLengths = 2)
     {
-        return FirstProblem(timeFrame, bars, required, nowUtc, fridayCloseUtc, holidays, WeeklyOpen(sessions), false);
+        if (staleBarLengths < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(staleBarLengths), staleBarLengths, "The number of bar lengths after which the last bar is stale must be at least 1.");
+        }
+
+        return FirstProblem(timeFrame, bars, required, nowUtc, fridayCloseUtc, holidays, WeeklyOpen(sessions), false, staleBarLengths);
     }
 
     /// <summary>
@@ -174,7 +187,9 @@ public static class BarSeriesCheck
         return gaps.AsReadOnly();
     }
 
-    private static string? FirstProblem(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays, IReadOnlyList<OpenSpan>? week, bool gaps)
+    // staleBarLengths (REC-018): the last bar is not recent from this many whole bar lengths of open-market time
+    // since its close; compared in whole bar lengths, so that no product of ticks can overflow.
+    private static string? FirstProblem(TimeFrame timeFrame, IReadOnlyList<Bar>? bars, int required, DateTime nowUtc, TimeSpan fridayCloseUtc, IReadOnlyCollection<MonthDay>? holidays, IReadOnlyList<OpenSpan>? week, bool gaps, int staleBarLengths)
     {
         if (bars == null)
         {
@@ -217,7 +232,7 @@ public static class BarSeriesCheck
         if (bars.Count > 0)
         {
             DateTime lastClose = bars[bars.Count - 1].OpenTimeUtc + length;
-            if (OpenTime(lastClose, nowUtc, fridayCloseUtc, holidays, week) >= length + length)
+            if (OpenTime(lastClose, nowUtc, fridayCloseUtc, holidays, week).Ticks / length.Ticks >= staleBarLengths)
             {
                 return timeFrame + ": last bar closed " + Minute(lastClose) + ", not recent at " + Minute(nowUtc);
             }

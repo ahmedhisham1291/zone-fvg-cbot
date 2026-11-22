@@ -48,9 +48,10 @@ public enum PlaceOutcome
 public sealed record PlaceResult(PlaceOutcome Outcome, string Label, long? OrderId, string Detail);
 
 /// <summary>
-/// Sends entry orders idempotently (EXE-009) and checks them after placement (EXE-010): limit
-/// orders through <see cref="IBroker.PlaceLimitOrder"/>, stop orders through
-/// <see cref="IBroker.PlaceStopOrder"/> (EXE-018).
+/// Sends entry orders idempotently (EXE-009, EXE-021) and checks them after placement (EXE-010):
+/// limit orders through <see cref="IBroker.PlaceLimitOrder"/> for ZoneFvg signals, stop orders
+/// through <see cref="IBroker.PlaceStopOrder"/> for breakout signals (EXE-018); an order of the
+/// other type is never sent (EXE-022).
 /// </summary>
 /// <remarks>
 /// <para>The broker is the only source of truth: every placement and every resolution starts
@@ -107,7 +108,11 @@ public sealed class OrderManager
     /// the broker, or an earlier placement of the label is unresolved, nothing is sent. Otherwise
     /// one request is sent and its result handled: success is read back and checked (EXE-010); a
     /// clear rejection is recorded and alerted and never retried; an unclear outcome is kept for
-    /// <see cref="ResolvePending"/> and never resent here.
+    /// <see cref="ResolvePending"/> and never resent here. Before anything is sent or queried, an
+    /// order whose entry type does not fit its signal (EXE-022: Stop only for Kind Breakout, Limit
+    /// only for Kind ZoneFvg; an undefined kind or entry type fits nothing) is recorded as skipped
+    /// with InvalidSignal and "entry type &lt;EntryType&gt; does not fit signal kind &lt;Kind&gt;", and
+    /// abandoned; this also holds for a resend.
     /// </summary>
     /// <param name="order">The checked order from <see cref="PreTradeFilters"/>.</param>
     /// <returns>What happened.</returns>
@@ -126,14 +131,21 @@ public sealed class OrderManager
     /// <summary>
     /// Resolves the placements with an unclear outcome; called at each M15 close (EXE-009). For each:
     /// the broker is queried for the label. If an order exists it is checked as after a successful
-    /// placement (EXE-010); if a position exists the placement is done. If nothing exists the
+    /// placement (EXE-010); if a position exists the placement is done. If neither exists, the
+    /// broker's history since the signal's confirmation close is read before anything else is
+    /// decided (EXE-021): a closed trade with the label means the order was applied, filled and
+    /// closed, and the placement ends as Placed with "filled and closed as position &lt;id&gt;";
+    /// no history list abandons it as UnclearOutcomeNotResent ("history not available, not
+    /// resent"); nothing is sent in either case. Otherwise the
     /// order is resent once only when the signal is at most one M15 bar old, at least one bar has
     /// closed since its confirmation and no such bar traded through the entry, and at least 15
     /// minutes of order life are left; otherwise it is abandoned and recorded. Traded through, for a
     /// limit order: a low at or below the order's entry for a buy, a high at or above it for a
     /// sell (EXE-009); for a stop order: a high at or above the signal's entry (before the spread)
     /// for a buy, a low at or below it for a sell (EXE-020). Until a bar has closed after the
-    /// confirmation, a placement with nothing at the broker is kept.
+    /// confirmation, a placement with nothing at the broker and nothing in the history is kept. An
+    /// exception of a broker query, the history read included, leaves this method and the placement
+    /// unresolved; nothing has been sent.
     /// </summary>
     /// <param name="recentM15Bars">Closed M15 bars of the symbol, at least those since the oldest unresolved confirmation.</param>
     /// <returns>One result per placement that was resolved, in the order the placements were made.</returns>
@@ -172,6 +184,23 @@ public sealed class OrderManager
         }
 
         TimeSpan age = now - order.Signal.ConfirmationCloseUtc;
+
+        // EXE-021: the history since the confirmation, before anything else is decided. An exception is not
+        // caught, like the two queries above: nothing has changed and the placement stays unresolved.
+        IReadOnlyList<ClosedTradeInfo>? history = _broker.GetHistory(order.Signal.ConfirmationCloseUtc);
+        if (history == null)
+        {
+            _unresolved.Remove(order);
+            return Abandon(order, now, age, "history not available, not resent");
+        }
+
+        ClosedTradeInfo? closed = history.FirstOrDefault(trade => trade != null && string.Equals(trade.Label, order.Label, StringComparison.Ordinal));
+        if (closed != null)
+        {
+            _unresolved.Remove(order);
+            return new PlaceResult(PlaceOutcome.Placed, order.Label, null, "filled and closed as position " + Text(closed.PositionId));
+        }
+
         bool barClosed = age >= BarLength;
         if (!barClosed && age >= TimeSpan.Zero)
         {
@@ -180,14 +209,15 @@ public sealed class OrderManager
 
         _unresolved.Remove(order);
         string? reason = ResendBlocker(order, bars, now, age);
-        if (reason != null)
-        {
-            var skip = new SkipRecord(order.Symbol, order.Signal.ZoneId, SkipReason.UnclearOutcomeNotResent, age.TotalMinutes, ExecutionParameters.MaxSignalAgeMinutes, reason, now);
-            _events.Skipped(skip);
-            return new PlaceResult(PlaceOutcome.Abandoned, order.Label, null, reason);
-        }
+        return reason != null ? Abandon(order, now, age, reason) : Send(order);
+    }
 
-        return Send(order);
+    // EXE-009: an unclear placement that is not resent is recorded as UnclearOutcomeNotResent.
+    private PlaceResult Abandon(PlannedOrder order, DateTime now, TimeSpan age, string reason)
+    {
+        var skip = new SkipRecord(order.Symbol, order.Signal.ZoneId, SkipReason.UnclearOutcomeNotResent, age.TotalMinutes, ExecutionParameters.MaxSignalAgeMinutes, reason, now);
+        _events.Skipped(skip);
+        return new PlaceResult(PlaceOutcome.Abandoned, order.Label, null, reason);
     }
 
     private static string? ResendBlocker(PlannedOrder order, IReadOnlyList<Bar> bars, DateTime now, TimeSpan age)
@@ -232,6 +262,15 @@ public sealed class OrderManager
 
     private PlaceResult Send(PlannedOrder order)
     {
+        // EXE-022: an order of the wrong type for its signal is never sent, and the broker is not queried.
+        string? misfit = EntryTypeMisfit(order);
+        if (misfit != null)
+        {
+            DateTime at = _broker.ServerTimeUtc;
+            _events.Skipped(new SkipRecord(order.Symbol, order.Signal.ZoneId, SkipReason.InvalidSignal, 0.0, 0.0, misfit, at));
+            return new PlaceResult(PlaceOutcome.Abandoned, order.Label, null, misfit);
+        }
+
         if (FindOrder(order.Label, null) != null || FindPosition(order.Label) != null)
         {
             return new PlaceResult(PlaceOutcome.AlreadyExists, order.Label, null, "label exists at the broker");
@@ -266,6 +305,22 @@ public sealed class OrderManager
         // Unclear, or an undefined outcome: never resend blindly (EXE-009).
         _unresolved.Add(order);
         return new PlaceResult(PlaceOutcome.Unclear, order.Label, null, result.ErrorCode ?? "unclear");
+    }
+
+    // EXE-022: a stop order only for Kind Breakout, a limit order only for Kind ZoneFvg; null when the order fits.
+    private static string? EntryTypeMisfit(PlannedOrder order)
+    {
+        SignalKind kind = order.Signal.Kind;
+        EntryOrderType type = order.EntryType;
+        bool fits = (kind == SignalKind.Breakout && type == EntryOrderType.Stop) || (kind == SignalKind.ZoneFvg && type == EntryOrderType.Limit);
+        if (fits)
+        {
+            return null;
+        }
+
+        string typeName = Enum.IsDefined(type) ? type.ToString() : Text((int)type);
+        string kindName = Enum.IsDefined(kind) ? kind.ToString() : Text((int)kind);
+        return "entry type " + typeName + " does not fit signal kind " + kindName;
     }
 
     private PlaceResult AfterSuccess(PlannedOrder order, long? id)
