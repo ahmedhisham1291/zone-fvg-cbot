@@ -311,7 +311,8 @@ public class Exe021HistoryResendGuardScenarios
 
     [Fact]
     [Trait("Req", "EXE-021")]
-    public void HistoryWithAMissingEntry_TheEntryIsSkippedAndTheClosedTradeStillFound()
+    [Trait("Req", "EXE-023")]
+    public void HistoryWithAMissingEntry_AbandonedAsUnclearOutcomeNotResentEvenWithTheClosedTrade()
     {
         ExecutionHarness h = ExecutionData.BreakoutHarness(ExecutionData.BuyQuote());
         var broker = new HistoryBroker(h.Broker) { Mode = HistoryMode.NullEntryFirst };
@@ -323,8 +324,14 @@ public class Exe021HistoryResendGuardScenarios
 
         PlaceResult resolved = Assert.Single(orders.ResolvePending(new[] { NextBar(1.0862, 1.0823) }));
 
-        Assert.Equal(PlaceOutcome.Placed, resolved.Outcome);
-        Assert.Equal("filled and closed as position " + Id(trade.PositionId), resolved.Detail);
+        // EXE-023: a list with a missing entry counts as no history list, also with the closed trade in it.
+        const string detail = "history not available, not resent";
+        Assert.Equal(PlaceOutcome.Abandoned, resolved.Outcome);
+        Assert.Equal(detail, resolved.Detail);
+        Assert.Equal(trade.Label, resolved.Label);
+        SkipRecord skip = Assert.Single(h.Events.Skips);
+        Assert.Equal(SkipReason.UnclearOutcomeNotResent, skip.Reason);
+        Assert.Equal(detail, skip.Detail);
         Assert.Equal(1, h.Broker.Count(BrokerCall.Place));
         Assert.Equal(0, orders.UnresolvedCount);
     }
