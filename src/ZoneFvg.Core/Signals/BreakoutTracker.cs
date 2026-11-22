@@ -69,6 +69,7 @@ public sealed class BreakoutTracker
     /// <param name="atrH4">The latest ATR(H4) at the close of the bar, or null.</param>
     /// <returns>The breakout setup, or null.</returns>
     /// <exception cref="ArgumentNullException">The bar is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The close time of the reference bar or of the M15 bar is beyond the largest date; nothing is changed.</exception>
     public BreakoutSetup? OnM15Closed(Bar bar, Bias bias, double? atrM15, double? atrH4)
     {
         ArgumentNullException.ThrowIfNull(bar);

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using Xunit;
 using ZoneFvg.Core.Domain;
@@ -151,6 +152,54 @@ public class BreakoutParametersTests
         Assert.Equal("StopAtrMult", Assert.Throws<ArgumentOutOfRangeException>(() => fromStop.Validate()).ParamName);
         Assert.Equal("WindowStartUtc", Assert.Throws<ArgumentOutOfRangeException>(() => fromStart.Validate()).ParamName);
         Assert.Equal("WindowEndUtc", Assert.Throws<ArgumentOutOfRangeException>(() => fromEnd.Validate()).ParamName);
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-024")]
+    public void Validate_MessageUnderACultureWithDecimalComma_StillUsesInvariantFormatting()
+    {
+        // A culture that writes -0.25 as "-0,25" must not change the text (AGENTS.md rule 7).
+        CultureInfo original = CultureInfo.CurrentCulture;
+        var commaCulture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        commaCulture.NumberFormat.NumberDecimalSeparator = ",";
+        try
+        {
+            CultureInfo.CurrentCulture = commaCulture;
+
+            var parameters = new BreakoutParameters { EntryBufferAtr = -0.25 };
+
+            var exception = Assert.Throws<ArgumentOutOfRangeException>(() => parameters.Validate());
+
+            Assert.Contains("-0.25", exception.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("-0,25", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-024")]
+    public void Constructor_MessageUnderACultureWithDecimalComma_StillUsesInvariantFormatting()
+    {
+        // A culture that writes -0.5 as "-0,5" must not change the text (AGENTS.md rule 7).
+        CultureInfo original = CultureInfo.CurrentCulture;
+        var commaCulture = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+        commaCulture.NumberFormat.NumberDecimalSeparator = ",";
+        try
+        {
+            CultureInfo.CurrentCulture = commaCulture;
+
+            var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new BreakoutTracker(new BreakoutParameters(), -0.5));
+
+            Assert.Contains("-0.5", exception.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("-0,5", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     [Theory]

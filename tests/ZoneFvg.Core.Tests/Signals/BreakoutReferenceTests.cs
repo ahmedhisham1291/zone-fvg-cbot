@@ -85,6 +85,20 @@ public class BreakoutReferenceTests
         AssertDone(tracker);
     }
 
+    [Theory]
+    [Trait("Req", "SIG-022")]
+    [InlineData(3, 23, 45, 4, 0)] // closes 2026-03-04 00:00, the start of the window 00:00 to 23:00
+    [InlineData(4, 2, 45, 3, 0)] // closes 2026-03-04 03:00, before the default start of 07:00
+    public void OnM15Closed_WindowFromMidnight_BarClosingBeforeSevenIsChecked(int day, int hour, int minute, int closeHour, int closeMinute)
+    {
+        BreakoutTracker tracker = Armed(new BreakoutParameters { WindowStartUtc = TimeSpan.Zero, WindowEndUtc = TimeSpan.FromHours(23.0) });
+
+        BreakoutSetup setup = Require(Feed(tracker, Flat(Utc(2026, 3, day, hour, minute), 1.0858), Bias.Long));
+
+        Assert.Equal(Utc(2026, 3, 4, closeHour, closeMinute), setup.ConfirmationCloseUtc);
+        AssertDone(tracker);
+    }
+
     [Fact]
     [Trait("Req", "SIG-022")]
     public void OnD1Closed_AfterAConfirmation_NewReferenceIsArmedWithTheNewValues()

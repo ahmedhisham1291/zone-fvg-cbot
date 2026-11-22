@@ -90,6 +90,23 @@ public class BreakoutLevelsTests
         AssertPrice(1.0983, setup.Target, "target");
     }
 
+    [Fact]
+    [Trait("Req", "SIG-024")]
+    public void OnM15Closed_SellWithNonDefaultParameters_UsesTheParameters()
+    {
+        // Entry 1.0768 - 0.2 x 0.0010 = 1.0766; stop 1.0766 + 1.5 x 0.0040 = 1.0826;
+        // target 1.0766 - 3.0 x 0.0060 = 1.0586.
+        BreakoutTracker tracker = Armed(new BreakoutParameters { EntryBufferAtr = 0.2, StopAtrMult = 1.5 }, 3.0);
+
+        BreakoutSetup setup = Require(Feed(tracker, SellBar(), Bias.Short));
+
+        Assert.Equal(Side.Sell, setup.Side);
+        AssertPrice(1.0766, setup.Entry, "entry");
+        AssertPrice(1.0826, setup.Stop, "stop");
+        AssertPrice(1.0586, setup.Target, "target");
+        AssertPrice(1.0780, setup.Level, "level");
+    }
+
     [Theory]
     [Trait("Req", "SIG-024")]
     [InlineData("M15", null)]
@@ -115,6 +132,34 @@ public class BreakoutLevelsTests
 
         // A reference finished without a result is not armed again.
         Assert.Null(Feed(tracker, Flat(Utc(2026, 3, 4, 8, 15), 1.0870), Bias.Long));
+        AssertDone(tracker);
+    }
+
+    [Theory]
+    [Trait("Req", "SIG-024")]
+    [InlineData("M15", null)]
+    [InlineData("M15", 0.0)]
+    [InlineData("M15", -0.001)]
+    [InlineData("M15", double.NaN)]
+    [InlineData("M15", double.PositiveInfinity)]
+    [InlineData("M15", double.NegativeInfinity)]
+    [InlineData("H4", null)]
+    [InlineData("H4", 0.0)]
+    [InlineData("H4", -0.004)]
+    [InlineData("H4", double.NaN)]
+    [InlineData("H4", double.PositiveInfinity)]
+    [InlineData("H4", double.NegativeInfinity)]
+    public void OnM15Closed_SellAtrMissingOrInvalid_ReturnsNullAndFinishesTheReference(string which, double? value)
+    {
+        BreakoutTracker tracker = Armed();
+        double? atrM15 = which == "M15" ? value : AtrM15;
+        double? atrH4 = which == "H4" ? value : AtrH4;
+
+        Assert.Null(tracker.OnM15Closed(SellBar(), Bias.Short, atrM15, atrH4));
+        AssertDone(tracker);
+
+        // A reference finished without a result is not armed again.
+        Assert.Null(Feed(tracker, Flat(Utc(2026, 3, 4, 9, 45), 1.0770), Bias.Short));
         AssertDone(tracker);
     }
 

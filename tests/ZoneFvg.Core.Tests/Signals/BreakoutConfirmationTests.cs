@@ -49,6 +49,31 @@ public class BreakoutConfirmationTests
 
     [Fact]
     [Trait("Req", "SIG-023")]
+    public void OnM15Closed_LongCloseAboveTheHighWithinTheTolerance_DoesNotConfirm()
+    {
+        // 1.0850 + 5e-10 is about 5.0000004e-10 above the high as a double: more than zero but
+        // not more than PriceMath.DefaultTolerance (1e-9), so a raw comparison would confirm.
+        BreakoutTracker tracker = Armed();
+
+        Assert.Null(Feed(tracker, Flat(At0800, High + 5e-10), Bias.Long));
+        AssertArmed(tracker);
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-023")]
+    public void OnM15Closed_LongCloseAboveTheHighBeyondTheTolerance_Confirms()
+    {
+        // 1.0850 + 2e-9 is about 1.99999994e-9 above the high as a double: more than the tolerance.
+        BreakoutTracker tracker = Armed();
+
+        BreakoutSetup setup = Require(Feed(tracker, Flat(At0800, High + 2e-9), Bias.Long));
+
+        Assert.Equal(Side.Buy, setup.Side);
+        AssertDone(tracker);
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-023")]
     public void OnM15Closed_LongWickAboveTheHighWithCloseInside_DoesNotConfirm()
     {
         BreakoutTracker tracker = Armed();
@@ -86,6 +111,31 @@ public class BreakoutConfirmationTests
         BreakoutTracker tracker = Armed();
 
         BreakoutSetup setup = Require(Feed(tracker, Flat(At0800, 1.07799), Bias.Short));
+
+        Assert.Equal(Side.Sell, setup.Side);
+        AssertDone(tracker);
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-023")]
+    public void OnM15Closed_ShortCloseBelowTheLowWithinTheTolerance_DoesNotConfirm()
+    {
+        // 1.0780 - 5e-10 is about 5.0000004e-10 below the low as a double: more than zero but
+        // not more than PriceMath.DefaultTolerance (1e-9), so a raw comparison would confirm.
+        BreakoutTracker tracker = Armed();
+
+        Assert.Null(Feed(tracker, Flat(At0800, Low - 5e-10), Bias.Short));
+        AssertArmed(tracker);
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-023")]
+    public void OnM15Closed_ShortCloseBelowTheLowBeyondTheTolerance_Confirms()
+    {
+        // 1.0780 - 2e-9 is about 1.99999994e-9 below the low as a double: more than the tolerance.
+        BreakoutTracker tracker = Armed();
+
+        BreakoutSetup setup = Require(Feed(tracker, Flat(At0800, Low - 2e-9), Bias.Short));
 
         Assert.Equal(Side.Sell, setup.Side);
         AssertDone(tracker);
