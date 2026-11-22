@@ -25,11 +25,16 @@ namespace ZoneFvg.Core.Recovery;
 /// that must be present (SIG-020). A series with a problem or a gap is requested once more; if a
 /// problem other than a gap remains, the bot stays in Recovering and only protection repair runs.
 /// A gap that remains is the broker's data and is accepted and reported (REC-003, owner decision
-/// A of 2026-11-17).</para>
-/// <para>A zone is known when the rebuilt signal layer has it among its non-terminal zones, or
-/// produced a signal for it during the replay. A zone that signalled is Used at once and leaves
-/// the zone book (architecture section 10, "Terminal zones"), so the replayed signals are how the
-/// rebuilt book identifies the zone of an existing order or position.</para>
+/// A of 2026-11-17). A last bar is stale after two bar lengths of open-market time since its
+/// close, except the D1 bar in Breakout mode, which is stale after one, because the last closed
+/// D1 bar is the reference (REC-018).</para>
+/// <para>The procedure runs in both entry modes: in ZoneFvg mode (no breakout parameters) the
+/// replay runs the zone and gap engine, in Breakout mode (REC-017) the breakout engine. A zone,
+/// or in Breakout mode a breakout id, is known when the rebuilt signal layer has it among its
+/// non-terminal zones, or produced a signal for it during the replay. A zone that signalled is
+/// Used at once and leaves the zone book (architecture section 10, "Terminal zones"), and a
+/// breakout id exists only through its signal, so the replayed signals are how the rebuilt layer
+/// identifies the zone or breakout of an existing order or position.</para>
 /// </remarks>
 public sealed class RecoveryService
 {
@@ -77,8 +82,9 @@ public sealed class RecoveryService
     /// false (live).
     /// </param>
     /// <param name="breakout">
-    /// REC-017: the breakout parameters in Breakout mode, or null (the default) in ZoneFvg mode. They
-    /// select the engine of the replay and are part of the parameter hash; nothing else reads them.
+    /// REC-017: the breakout parameters in Breakout mode, or null (the default) in ZoneFvg mode;
+    /// validated here (REC-019). They select the engine of the replay, are part of the parameter
+    /// hash, and make the D1 series stale after one bar length instead of two (REC-018).
     /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">The symbol is empty.</exception>
@@ -105,6 +111,7 @@ public sealed class RecoveryService
         signalParameters.Validate();
         executionParameters.Validate();
         riskParameters.Validate();
+        breakout?.Validate();
         _symbol = symbol;
         _signalParameters = signalParameters;
         _breakout = breakout;
@@ -450,9 +457,11 @@ public sealed class RecoveryService
     }
 
     // REC-003 (owner decision A): every problem except a gap; REC-016: time outside the sessions is closed.
+    // REC-018: in Breakout mode the D1 series is stale after one bar length, every other series after two.
     private string? Problem(TimeFrame timeFrame, IReadOnlyList<Bar>? series, DateTime now, IReadOnlyList<TradingSession>? sessions)
     {
-        return BarSeriesCheck.ProblemOtherThanGap(timeFrame, series, _warmup[timeFrame], now, _executionParameters.FridayCloseUtc, _marketHolidays, sessions);
+        int staleBarLengths = _breakout != null && timeFrame == TimeFrame.D1 ? 1 : 2;
+        return BarSeriesCheck.ProblemOtherThanGap(timeFrame, series, _warmup[timeFrame], now, _executionParameters.FridayCloseUtc, _marketHolidays, sessions, staleBarLengths);
     }
 
     private IReadOnlyList<BarGap> Gaps(TimeFrame timeFrame, IReadOnlyList<Bar>? series, IReadOnlyList<TradingSession>? sessions)
