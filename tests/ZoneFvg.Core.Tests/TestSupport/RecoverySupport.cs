@@ -123,6 +123,221 @@ public static class RecoveryData
     }
 }
 
+/// <summary>
+/// Hand-built data for the WP27 scenarios (REC-017): one USDJPY instance in Breakout mode with the
+/// default breakout parameters, next to <see cref="RecoveryData"/> (same symbol data, risk, news and
+/// harness).
+/// </summary>
+/// <remarks>
+/// <para><b>D1.</b> 230 bars opening at 00:00 UTC up to Tuesday 2026-03-03, closes rising by 0.001 a
+/// day to 100.0, each bar (c, c + 0.3, c - 0.3, c): bias Long, and no earlier M15 close reaches a
+/// reference high. The Tuesday bar (100.0, 100.3, 99.7, 100.0) is the reference of Wednesday 4 March.
+/// Then Wednesday (100.0, 100.4, 99.95, 100.35), Thursday (100.35, 100.5, 100.3, 100.45) and Friday
+/// (100.45, 100.6, 100.4, 100.55).</para>
+/// <para><b>H4.</b> 300 bars before Wednesday 00:00 and 18 after, all (100.0, 100.2, 99.8, 100.0):
+/// ATR(H4) 0.4.</para>
+/// <para><b>M15.</b> 2,400 bars before Wednesday 00:00 at (100.0, 100.05, 99.95, 100.0), then 288
+/// bars to Saturday 00:00: on Wednesday (100.25, 100.3, 100.2, 100.25) up to the Wednesday break bar
+/// (100.25, 100.35, 100.25, 100.34), which closes above 100.3; then (100.34, 100.4, 100.3, 100.35) up
+/// to the Thursday break bar (100.35, 100.45, 100.35, 100.44), which closes above 100.4; then (100.44,
+/// 100.5, 100.4, 100.45) up to the Friday break bar (100.45, 100.55, 100.45, 100.54), which closes
+/// above 100.5; then (100.54, 100.6, 100.5, 100.55). Every true range is 0.1 within 14 bars of a break
+/// bar: ATR(M15) 0.1. The break bars open by default at Wednesday 09:00, Thursday 10:00 and Friday
+/// 12:00.</para>
+/// <para><b>Buy of Wednesday (break bar 09:00, close 09:15).</b> Signal entry 100.35 + 0.1 x 0.1 =
+/// 100.36, stop 100.36 - 0.4 = 99.96, target 100.36 + 2 x 0.4 = 101.16. The order: entry 100.37 (the
+/// spread 0.01 added to a buy stop's entry), stop 99.96, target 101.16, 41 pips; volume 500 / (41 x
+/// 0.0001) = 121,951, rounded down to 121,000; risk 496.10; expiry 09:15 + 8 x 15 minutes = 11:15;
+/// label ZFVG|v1|USDJPY|BH-20260303-0000. Thursday (break bar 10:00): entry 100.46 + 0.01 = 100.47,
+/// stop 100.06, target 101.26, id BH-20260304-0000.</para>
+/// <para><b>Sell (mirror).</b> Every price p becomes 200 - p (high and low swapped), so the D1 closes
+/// fall, the bias is Short and the Wednesday break bar (99.75, 99.75, 99.65, 99.66) closes below the
+/// reference low 99.7. Signal entry 99.65 - 0.01 = 99.64, stop 99.64 + 0.4 = 100.04, target 98.84.
+/// The order: entry 99.64, stop 100.05 (the spread added to a sell's stop), target 98.84, 41 pips,
+/// volume 121,000, label ZFVG|v1|USDJPY|BL-20260303-0000.</para>
+/// <para><b>Quotes.</b> Buy set bid 100.25, ask 100.26; sell set bid 99.75, ask 99.76: below a buy
+/// entry and above a sell entry, so the entry has not been reached.</para>
+/// </remarks>
+public static class BreakoutRecoveryData
+{
+    public const string BuyId = "BH-20260303-0000";
+
+    public const string BuyLabel = "ZFVG|v1|USDJPY|BH-20260303-0000";
+
+    public const string NextBuyId = "BH-20260304-0000";
+
+    public const string NextBuyLabel = "ZFVG|v1|USDJPY|BH-20260304-0000";
+
+    public const string FridayBuyId = "BH-20260305-0000";
+
+    public const string SellId = "BL-20260303-0000";
+
+    public const string SellLabel = "ZFVG|v1|USDJPY|BL-20260303-0000";
+
+    /// <summary>Parameter hash with default signal, execution and breakout parameters (WP26, ParameterHashBreakoutTests).</summary>
+    public const string Hash = "119a3864";
+
+    /// <summary>Parameter hash of v0.9 with default signal and execution parameters (ZoneFvg mode).</summary>
+    public const string ZoneFvgHash = "f681dff2";
+
+    public const double Entry = 100.37;
+
+    public const double Stop = 99.96;
+
+    public const double Target = 101.16;
+
+    public const double NextEntry = 100.47;
+
+    public const double NextStop = 100.06;
+
+    public const double NextTarget = 101.26;
+
+    public const double SellEntry = 99.64;
+
+    public const double SellStop = 100.05;
+
+    public const double SellTarget = 98.84;
+
+    public const double Volume = 121000.0;
+
+    public const double RiskMoney = 496.1;
+
+    private const int D1Before = 230;
+
+    private const int H4Before = 300;
+
+    private const int H4After = 18;
+
+    private const int M15Before = 2400;
+
+    private const int M15After = 288;
+
+    /// <summary>Wednesday 2026-03-04 00:00 UTC: close of the reference day of the first break.</summary>
+    public static readonly DateTime Wednesday = new(2026, 3, 4, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>Wednesday 06:00: the usual start of a scenario.</summary>
+    public static readonly DateTime Start = Wednesday.AddHours(6.0);
+
+    /// <summary>Wednesday 09:15: close of the default Wednesday break bar.</summary>
+    public static readonly DateTime Confirmation = Wednesday.AddHours(9.25);
+
+    /// <summary>Wednesday 11:15: expiry of the Wednesday order.</summary>
+    public static readonly DateTime Expiry = Wednesday.AddHours(11.25);
+
+    /// <summary>Thursday 10:15: close of the default Thursday break bar.</summary>
+    public static readonly DateTime NextConfirmation = Wednesday.AddDays(1.0).AddHours(10.25);
+
+    /// <summary><see cref="RecoveryData.Parameters"/> with default breakout parameters (Breakout mode).</summary>
+    public static BotParameters Parameters(bool newsEnabled = true, string news = RecoveryData.News)
+    {
+        return RecoveryData.Parameters(newsEnabled, news) with { Breakout = new BreakoutParameters() };
+    }
+
+    /// <summary>USDJPY with the quote of the buy or the sell set.</summary>
+    public static SymbolInfo Quote(bool sell = false)
+    {
+        return sell ? RecoveryData.UsdJpy() with { Bid = 99.75, Ask = 99.76 } : RecoveryData.UsdJpy() with { Bid = 100.25, Ask = 100.26 };
+    }
+
+    /// <summary>A harness on the breakout bars whose broker starts at the given time with the quote of the set.</summary>
+    public static BotHarness Harness(DateTime atUtc, bool sell = false, BarSet? bars = null, AccountSnapshot? account = null)
+    {
+        var broker = new FakeBroker(atUtc, account ?? ExecutionData.Account(), Quote(sell));
+        broker.MarginPerUnit = 0.04;
+        return new BotHarness(bars ?? Bars(sell), broker);
+    }
+
+    /// <summary>The comment of a bot order with the given levels, the risk 496.10 and the given hash.</summary>
+    public static string Comment(double entry, double stop, double target, string hash = Hash)
+    {
+        return OrderComment.Build(new CommentPlan(entry, stop, target, RiskMoney, hash), 3);
+    }
+
+    /// <summary>The comment of the Wednesday buy.</summary>
+    public static string BuyComment(string hash = Hash)
+    {
+        return Comment(Entry, Stop, Target, hash);
+    }
+
+    /// <summary>The bar set (see the remarks); the break bars open at the given times of day of Wednesday, Thursday and Friday.</summary>
+    public static BarSet Bars(bool sell = false, TimeSpan? wednesday = null, TimeSpan? thursday = null, TimeSpan? friday = null)
+    {
+        DateTime[] breaks =
+        {
+            Wednesday + (wednesday ?? TimeSpan.FromHours(9.0)),
+            Wednesday.AddDays(1.0) + (thursday ?? TimeSpan.FromHours(10.0)),
+            Wednesday.AddDays(2.0) + (friday ?? TimeSpan.FromHours(12.0)),
+        };
+        BarBuilder d1 = new BarBuilder(TimeFrame.D1)
+            .At(Wednesday.AddDays(-D1Before))
+            .Repeat(D1Before, (b, i) =>
+            {
+                double close = 100.0 - (0.001 * (D1Before - 1 - i));
+                Add(b, sell, (close, close + 0.3, close - 0.3, close));
+            });
+        Add(d1, sell, (100.0, 100.4, 99.95, 100.35));
+        Add(d1, sell, (100.35, 100.5, 100.3, 100.45));
+        Add(d1, sell, (100.45, 100.6, 100.4, 100.55));
+        IReadOnlyList<Bar> h4 = new BarBuilder(TimeFrame.H4)
+            .At(Wednesday.AddHours(-4.0 * H4Before))
+            .Repeat(H4Before + H4After, (b, _) => b.Ohlc(100.0, 100.2, 99.8, 100.0))
+            .Build();
+        DateTime m15Start = Wednesday.AddMinutes(-15.0 * M15Before);
+        IReadOnlyList<Bar> m15 = new BarBuilder(TimeFrame.M15)
+            .At(m15Start)
+            .Repeat(M15Before + M15After, (b, i) => Add(b, sell, M15At(m15Start.AddMinutes(15.0 * i), breaks)))
+            .Build();
+        return new BarSet(d1.Build(), h4, m15);
+    }
+
+    private static (double Open, double High, double Low, double Close) M15At(DateTime openUtc, DateTime[] breaks)
+    {
+        if (openUtc < Wednesday)
+        {
+            return (100.0, 100.05, 99.95, 100.0);
+        }
+
+        if (openUtc < breaks[0])
+        {
+            return (100.25, 100.3, 100.2, 100.25);
+        }
+
+        if (openUtc == breaks[0])
+        {
+            return (100.25, 100.35, 100.25, 100.34);
+        }
+
+        if (openUtc < breaks[1])
+        {
+            return (100.34, 100.4, 100.3, 100.35);
+        }
+
+        if (openUtc == breaks[1])
+        {
+            return (100.35, 100.45, 100.35, 100.44);
+        }
+
+        if (openUtc < breaks[2])
+        {
+            return (100.44, 100.5, 100.4, 100.45);
+        }
+
+        return openUtc == breaks[2] ? (100.45, 100.55, 100.45, 100.54) : (100.54, 100.6, 100.5, 100.55);
+    }
+
+    private static void Add(BarBuilder builder, bool sell, (double Open, double High, double Low, double Close) bar)
+    {
+        if (sell)
+        {
+            builder.Ohlc(200.0 - bar.Open, 200.0 - bar.Low, 200.0 - bar.High, 200.0 - bar.Close);
+        }
+        else
+        {
+            builder.Ohlc(bar.Open, bar.High, bar.Low, bar.Close);
+        }
+    }
+}
+
 /// <summary>The three bar series of a scenario and their merged feed in intake order.</summary>
 public sealed class BarSet
 {
