@@ -50,6 +50,7 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | E. Entry mode | The bot has two entry modes, chosen per instance with `EntryMode`. **Breakout** (new, the default): in the direction of the D1 trend, the first M15 bar that closes beyond the previous day's high or low inside the trading window arms a stop order beyond that bar. **ZoneFvg**: the zone and gap entry of sections 3.2 to 3.5, unchanged. Everything outside section 3 (sizing, limits, news, recovery, FTMO guards, alerts) is the same in both modes | 1, 2, 3, 3.7, 7 |
 | F. Stop-entry orders | Breakout entries are stop orders with stop loss, take profit and expiry attached at placement. They are placed, verified, recovered and cancelled by the same rules as limit orders | 5.2, 5.3, 6.1, 8.3 |
 | G. Which mode goes live | Both modes are backtested on the same data and costs. A mode may go live only if it passes section 13.1 by itself. The Breakout mode is the simple trend-following benchmark that the ZoneFvg mode has to beat; the Breakout mode itself has no benchmark yet | 12.1, 13.1 |
+| H. Order guards (added on 22 November 2026, after the review of the stop-order code) | After an unclear outcome nothing is resent when the broker's history since the signal's confirmation holds a closed trade with the label, or when that history cannot be read. An order whose type does not fit its signal's mode is never sent | 5.2, 5.3 |
 | Proposed, marked in the plan pull request | Breakout values: entry buffer 0.1 x ATR(M15), stop 1.0 x ATR(H4), target 2R, order life 8 bars. No trailing stop in the baseline (it is the first variant to test). Symbols unchanged; index CFDs are an open question | 3.7, 7, 12.4, 14 |
 | FTMO wording | The gap-trading rule is restated as FTMO's page reads on 22 November 2026: two separate situations joined by "or" | 15.2 |
 
@@ -319,7 +320,7 @@ Protection against code errors rather than market risk.
 
 ### 5.2 Order format
 
-- A pending order with stop loss, take profit and expiry attached at placement: a limit order in ZoneFvg mode, a stop order in Breakout mode (v0.10). These live on the broker's server and keep working when the bot is offline.
+- A pending order with stop loss, take profit and expiry attached at placement: a limit order in ZoneFvg mode, a stop order in Breakout mode (v0.10). These live on the broker's server and keep working when the bot is offline. An order of the other type is never sent: a breakout signal is only ever placed as a stop order and a zone signal only ever as a limit order (fail closed).
 - **Label:** `ZFVG|v1|<symbol>|<zoneId>`. Identifies the bot, its version, and the zone. In Breakout mode the breakout id of 3.7 takes the place of the zone id.
 - **Comment:** planned entry, stop, target, risk amount and a short hash of the parameters. This is the trade's memory; it is stored at the broker and comes back in positions and history.
 
@@ -329,7 +330,7 @@ Protection against code errors rather than market risk.
 2. Send the order with a synchronous call and read the result.
 3. On success, verify the order now appears with the expected stop, target and expiry.
 4. On failure with a clear rejection (bad volume, market closed, no money): log, mark Skipped, do not retry.
-5. On an unclear outcome (timeout, disconnected, technical error): **do not resend.** At the next bar close, repeat step 1. Resend only if nothing exists at the broker, the signal is at most one bar old and price has not traded through the entry. For a stop order (v0.10) "traded through" means that a closed bar reached the signal's entry: its high for a buy, its low for a sell.
+5. On an unclear outcome (timeout, disconnected, technical error): **do not resend.** At the next bar close, repeat step 1. Resend only if nothing exists at the broker, the signal is at most one bar old and price has not traded through the entry. For a stop order (v0.10) "traded through" means that a closed bar reached the signal's entry: its high for a buy, its low for a sell. "Nothing exists at the broker" includes the history (v0.10, added on 22 November 2026): if a trade with this label has closed since the signal's confirmation, the order was applied, filled and closed, and nothing is resent; if the history cannot be read, nothing is resent either.
 
 ### 5.4 After a fill
 

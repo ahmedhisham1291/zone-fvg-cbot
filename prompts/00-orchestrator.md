@@ -77,6 +77,7 @@ each needs the owner's cTrader application or account, and the owner decides.
 | Baseline backtest (spec 13.1) | WP08 and WP10 | Owner |
 | Holdout backtest | After baseline | Owner |
 | Fault-injection tests on a real account (spec 12.3) | WP11 | Owner |
+| Stop-order check on a demo or Free Trial account (PLT-011, `docs/test-records/WP26-stop-orders.md`), before any instance trades in Breakout mode | WP28 | Owner |
 | Start of the FTMO Challenge | All of the above | Owner |
 
 ## Cost and context hygiene

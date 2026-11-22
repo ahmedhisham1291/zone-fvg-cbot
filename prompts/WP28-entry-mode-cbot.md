@@ -7,7 +7,8 @@
 (the row "Entry mode" of 2026-11-22); the requirement texts below;
 `src/ZoneFvg.Bot/ZoneFvgBot.cs` and `ParameterText.cs`; `deploy/README.md`,
 `deploy/params/*.cbotset.example`, `docs/backtest-howto.md` and
-`README.md`. Depends on WP25, WP26 and WP27.
+`README.md`. Depends on WP25, WP26 and WP27; WP29 (order guards) is merged
+before this package starts.
 
 ## Requirements to implement
 
@@ -54,7 +55,12 @@ None.
    its three own values. `deploy/README.md` names the mode, says that one
    instance runs one mode, and that a change of mode is a parameter change:
    only when flat (spec 10.2, "Deployments"), because open trades of the
-   other mode become strangers.
+   other mode become strangers. It also states the go-live condition of
+   Breakout mode (`docs/architecture.md` section 10, row "The cTrader
+   stop-order call"): before an instance trades in Breakout mode on the
+   Challenge account, the owner has run and signed the stop-order record
+   `docs/test-records/WP26-stop-orders.md` (PLT-011) on a demo or Free
+   Trial account.
 3. **PLT-013, backtest guide.** In `docs/backtest-howto.md`:
    - step 6: `EntryMode` is `Breakout` or `ZoneFvg`; run the whole of Part 2
      once per mode with the same period, data, commission and spread, and
