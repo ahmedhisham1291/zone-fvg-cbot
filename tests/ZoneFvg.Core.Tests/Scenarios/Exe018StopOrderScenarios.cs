@@ -323,6 +323,27 @@ public class Exe018StopOrderScenarios
         Assert.Equal(1, h.Events.AlertsOf(AlertKind.RequestLimitReached));
     }
 
+    [Theory]
+    [Trait("Req", "EXE-018")]
+    [InlineData(1.0823, PlaceOutcome.Placed)]
+    [InlineData(1.082304, PlaceOutcome.Placed)]
+    [InlineData(1.082296, PlaceOutcome.Placed)]
+    [InlineData(1.082306, PlaceOutcome.MismatchCancelled)]
+    [InlineData(1.082294, PlaceOutcome.MismatchCancelled)]
+    public void StopOrderReadBack_AcceptsHalfATick(double brokerStop, PlaceOutcome expected)
+    {
+        // EXE-017 with a stop order: tick 0.00001, the order's stop 1.08230.
+        ExecutionHarness h = BuyHarness();
+        PlannedOrder order = h.OrderOf(ExecutionData.BreakoutBuy());
+        var orders = new OrderManager(new StopShiftingBroker(h.Broker, brokerStop), h.Counter, h.Events);
+
+        PlaceResult result = orders.TryPlace(order);
+
+        Assert.Equal(expected, result.Outcome);
+        Assert.Equal(expected == PlaceOutcome.Placed ? 0 : 1, h.Broker.Count(BrokerCall.Cancel));
+        Assert.All(h.Broker.Requests.Where(r => r.Call == BrokerCall.Place), r => Assert.NotNull(r.StopOrder));
+    }
+
     [Fact]
     [Trait("Req", "EXE-018")]
     public void StopOrder_ExpiryShortenedToTheNextNewsWindow_IsSentWithThatExpiry()
@@ -335,5 +356,44 @@ public class Exe018StopOrderScenarios
         Assert.Equal(ExecutionData.At(14, 10, 30), Assert.Single(h.Broker.Requests).StopOrder!.ExpiryUtc);
         h.Broker.AdvanceTo(ExecutionData.At(14, 10, 30));
         Assert.Empty(h.Broker.GetPendingOrders());
+    }
+
+    /// <summary>Forwards to the fake broker, but a stop order is stored with the given stop loss.</summary>
+    private sealed class StopShiftingBroker : IBroker
+    {
+        private readonly FakeBroker _inner;
+        private readonly double _stop;
+
+        public StopShiftingBroker(FakeBroker inner, double stop)
+        {
+            _inner = inner;
+            _stop = stop;
+        }
+
+        public DateTime ServerTimeUtc => _inner.ServerTimeUtc;
+
+        public bool IsConnected => _inner.IsConnected;
+
+        public AccountSnapshot GetAccount() => _inner.GetAccount();
+
+        public SymbolInfo GetSymbol(string symbol) => _inner.GetSymbol(symbol);
+
+        public IReadOnlyList<PositionInfo> GetPositions() => _inner.GetPositions();
+
+        public IReadOnlyList<PendingOrderInfo> GetPendingOrders() => _inner.GetPendingOrders();
+
+        public IReadOnlyList<ClosedTradeInfo> GetHistory(DateTime sinceUtc) => _inner.GetHistory(sinceUtc);
+
+        public double EstimateMargin(string symbol, Side side, double volumeUnits) => _inner.EstimateMargin(symbol, side, volumeUnits);
+
+        public OrderResult PlaceLimitOrder(LimitOrderRequest request) => _inner.PlaceLimitOrder(request with { StopLossPrice = _stop });
+
+        public OrderResult PlaceStopOrder(StopOrderRequest request) => _inner.PlaceStopOrder(request with { StopLossPrice = _stop });
+
+        public OrderResult CancelOrder(long orderId) => _inner.CancelOrder(orderId);
+
+        public OrderResult ModifyPositionProtection(long positionId, double? stopLoss, double? takeProfit) => _inner.ModifyPositionProtection(positionId, stopLoss, takeProfit);
+
+        public OrderResult ClosePosition(long positionId) => _inner.ClosePosition(positionId);
     }
 }
