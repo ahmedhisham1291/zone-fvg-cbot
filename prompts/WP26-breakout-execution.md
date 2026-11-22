@@ -301,8 +301,14 @@ MaxZoneAgeBars 1)
   `NewsWindow`. Both as for a ZoneFvg signal.
 - High-impact USD event at 09:20 (window 08:50 to 09:50), confirmation
   close 10:00, Now 10:00: the bar 09:45 to 10:00 overlaps the window:
-  `NewsBreakoutBar`, detail with 09:45. Event at 09:15 (window ends 09:45):
-  allowed, with the same boundary rule as the existing NWS-009 tests.
+  `NewsBreakoutBar`, detail with 09:45. Event at 09:15 (window 08:45 to
+  09:45): the bar opens at the last instant of the window and still
+  overlaps, by the same boundary rule as the existing NWS-009 test
+  `CheckEntry_BarOpeningAtTheWindowEnd_Overlaps`: `NewsBreakoutBar`. Event
+  at 09:14 (window ends 09:44): allowed. (Corrected by the orchestrating
+  session on 2026-11-22, on the implementer's question in pull request 55:
+  the first version of this line called the 09:15 case allowed, which
+  contradicted the boundary rule it names.)
 - A EUR event blocks EURUSD the same way; a GBP event does not.
 - `CheckBreakoutEntry` directly: the three outcomes and
   `BarOpenUtc` = 09:45; an invalid symbol or a non-UTC time throws as
