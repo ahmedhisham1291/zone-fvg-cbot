@@ -337,11 +337,15 @@ namespace cAlgo.Robots
             {
                 parameters = BuildParameters(isBacktest);
                 parameters.Validate(isBacktest);
+
+                // PLT-012: the breakout values are checked in both modes by the core's own method; they are
+                // passed to the core in Breakout mode only.
+                BuildBreakout(parameters.Execution).Validate();
                 _core = Create(parameters, isBacktest);
             }
             catch (ArgumentException exception)
             {
-                Refuse("invalid parameter: " + exception.Message);
+                Refuse("invalid parameter: " + ParameterMessage(exception));
                 return;
             }
 
@@ -675,6 +679,21 @@ namespace cAlgo.Robots
 
             using var reader = new StreamReader(stream);
             return reader.ReadToEnd();
+        }
+
+        private static string ParameterMessage(ArgumentException exception)
+        {
+            // PLT-012: a refusal of a breakout value starts with the name of the cBot parameter that sets it;
+            // every other message is unchanged.
+            string? name = exception.ParamName switch
+            {
+                nameof(BreakoutParameters.EntryBufferAtr) => nameof(BreakoutEntryBufferAtr),
+                nameof(BreakoutParameters.StopAtrMult) => nameof(BreakoutStopAtr),
+                nameof(BreakoutParameters.WindowStartUtc) => nameof(SessionStartUtc),
+                nameof(BreakoutParameters.WindowEndUtc) => nameof(SessionEndUtc),
+                _ => null,
+            };
+            return name == null ? exception.Message : name + ": " + exception.Message;
         }
 
         private void Refuse(string reason)
