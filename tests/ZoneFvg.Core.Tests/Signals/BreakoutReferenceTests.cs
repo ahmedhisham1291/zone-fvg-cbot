@@ -87,7 +87,7 @@ public class BreakoutReferenceTests
 
     [Theory]
     [Trait("Req", "SIG-022")]
-    [InlineData(3, 23, 45, 4, 0)] // closes 2026-03-04 00:00, the start of the window 00:00 to 23:00
+    [InlineData(3, 23, 45, 0, 0)] // closes 2026-03-04 00:00, the start of the window 00:00 to 23:00
     [InlineData(4, 2, 45, 3, 0)] // closes 2026-03-04 03:00, before the default start of 07:00
     public void OnM15Closed_WindowFromMidnight_BarClosingBeforeSevenIsChecked(int day, int hour, int minute, int closeHour, int closeMinute)
     {
