@@ -5,6 +5,7 @@ using ZoneFvg.Core.Ops;
 using ZoneFvg.Core.Recovery;
 using ZoneFvg.Core.Risk;
 using ZoneFvg.Core.Signals;
+using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.App;
 
@@ -63,14 +64,27 @@ public sealed record BotParameters
     public bool BacktestHaltsLogOnly { get; init; }
 
     /// <summary>
+    /// REC-017 (spec v0.10 decision E): the breakout parameters. Null (the default) is ZoneFvg mode;
+    /// a value is Breakout mode, in which the signal engine, the replay of recovery, the pre-trade
+    /// filters and the parameter hash use these parameters. Their window must equal the session
+    /// (<see cref="ExecutionParameters.SessionStartUtc"/> and <see cref="ExecutionParameters.SessionEndUtc"/>).
+    /// </summary>
+    public BreakoutParameters? Breakout { get; init; }
+
+    /// <summary>The entry mode (REC-017): <see cref="EntryMode.Breakout"/> when <see cref="Breakout"/> is set, otherwise <see cref="EntryMode.ZoneFvg"/>.</summary>
+    public EntryMode Mode => Breakout is null ? EntryMode.ZoneFvg : EntryMode.Breakout;
+
+    /// <summary>
     /// Checks every value and throws for the first problem: the symbol must start with six letters
     /// and contain no '|'; each parameter group and the market holidays must be valid; outside backtests with NewsEnabled
     /// true the feed address must be set; <see cref="BacktestHaltsLogOnly"/> may be true only in a
-    /// backtest (REC-014).
+    /// backtest (REC-014). When <see cref="Breakout"/> is set it must be valid, and its window must
+    /// equal the session times of the execution parameters (REC-017).
     /// </summary>
     /// <param name="isBacktest">True in a backtest.</param>
     /// <exception cref="ArgumentNullException">A parameter group is null.</exception>
-    /// <exception cref="ArgumentException">A value is invalid.</exception>
+    /// <exception cref="ArgumentException">A value is invalid; for the breakout window the parameter name is <c>Breakout</c>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter group, the breakout parameters included, has a value out of range.</exception>
     public void Validate(bool isBacktest)
     {
         if (BacktestHaltsLogOnly && !isBacktest)
@@ -95,10 +109,29 @@ public sealed record BotParameters
         Risk.Validate();
         News.Validate();
         Ops.Validate();
+        ValidateBreakout();
         MonthDay.ParseList(MarketHolidays);
         if (!isBacktest && News.NewsEnabled && string.IsNullOrWhiteSpace(NewsFeedUrl))
         {
             throw new ArgumentException("NewsFeedUrl must be set when the news filter is enabled outside backtests.", nameof(NewsFeedUrl));
+        }
+    }
+
+    // REC-017: the breakout parameters validate themselves; their window is the session, so the two cannot disagree.
+    private void ValidateBreakout()
+    {
+        if (Breakout is null)
+        {
+            return;
+        }
+
+        Breakout.Validate();
+        if (Breakout.WindowStartUtc != Execution.SessionStartUtc || Breakout.WindowEndUtc != Execution.SessionEndUtc)
+        {
+            throw new ArgumentException(
+                "Breakout.WindowStartUtc " + Text(Breakout.WindowStartUtc) + " and Breakout.WindowEndUtc " + Text(Breakout.WindowEndUtc)
+                + " must equal Execution.SessionStartUtc " + Text(Execution.SessionStartUtc) + " and Execution.SessionEndUtc " + Text(Execution.SessionEndUtc) + " (REC-017).",
+                nameof(Breakout));
         }
     }
 }
