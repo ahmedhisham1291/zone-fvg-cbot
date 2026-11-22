@@ -5,16 +5,24 @@ using ZoneFvg.Core.Domain;
 namespace ZoneFvg.Core.Signals;
 
 /// <summary>
-/// The signal logic of the Breakout mode (spec section 3.7, SIG-022 to SIG-025). It holds one
-/// reference, the last closed D1 bar, and checks each closed M15 bar against it. It reads no
-/// clock, keeps no bar history and computes no bias: the bias and the ATR values are passed in.
+/// The signal logic of the Breakout mode (spec section 3.7, SIG-022 to SIG-025, SIG-027). It holds
+/// one reference, the last closed D1 bar, and checks each closed M15 bar of the reference's day
+/// against it. It reads no clock, keeps no bar history and computes no bias: the bias and the ATR
+/// values are passed in.
 /// </summary>
 public sealed class BreakoutTracker
 {
     private const string IdTimeFormat = "yyyyMMdd-HHmm";
 
+    // SIG-027: a reference serves one day of M15 bars, counted from the first bar of its day.
+    private static readonly TimeSpan ReferenceLife = TimeSpan.FromHours(24.0);
+
     private readonly BreakoutParameters _parameters;
     private readonly double _rewardRisk;
+
+    // SIG-027: open time of the first M15 bar received at or after the close of the current reference bar;
+    // null until such a bar arrives, and emptied when a D1 bar gives a new reference.
+    private DateTime? _dayStartUtc;
 
     /// <summary>Creates a tracker with no reference (SIG-022, SIG-024).</summary>
     /// <param name="parameters">The breakout parameters. They are validated first.</param>
@@ -39,7 +47,8 @@ public sealed class BreakoutTracker
 
     /// <summary>
     /// A D1 bar has closed (SIG-022): it becomes the new Armed reference, with its open time, high
-    /// and low, and replaces the old reference whether or not that one confirmed.
+    /// and low, and replaces the old reference whether or not that one confirmed. The first M15 bar
+    /// of the old reference's day is forgotten (SIG-027).
     /// </summary>
     /// <param name="bar">The closed D1 bar. It must open after the current reference's bar.</param>
     /// <exception cref="ArgumentNullException">The bar is null.</exception>
@@ -53,12 +62,16 @@ public sealed class BreakoutTracker
         }
 
         Reference = new BreakoutReference(bar.OpenTimeUtc, bar.High, bar.Low, true);
+        _dayStartUtc = null;
     }
 
     /// <summary>
-    /// An M15 bar has closed (SIG-022 to SIG-025). Returns null and changes nothing when there is
-    /// no reference, the reference is Done, the bar is not checked (SIG-022), the bias is Neutral,
-    /// or the close does not confirm (SIG-023). On a confirmation the reference becomes Done first;
+    /// An M15 bar has closed (SIG-022 to SIG-025, SIG-027). While a reference exists, the first bar
+    /// that opens at or after the reference bar's close is noted as the first bar of its day, whatever
+    /// else the call brings (SIG-027). Returns null and changes nothing else when there is no
+    /// reference, the reference is Done, the bar opens 24 hours or more after the first bar of the
+    /// reference's day (SIG-027), the bar is not checked (SIG-022), the bias is Neutral, or the
+    /// close does not confirm (SIG-023). On a confirmation the reference becomes Done first;
     /// then, when an ATR value is missing, not finite or not greater than zero, or a computed level
     /// is not finite or not greater than zero, null is returned (fail closed). Otherwise the setup
     /// of SIG-024 with the id of SIG-025 is returned.
@@ -74,7 +87,18 @@ public sealed class BreakoutTracker
     {
         ArgumentNullException.ThrowIfNull(bar);
         BreakoutReference? reference = Reference;
-        if (reference is null || !reference.Armed || !IsChecked(bar, reference))
+        if (reference is null)
+        {
+            return null;
+        }
+
+        // SIG-027, before any other return: a difference of times, so that no time beyond the largest date is computed.
+        if (!_dayStartUtc.HasValue && bar.OpenTimeUtc - reference.DayOpenUtc >= BarIntakeOrder.Length(TimeFrame.D1))
+        {
+            _dayStartUtc = bar.OpenTimeUtc;
+        }
+
+        if (!reference.Armed || IsPastTheReferenceDay(bar) || !IsChecked(bar, reference))
         {
             return null;
         }
@@ -105,6 +129,12 @@ public sealed class BreakoutTracker
     private static bool IsPositiveFinite(double? value)
     {
         return value.HasValue && double.IsFinite(value.Value) && value.Value > 0.0;
+    }
+
+    // SIG-027: the bar opens 24 hours or more after the first bar of the reference's day.
+    private bool IsPastTheReferenceDay(Bar bar)
+    {
+        return _dayStartUtc.HasValue && bar.OpenTimeUtc - _dayStartUtc.Value >= ReferenceLife;
     }
 
     private bool IsChecked(Bar bar, BreakoutReference reference)

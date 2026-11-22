@@ -36,7 +36,12 @@ public enum PlaceOutcome
     /// <summary>The request limit would be exceeded; nothing was sent (RSK-010).</summary>
     RequestLimitReached,
 
-    /// <summary>An unclear placement found nothing at the broker and may not be resent (EXE-009).</summary>
+    /// <summary>
+    /// Nothing was sent and the placement is not resent: an unclear placement found nothing at the
+    /// broker and may not be resent (EXE-009, EXE-020), the broker's history could not be read (no
+    /// list, or a list with a missing entry; EXE-021, EXE-023), or the entry type does not fit the
+    /// signal (EXE-022).
+    /// </summary>
     Abandoned,
 }
 
@@ -104,15 +109,18 @@ public sealed class OrderManager
     }
 
     /// <summary>
-    /// Places the order idempotently (EXE-009): if an order or position with its label exists at
-    /// the broker, or an earlier placement of the label is unresolved, nothing is sent. Otherwise
-    /// one request is sent and its result handled: success is read back and checked (EXE-010); a
-    /// clear rejection is recorded and alerted and never retried; an unclear outcome is kept for
-    /// <see cref="ResolvePending"/> and never resent here. Before anything is sent or queried, an
-    /// order whose entry type does not fit its signal (EXE-022: Stop only for Kind Breakout, Limit
-    /// only for Kind ZoneFvg; an undefined kind or entry type fits nothing) is recorded as skipped
-    /// with InvalidSignal and "entry type &lt;EntryType&gt; does not fit signal kind &lt;Kind&gt;", and
-    /// abandoned; this also holds for a resend.
+    /// Places the order idempotently (EXE-009). The checks run in this order. First, when an
+    /// earlier placement of the label is unresolved, nothing is sent or queried and the result is
+    /// AwaitingResolution. Then, before anything is sent or queried, an order whose entry type does
+    /// not fit its signal (EXE-022: Stop only for Kind Breakout, Limit only for Kind ZoneFvg; an
+    /// undefined kind or entry type fits nothing) is recorded as skipped with InvalidSignal and
+    /// "entry type &lt;EntryType&gt; does not fit signal kind &lt;Kind&gt;", and abandoned; this also
+    /// holds for a resend. Then, if an order or position with its label exists at the broker,
+    /// nothing is sent; then, when the request would exceed the hour or day limit, nothing is sent
+    /// (RSK-010; with the record-only mode of REC-014 it is sent all the same). Otherwise one
+    /// request is sent and its result handled: success is read back
+    /// and checked (EXE-010); a clear rejection is recorded and alerted and never retried; an
+    /// unclear outcome is kept for <see cref="ResolvePending"/> and never resent here.
     /// </summary>
     /// <param name="order">The checked order from <see cref="PreTradeFilters"/>.</param>
     /// <returns>What happened.</returns>
@@ -135,8 +143,9 @@ public sealed class OrderManager
     /// broker's history since the signal's confirmation close is read before anything else is
     /// decided (EXE-021): a closed trade with the label means the order was applied, filled and
     /// closed, and the placement ends as Placed with "filled and closed as position &lt;id&gt;";
-    /// no history list abandons it as UnclearOutcomeNotResent ("history not available, not
-    /// resent"); nothing is sent in either case. Otherwise the
+    /// no history list, or a list with a missing entry (EXE-023, also when another entry carries the
+    /// label), abandons it as UnclearOutcomeNotResent ("history not available, not resent");
+    /// nothing is sent in either case. Otherwise the
     /// order is resent once only when the signal is at most one M15 bar old, at least one bar has
     /// closed since its confirmation and no such bar traded through the entry, and at least 15
     /// minutes of order life are left; otherwise it is abandoned and recorded. Traded through, for a
@@ -187,14 +196,15 @@ public sealed class OrderManager
 
         // EXE-021: the history since the confirmation, before anything else is decided. An exception is not
         // caught, like the two queries above: nothing has changed and the placement stays unresolved.
+        // EXE-023: a list with a missing entry is an unexpected value and counts as no list.
         IReadOnlyList<ClosedTradeInfo>? history = _broker.GetHistory(order.Signal.ConfirmationCloseUtc);
-        if (history == null)
+        if (history == null || history.Any(trade => trade == null))
         {
             _unresolved.Remove(order);
             return Abandon(order, now, age, "history not available, not resent");
         }
 
-        ClosedTradeInfo? closed = history.FirstOrDefault(trade => trade != null && string.Equals(trade.Label, order.Label, StringComparison.Ordinal));
+        ClosedTradeInfo? closed = history.FirstOrDefault(trade => string.Equals(trade.Label, order.Label, StringComparison.Ordinal));
         if (closed != null)
         {
             _unresolved.Remove(order);
