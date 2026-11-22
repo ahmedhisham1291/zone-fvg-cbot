@@ -137,9 +137,9 @@ public class SignalLevelsTests
 
         Assert.Equal("D-20260105-0800", signal.ZoneId);
         Assert.Same(gap, signal.Fvg);
-        Assert.Equal(C3Open, signal.Fvg.C3OpenUtc);
-        Assert.Equal(C3Open.AddMinutes(15), signal.Fvg.C2OpenUtc);
-        Assert.Equal(C3Open.AddMinutes(30), signal.Fvg.C1OpenUtc);
+        Assert.Equal(C3Open, signal.Fvg!.C3OpenUtc);
+        Assert.Equal(C3Open.AddMinutes(15), signal.Fvg!.C2OpenUtc);
+        Assert.Equal(C3Open.AddMinutes(30), signal.Fvg!.C1OpenUtc);
         Assert.Equal(C1Close, signal.ConfirmationCloseUtc);
         Assert.Equal(DateTimeKind.Utc, signal.ConfirmationCloseUtc.Kind);
         Assert.Equal(fromReplay, signal.FromReplay);

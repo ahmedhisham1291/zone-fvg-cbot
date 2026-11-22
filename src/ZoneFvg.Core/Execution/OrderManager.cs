@@ -48,7 +48,9 @@ public enum PlaceOutcome
 public sealed record PlaceResult(PlaceOutcome Outcome, string Label, long? OrderId, string Detail);
 
 /// <summary>
-/// Sends entry orders idempotently (EXE-009) and checks them after placement (EXE-010).
+/// Sends entry orders idempotently (EXE-009) and checks them after placement (EXE-010): limit
+/// orders through <see cref="IBroker.PlaceLimitOrder"/>, stop orders through
+/// <see cref="IBroker.PlaceStopOrder"/> (EXE-018).
 /// </summary>
 /// <remarks>
 /// <para>The broker is the only source of truth: every placement and every resolution starts
@@ -126,9 +128,11 @@ public sealed class OrderManager
     /// the broker is queried for the label. If an order exists it is checked as after a successful
     /// placement (EXE-010); if a position exists the placement is done. If nothing exists the
     /// order is resent once only when the signal is at most one M15 bar old, at least one bar has
-    /// closed since its confirmation and no such bar traded through the entry (low at or below
-    /// it for a buy, high at or above it for a sell), and at least 15 minutes of order life are
-    /// left; otherwise it is abandoned and recorded. Until a bar has closed after the
+    /// closed since its confirmation and no such bar traded through the entry, and at least 15
+    /// minutes of order life are left; otherwise it is abandoned and recorded. Traded through, for a
+    /// limit order: a low at or below the order's entry for a buy, a high at or above it for a
+    /// sell (EXE-009); for a stop order: a high at or above the signal's entry (before the spread)
+    /// for a buy, a low at or below it for a sell (EXE-020). Until a bar has closed after the
     /// confirmation, a placement with nothing at the broker is kept.
     /// </summary>
     /// <param name="recentM15Bars">Closed M15 bars of the symbol, at least those since the oldest unresolved confirmation.</param>
@@ -205,10 +209,25 @@ public sealed class OrderManager
             return "no closed bar since the confirmation, price path unknown";
         }
 
+        if (order.EntryType == EntryOrderType.Stop)
+        {
+            return StopReached(order, since);
+        }
+
         bool through = order.Side == Side.Buy
             ? since.Any(bar => !PriceMath.GreaterThan(bar.Low, order.Entry, PriceMath.DefaultTolerance))
             : since.Any(bar => !PriceMath.LessThan(bar.High, order.Entry, PriceMath.DefaultTolerance));
         return through ? "price traded through the entry " + Text(order.Entry) : null;
+    }
+
+    // EXE-020: a closed bar reached the signal's entry, the level before the spread was added.
+    private static string? StopReached(PlannedOrder order, Bar[] since)
+    {
+        double level = order.Signal.Entry;
+        bool reached = order.Side == Side.Buy
+            ? since.Any(bar => !PriceMath.LessThan(bar.High, level, PriceMath.DefaultTolerance))
+            : since.Any(bar => !PriceMath.GreaterThan(bar.Low, level, PriceMath.DefaultTolerance));
+        return reached ? "price traded through the entry " + Text(level) : null;
     }
 
     private PlaceResult Send(PlannedOrder order)
@@ -227,7 +246,9 @@ public sealed class OrderManager
             return new PlaceResult(PlaceOutcome.RequestLimitReached, order.Label, null, detail);
         }
 
-        OrderResult result = _broker.PlaceLimitOrder(order.ToRequest());
+        OrderResult result = order.EntryType == EntryOrderType.Stop
+            ? _broker.PlaceStopOrder(order.ToStopRequest())
+            : _broker.PlaceLimitOrder(order.ToRequest());
         _counter.Record(now);
         if (result.Outcome == OrderOutcome.Success)
         {

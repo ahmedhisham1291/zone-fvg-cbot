@@ -9,7 +9,9 @@ namespace ZoneFvg.Core.Ops;
 /// <summary>
 /// The fields of spec section 11 for one signal, taken or skipped (OPS-001): time, symbol, bias,
 /// zone id and edges, FVG edges, entry, stop, target, stop pips, volume, spread, cost-to-risk,
-/// news status and skip reason. A data record; a null value is journaled as <c>NA</c>.
+/// news status and skip reason. A data record; a null value is journaled as <c>NA</c>. For a
+/// breakout signal (OPS-010) the zone id is the breakout id, the gap edges are null, and
+/// <see cref="Kind"/> and <see cref="Level"/> are set.
 /// </summary>
 /// <param name="TimeUtc">Server time of the decision, kind UTC.</param>
 /// <param name="Symbol">Symbol name.</param>
@@ -17,8 +19,8 @@ namespace ZoneFvg.Core.Ops;
 /// <param name="ZoneId">Id of the zone of the signal.</param>
 /// <param name="ZoneProximal">Proximal edge of the zone, or null when the zone is not known.</param>
 /// <param name="ZoneDistal">Distal edge of the zone, or null when the zone is not known.</param>
-/// <param name="FvgUpper">Upper edge of the gap.</param>
-/// <param name="FvgLower">Lower edge of the gap.</param>
+/// <param name="FvgUpper">Upper edge of the gap; null for a breakout signal (OPS-010).</param>
+/// <param name="FvgLower">Lower edge of the gap; null for a breakout signal (OPS-010).</param>
 /// <param name="Entry">Entry price: the order's for a taken signal, the signal's for a skipped one.</param>
 /// <param name="Stop">Stop price: the order's for a taken signal (spread included for a sell, EXE-007), the signal's for a skipped one.</param>
 /// <param name="Target">Target price, as for <paramref name="Entry"/>.</param>
@@ -35,8 +37,8 @@ public sealed record SignalJournalEntry(
     string ZoneId,
     double? ZoneProximal,
     double? ZoneDistal,
-    double FvgUpper,
-    double FvgLower,
+    double? FvgUpper,
+    double? FvgLower,
     double Entry,
     double Stop,
     double Target,
@@ -47,6 +49,12 @@ public sealed record SignalJournalEntry(
     NewsStatus? News,
     SkipReason? Skip)
 {
+    /// <summary>The entry mode of the signal (OPS-010). Default ZoneFvg.</summary>
+    public SignalKind Kind { get; init; }
+
+    /// <summary>The broken level of a breakout signal (OPS-010); null for a ZoneFvg signal.</summary>
+    public double? Level { get; init; }
+
     /// <summary>
     /// The entry of a signal that became an order (OPS-001). Levels, stop pips, volume and time
     /// come from the order; spread and cost-to-risk from the symbol data as in EXE-004.
@@ -69,8 +77,8 @@ public sealed record SignalJournalEntry(
             order.Signal.ZoneId,
             zone?.Proximal,
             zone?.Distal,
-            order.Signal.Fvg.Upper,
-            order.Signal.Fvg.Lower,
+            order.Signal.Fvg?.Upper,
+            order.Signal.Fvg?.Lower,
             order.Entry,
             order.StopLoss,
             order.TakeProfit,
@@ -79,7 +87,11 @@ public sealed record SignalJournalEntry(
             spread,
             CostToRiskOf(symbol, spread, order.StopPips),
             news,
-            null);
+            null)
+        {
+            Kind = order.Signal.Kind,
+            Level = order.Signal.Level,
+        };
     }
 
     /// <summary>
@@ -114,8 +126,8 @@ public sealed record SignalJournalEntry(
             signal.ZoneId,
             zone?.Proximal,
             zone?.Distal,
-            signal.Fvg.Upper,
-            signal.Fvg.Lower,
+            signal.Fvg?.Upper,
+            signal.Fvg?.Lower,
             signal.Entry,
             signal.Stop,
             signal.Target,
@@ -124,7 +136,11 @@ public sealed record SignalJournalEntry(
             spread,
             CostToRiskOf(symbol, spread, stopPips),
             news,
-            skip.Reason);
+            skip.Reason)
+        {
+            Kind = signal.Kind,
+            Level = signal.Level,
+        };
     }
 
     private static double? SpreadPipsOf(SymbolInfo? symbol)

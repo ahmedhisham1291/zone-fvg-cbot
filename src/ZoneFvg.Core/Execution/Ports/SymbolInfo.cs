@@ -83,4 +83,18 @@ public sealed record SymbolInfo(
     /// no session reported, and the check uses the weekend closure and holidays alone.
     /// </summary>
     public IReadOnlyList<TradingSession> Sessions { get; init; } = Array.Empty<TradingSession>();
+
+    /// <summary>
+    /// Current bid price, cTrader <c>Symbol.Bid</c> (EXE-019, PLT-011). A sell stop is not placed
+    /// when it is at or below the order's entry. Default 0, which is not usable, so a breakout
+    /// signal on a symbol record without it is refused as BrokerDataInvalid.
+    /// </summary>
+    public double Bid { get; init; }
+
+    /// <summary>
+    /// Current ask price, cTrader <c>Symbol.Ask</c> (EXE-019, PLT-011). A buy stop is not placed
+    /// when it is at or above the order's entry. Default 0, which is not usable, so a breakout
+    /// signal on a symbol record without it is refused as BrokerDataInvalid.
+    /// </summary>
+    public double Ask { get; init; }
 }

@@ -2,7 +2,7 @@ namespace ZoneFvg.Core.Execution;
 
 /// <summary>
 /// The closed list of reasons for which a signal does not become an order (EXE-014): one value
-/// per rule of EXE-001 to EXE-006, EXE-011, EXE-015, the news rules (NWS-008, NWS-009), each
+/// per rule of EXE-001 to EXE-006, EXE-011, EXE-015, EXE-019, the news rules (NWS-008, NWS-009, NWS-014), each
 /// reason of the risk module (RSK-001 to RSK-006, RSK-010), the broker's maximum volume, and the
 /// outcomes of placement that end an attempt (EXE-009).
 /// </summary>
@@ -121,4 +121,10 @@ public enum SkipReason
 
     /// <summary>After an unclear outcome nothing exists at the broker and the order may not be resent: stale, price traded through the entry, or too little life left (EXE-009).</summary>
     UnclearOutcomeNotResent,
+
+    /// <summary>The confirming bar of a breakout signal overlaps a news window of the symbol (NWS-014).</summary>
+    NewsBreakoutBar,
+
+    /// <summary>The broker's ask (buy) is at or above, or its bid (sell) at or below, the entry of a stop order (EXE-019).</summary>
+    EntryAlreadyReached,
 }

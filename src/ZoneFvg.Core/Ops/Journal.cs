@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Risk;
@@ -53,7 +54,8 @@ public sealed class Journal
     /// Journals one signal, taken or skipped, with the fields of spec 11 in this order: symbol,
     /// result (taken or skipped), bias, zone, zoneProximal, zoneDistal, fvgUpper, fvgLower,
     /// entry, stop, target, stopPips (1 decimal), volume (0 decimals), spreadPips (1 decimal),
-    /// costToRisk (3 decimals), news, skip (reason or <c>none</c>) (OPS-001).
+    /// costToRisk (3 decimals), news, skip (reason or <c>none</c>) (OPS-001). For a breakout signal
+    /// two more keys follow: kind (<c>breakout</c>) and level (OPS-010).
     /// </summary>
     /// <param name="entry">The signal fields.</param>
     /// <returns>The line written.</returns>
@@ -61,7 +63,7 @@ public sealed class Journal
     public string Signal(SignalJournalEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return Emit(entry.TimeUtc, "signal", new (string, string?)[]
+        var fields = new List<(string, string?)>
         {
             ("symbol", entry.Symbol),
             ("result", entry.Skip.HasValue ? "skipped" : "taken"),
@@ -80,7 +82,16 @@ public sealed class Journal
             ("costToRisk", JournalFormat.Fixed(entry.CostToRisk, 3)),
             ("news", entry.News.HasValue ? entry.News.Value.ToString() : JournalFormat.NotAvailable),
             ("skip", entry.Skip.HasValue ? entry.Skip.Value.ToString() : "none"),
-        });
+        };
+
+        // OPS-010: two more keys for a breakout signal only; a ZoneFvg line is unchanged.
+        if (entry.Kind == SignalKind.Breakout)
+        {
+            fields.Add(("kind", "breakout"));
+            fields.Add(("level", JournalFormat.Price(entry.Level)));
+        }
+
+        return Emit(entry.TimeUtc, "signal", fields);
     }
 
     /// <summary>

@@ -45,7 +45,11 @@ public enum BrokerFault
 }
 
 /// <summary>One write request received by <see cref="FakeBroker"/>, in arrival order.</summary>
-public sealed record BrokerRequest(BrokerCall Call, DateTime AtUtc, LimitOrderRequest? Order, long? TargetId, double? StopLoss, double? TakeProfit, OrderOutcome Outcome);
+public sealed record BrokerRequest(BrokerCall Call, DateTime AtUtc, LimitOrderRequest? Order, long? TargetId, double? StopLoss, double? TakeProfit, OrderOutcome Outcome)
+{
+    /// <summary>The stop order of a <see cref="FakeBroker.PlaceStopOrder"/> request (EXE-018); null for every other request, and <see cref="Order"/> is then null.</summary>
+    public StopOrderRequest? StopOrder { get; init; }
+}
 
 /// <summary>
 /// In-memory broker for the scenario tests (WP06). It holds the account, symbols, positions,
@@ -55,7 +59,8 @@ public sealed record BrokerRequest(BrokerCall Call, DateTime AtUtc, LimitOrderRe
 /// </summary>
 /// <remarks>
 /// <para>Model: a buy limit fills when the ask is at or below its entry, a sell limit when the
-/// bid is at or above it, at the entry price. A buy position closes at its stop when the bid is at
+/// bid is at or above it, at the entry price. A buy stop fills when the ask is at or above its
+/// entry, a sell stop when the bid is at or below it, at the entry price (EXE-018). A buy position closes at its stop when the bid is at
 /// or below it and at its target when the bid is at or above it; a sell position at its stop when
 /// the ask is at or above it and at its target when the ask is at or below it. Closing books
 /// (price move in pips x pip value x volume) minus round-trip commission to balance and equity.
@@ -201,7 +206,9 @@ public sealed class FakeBroker : IBroker
         _prices[symbol] = (bid, ask);
         foreach (FakeOrder order in _orders.Where(o => o.Symbol == symbol).ToList())
         {
-            bool fills = order.Side == Side.Buy ? ask <= order.Entry + Tolerance : bid >= order.Entry - Tolerance;
+            bool fills = order.IsStop
+                ? (order.Side == Side.Buy ? ask >= order.Entry - Tolerance : bid <= order.Entry + Tolerance)
+                : (order.Side == Side.Buy ? ask <= order.Entry + Tolerance : bid >= order.Entry - Tolerance);
             if (fills && !order.NoMoreFills)
             {
                 Fill(order);
@@ -267,8 +274,18 @@ public sealed class FakeBroker : IBroker
     public OrderResult PlaceLimitOrder(LimitOrderRequest request)
     {
         ScriptedFault? fault = NextFault(BrokerCall.Place);
-        OrderResult result = Place(request, fault);
+        OrderResult result = Place(request, fault, false);
         Requests.Add(new BrokerRequest(BrokerCall.Place, ServerTimeUtc, request, null, request.StopLossPrice, request.TakeProfitPrice, result.Outcome));
+        return result;
+    }
+
+    /// <summary>A stop order: the faults, refusals and ids of <see cref="PlaceLimitOrder"/>, the stop fill model on <see cref="Tick"/> (EXE-018).</summary>
+    public OrderResult PlaceStopOrder(StopOrderRequest request)
+    {
+        ScriptedFault? fault = NextFault(BrokerCall.Place);
+        var asLimit = new LimitOrderRequest(request.Symbol, request.Side, request.VolumeUnits, request.EntryPrice, request.StopLossPrice, request.TakeProfitPrice, request.ExpiryUtc, request.Label, request.Comment);
+        OrderResult result = Place(asLimit, fault, true);
+        Requests.Add(new BrokerRequest(BrokerCall.Place, ServerTimeUtc, null, null, request.StopLossPrice, request.TakeProfitPrice, result.Outcome) { StopOrder = request });
         return result;
     }
 
@@ -308,7 +325,7 @@ public sealed class FakeBroker : IBroker
         return null;
     }
 
-    private OrderResult Place(LimitOrderRequest request, ScriptedFault? fault)
+    private OrderResult Place(LimitOrderRequest request, ScriptedFault? fault, bool isStop)
     {
         if (!IsConnected)
         {
@@ -341,7 +358,7 @@ public sealed class FakeBroker : IBroker
         double? target = fault?.Fault == BrokerFault.DropTakeProfit ? null : request.TakeProfitPrice;
         DateTime? expiry = fault?.Fault == BrokerFault.DropExpiry ? null : request.ExpiryUtc;
         double? fraction = fault != null && fault.Fault == BrokerFault.PartialFill ? fault.Fraction : null;
-        var order = new FakeOrder(id, request.Symbol, request.Side, request.VolumeUnits, request.EntryPrice, stop, target, expiry, request.Label, request.Comment, ServerTimeUtc, fraction);
+        var order = new FakeOrder(id, request.Symbol, request.Side, request.VolumeUnits, request.EntryPrice, stop, target, expiry, request.Label, request.Comment, ServerTimeUtc, fraction) { IsStop = isStop };
         _orders.Add(order);
         if (fault?.Fault == BrokerFault.FilledAtOnce)
         {
@@ -521,6 +538,8 @@ public sealed class FakeBroker : IBroker
         double? PartialFraction)
     {
         public bool NoMoreFills { get; init; }
+
+        public bool IsStop { get; init; }
 
         public PendingOrderInfo ToInfo()
         {

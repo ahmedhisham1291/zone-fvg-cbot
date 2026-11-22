@@ -26,6 +26,13 @@ namespace ZoneFvg.Core.Tests;
 /// 238,095.2, rounded down to 238,000; risk money 238,000 x 21 x 0.0001 = 499.80.</para>
 /// <para>News: one high-impact USD event at 18:00 on the same day, a window from 17:30 to 18:30.
 /// The normal expiry, 8 bars after 10:00, is 12:00, before that window.</para>
+/// <para>Breakout buy (WP26, id BH-20260112-2200): signal entry 1.08630, stop 1.08230, target
+/// 1.09430, level 1.08500, ATR(H4) 0.00400 (largest stop 80 pips). With the 1-pip spread on the
+/// entry (EXE-019): entry 1.08640, 41 pips; volume 500 / (41 x 0.0001) = 121,951.2, rounded down
+/// to 121,000; risk money 121,000 x 41 x 0.0001 = 496.10. Quote: bid 1.08580, ask 1.08590.</para>
+/// <para>Breakout sell (id BL-20260112-2200): entry 1.07670, signal stop 1.08070, target 1.06870,
+/// level 1.07800. EXE-007 adds the spread to the stop: 1.08080, 41 pips; volume 121,000, risk
+/// money 496.10. Quote: bid 1.07720, ask 1.07730.</para>
 /// </remarks>
 public static class ExecutionData
 {
@@ -34,6 +41,10 @@ public static class ExecutionData
     public const string BuyZone = "D-20260114-0400";
 
     public const string SellZone = "S-20260114-0400";
+
+    public const string BreakoutBuyId = "BH-20260112-2200";
+
+    public const string BreakoutSellId = "BL-20260112-2200";
 
     /// <summary>The news history of the quiet day: one USD event at 18:00 UTC.</summary>
     public const string QuietNews = "2026-01-14 18:00,USD,High,Retail Sales m/m\n";
@@ -96,6 +107,60 @@ public static class ExecutionData
         return new Signal(zoneId, Side.Sell, entry, stop, target, fvg, close, fromReplay, atrH4);
     }
 
+    /// <summary>The breakout buy of the remarks, confirmed at <paramref name="closeUtc"/> (default Now).</summary>
+    public static Signal BreakoutBuy(
+        double entry = 1.0863,
+        double stop = 1.0823,
+        double target = 1.0943,
+        double? level = 1.085,
+        DateTime? closeUtc = null,
+        double atrH4 = 0.004,
+        bool fromReplay = false,
+        string id = BreakoutBuyId,
+        Fvg? fvg = null)
+    {
+        return new Signal(id, Side.Buy, entry, stop, target, fvg, closeUtc ?? Now, fromReplay, atrH4) { Kind = SignalKind.Breakout, Level = level };
+    }
+
+    /// <summary>The breakout sell of the remarks, confirmed at <paramref name="closeUtc"/> (default Now).</summary>
+    public static Signal BreakoutSell(
+        double entry = 1.0767,
+        double stop = 1.0807,
+        double target = 1.0687,
+        double? level = 1.078,
+        DateTime? closeUtc = null,
+        double atrH4 = 0.004,
+        bool fromReplay = false,
+        string id = BreakoutSellId,
+        Fvg? fvg = null)
+    {
+        return new Signal(id, Side.Sell, entry, stop, target, fvg, closeUtc ?? Now, fromReplay, atrH4) { Kind = SignalKind.Breakout, Level = level };
+    }
+
+    /// <summary>EURUSD with the given bid and ask (EXE-019); every other value as in <see cref="EurUsd"/>.</summary>
+    public static SymbolInfo Quoted(double bid, double ask, double spread = 0.0001, double commissionPerUnit = 0.0, bool marketOpen = true)
+    {
+        return EurUsd(spread, commissionPerUnit, marketOpen: marketOpen) with { Bid = bid, Ask = ask };
+    }
+
+    /// <summary>EURUSD quoted for the breakout buy: bid 1.08580, ask 1.08590.</summary>
+    public static SymbolInfo BuyQuote(double spread = 0.0001, double commissionPerUnit = 0.0)
+    {
+        return Quoted(1.0858, 1.0859, spread, commissionPerUnit);
+    }
+
+    /// <summary>EURUSD quoted for the breakout sell: bid 1.07720, ask 1.07730.</summary>
+    public static SymbolInfo SellQuote(double spread = 0.0001, double commissionPerUnit = 0.0)
+    {
+        return Quoted(1.0772, 1.0773, spread, commissionPerUnit);
+    }
+
+    /// <summary>A harness whose filters were built with default breakout parameters (hash 119a3864).</summary>
+    public static ExecutionHarness BreakoutHarness(SymbolInfo? symbol = null, string news = QuietNews, ExecutionParameters? execution = null, DateTime? now = null)
+    {
+        return new ExecutionHarness(ExecutionHarness.DefaultBroker(symbol ?? BuyQuote(), now), news, execution: execution, breakout: new BreakoutParameters());
+    }
+
     public static Zone Zone(string id, ZoneType type, double proximal, ZoneState state = ZoneState.Active)
     {
         double distal = type == ZoneType.Supply ? proximal + 0.001 : proximal - 0.001;
@@ -146,14 +211,15 @@ public sealed class ExecutionHarness
         FakeBroker? broker = null,
         string news = ExecutionData.QuietNews,
         RiskParameters? risk = null,
-        ExecutionParameters? execution = null)
+        ExecutionParameters? execution = null,
+        BreakoutParameters? breakout = null)
     {
         Broker = broker ?? DefaultBroker();
         RiskParameters riskParameters = risk ?? ExecutionData.RiskDefaults;
         ExecutionParameters executionParameters = execution ?? ExecutionData.ExecutionDefaults;
         News = new NewsService(new NewsParameters(), new[] { NewsTestData.ForexFactoryFeed() }, new MemoryStore(), new FakeTransport(NewsTestData.Failed()), true, news);
         Counter = new RequestCounter(riskParameters);
-        Filters = new PreTradeFilters(executionParameters, ExecutionData.SignalDefaults, riskParameters, Broker, News, Events);
+        Filters = new PreTradeFilters(executionParameters, ExecutionData.SignalDefaults, riskParameters, Broker, News, Events, breakout: breakout);
         Orders = new OrderManager(Broker, Counter, Events);
         Trades = new TradeManager(ExecutionData.Symbol, executionParameters, Broker, Counter, Events);
     }

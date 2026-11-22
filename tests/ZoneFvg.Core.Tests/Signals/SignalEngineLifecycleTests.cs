@@ -44,8 +44,8 @@ public class SignalEngineLifecycleTests
 
         Assert.Equal(ZoneState.Touched, Assert.Single(StepAt(steps, 15).Zones).State);
         Signal signal = Assert.Single(EngineFeed.AllSignals(steps));
-        Assert.Equal(EngineScenarios.TailOpen(16), signal.Fvg.C1OpenUtc);
-        Assert.Equal(EngineScenarios.TailOpen(14), signal.Fvg.C3OpenUtc);
+        Assert.Equal(EngineScenarios.TailOpen(16), signal.Fvg!.C1OpenUtc);
+        Assert.Equal(EngineScenarios.TailOpen(14), signal.Fvg!.C3OpenUtc);
         Assert.Empty(StepAt(steps, 16).Zones);
     }
 
@@ -144,8 +144,8 @@ public class SignalEngineLifecycleTests
         AssertNear(99.325, signal.Entry);
         AssertNear(100.51821428571429, signal.Stop);
         AssertNear(96.93857142857143, signal.Target);
-        AssertNear(99.4, signal.Fvg.Upper);
-        AssertNear(99.25, signal.Fvg.Lower);
+        AssertNear(99.4, signal.Fvg!.Upper);
+        AssertNear(99.25, signal.Fvg!.Lower);
 
         // Reflection keeps every bar range, so ATR(H4) is the same 15 / 14 as for the buy.
         AssertNear(15.0 / 14.0, signal.AtrH4);
@@ -162,7 +162,7 @@ public class SignalEngineLifecycleTests
         IReadOnlyList<EngineStep> steps = Run(BiasHistory.Long, EngineScenarios.TouchAndGap, EngineScenarios.SecondGap);
 
         Signal signal = Assert.Single(EngineFeed.AllSignals(steps));
-        Assert.Equal(EngineScenarios.TailOpen(2), signal.Fvg.C1OpenUtc);
+        Assert.Equal(EngineScenarios.TailOpen(2), signal.Fvg!.C1OpenUtc);
         Assert.Empty(StepAt(steps, 6).Signals);
     }
 

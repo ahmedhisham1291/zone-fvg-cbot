@@ -196,6 +196,8 @@ public class Exe017PriceGridScenarios
 
         public OrderResult PlaceLimitOrder(LimitOrderRequest request) => _inner.PlaceLimitOrder(request with { StopLossPrice = _stop });
 
+        public OrderResult PlaceStopOrder(StopOrderRequest request) => _inner.PlaceStopOrder(request with { StopLossPrice = _stop });
+
         public OrderResult CancelOrder(long orderId) => _inner.CancelOrder(orderId);
 
         public OrderResult ModifyPositionProtection(long positionId, double? stopLoss, double? takeProfit) => _inner.ModifyPositionProtection(positionId, stopLoss, takeProfit);

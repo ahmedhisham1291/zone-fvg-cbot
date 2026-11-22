@@ -25,12 +25,16 @@ public static class ParameterHash
     /// MinStopPips, MaxStopAtr, CostToRiskMax, MinFvgSpreadMult, MinRoomR, EntryExpiryBars.
     /// Numbers use the invariant round-trip format ("R"), times of day the invariant "c" format
     /// (for example 07:00:00), booleans "true" or "false", timeframes their names.
+    /// With breakout parameters (Breakout mode, spec v0.10) the text is followed by EntryMode=Breakout,
+    /// BreakoutEntryBufferAtr, BreakoutStopAtr, BreakoutWindowStartUtc and BreakoutWindowEndUtc in
+    /// the same formats (EXE-018); without them it is exactly the text of v0.9.
     /// </summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
+    /// <param name="breakout">Breakout parameters in Breakout mode, or null in ZoneFvg mode.</param>
     /// <returns>The canonical text.</returns>
-    /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    public static string Canonical(SignalParameters signal, ExecutionParameters execution)
+    /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
+    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null)
     {
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(execution);
@@ -63,17 +67,27 @@ public static class ParameterHash
         Add(text, "MinFvgSpreadMult", execution.MinFvgSpreadMult);
         Add(text, "MinRoomR", execution.MinRoomR);
         Add(text, "EntryExpiryBars", execution.EntryExpiryBars);
+        if (breakout != null)
+        {
+            Add(text, "EntryMode", "Breakout");
+            Add(text, "BreakoutEntryBufferAtr", breakout.EntryBufferAtr);
+            Add(text, "BreakoutStopAtr", breakout.StopAtrMult);
+            Add(text, "BreakoutWindowStartUtc", breakout.WindowStartUtc);
+            Add(text, "BreakoutWindowEndUtc", breakout.WindowEndUtc);
+        }
+
         return text.ToString();
     }
 
-    /// <summary>The 8-character hash of the parameters (EXE-008).</summary>
+    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018).</summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
+    /// <param name="breakout">Breakout parameters in Breakout mode, or null in ZoneFvg mode.</param>
     /// <returns>8 lowercase hex characters.</returns>
-    /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    public static string Compute(SignalParameters signal, ExecutionParameters execution)
+    /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
+    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null)
     {
-        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution)));
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout)));
         var hex = new StringBuilder(Length);
         for (int i = 0; i < Length / 2; i++)
         {

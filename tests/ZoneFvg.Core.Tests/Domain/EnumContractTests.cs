@@ -41,6 +41,13 @@ public class EnumContractTests
     }
 
     [Fact]
+    [Trait("Req", "SIG-026")]
+    public void SignalKind_Members_MatchTheArchitectureContract()
+    {
+        AssertMembers<SignalKind>("ZoneFvg", "Breakout");
+    }
+
+    [Fact]
     public void Bias_UnsetValue_IsNeutral()
     {
         // An unset bias must never allow a trade: the zero value is Neutral.

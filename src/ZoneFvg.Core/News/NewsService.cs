@@ -249,6 +249,39 @@ public sealed class NewsService
         return new NewsDecision(NewsBlockReason.None, null);
     }
 
+    /// <summary>
+    /// The news checks for a new breakout entry, in this order (NWS-008, NWS-009, NWS-014): the
+    /// calendar must be available (NewsFailMode Block); the current time must not be inside a
+    /// window of the symbol; the confirming bar, from <paramref name="confirmationCloseUtc"/> minus
+    /// 15 minutes to <paramref name="confirmationCloseUtc"/>, may not overlap a window, with the
+    /// overlap rule of <see cref="CheckEntry"/>.
+    /// </summary>
+    /// <param name="symbol">Symbol name.</param>
+    /// <param name="nowUtc">Server time, kind UTC.</param>
+    /// <param name="confirmationCloseUtc">Close time of the confirming M15 bar, kind UTC.</param>
+    /// <returns>Allowed, or the first failing reason.</returns>
+    /// <exception cref="ArgumentException">The symbol is not valid or a time is not UTC.</exception>
+    public NewsDecision CheckBreakoutEntry(string symbol, DateTime nowUtc, DateTime confirmationCloseUtc)
+    {
+        NewsGuard.RequireUtc(confirmationCloseUtc, nameof(confirmationCloseUtc));
+        NewsSymbol.Pair(symbol);
+        if (StatusAt(nowUtc) == NewsStatus.Unavailable)
+        {
+            return new NewsDecision(NewsBlockReason.CalendarUnavailable, null);
+        }
+
+        NewsCalendar calendar = CalendarAt(nowUtc);
+        if (calendar.IsInWindow(symbol, nowUtc))
+        {
+            return new NewsDecision(NewsBlockReason.InsideWindow, null);
+        }
+
+        DateTime open = confirmationCloseUtc - TimeSpan.FromMinutes(15);
+        return calendar.OverlapsWindow(symbol, open, confirmationCloseUtc)
+            ? new NewsDecision(NewsBlockReason.BreakoutBarInWindow, open)
+            : new NewsDecision(NewsBlockReason.None, null);
+    }
+
     private static NewsFeed[] CheckedFeeds(IReadOnlyList<NewsFeed> feeds)
     {
         if (feeds.Count == 0)

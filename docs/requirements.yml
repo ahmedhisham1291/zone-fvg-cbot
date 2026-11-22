@@ -1349,7 +1349,7 @@ requirements:
     wp: WP26
     spec: "3.3, 3.7, 9.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Engine in Breakout mode. A SignalEngine created with breakout parameters
       applies SIG-001, SIG-003, SIG-004 (intake order), SIG-005 (bias) and
@@ -1369,7 +1369,7 @@ requirements:
     wp: WP26
     spec: "3.7, 5.2"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Stop-entry orders (owner request of 2026-11-22). A signal of Kind
       Breakout is placed as a stop order (buy stop for Buy, sell stop for
@@ -1384,7 +1384,7 @@ requirements:
     wp: WP26
     spec: "3.6, 3.7"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Pre-trade checks of a breakout signal. (a) Inputs: a Breakout signal
       must have no Fvg and a finite Level greater than zero, and a ZoneFvg
@@ -1406,7 +1406,7 @@ requirements:
     wp: WP26
     spec: "5.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Unclear outcome of a stop order (EXE-009 in Breakout mode). When
       nothing with the label exists at the broker, the order is resent once
@@ -1422,7 +1422,7 @@ requirements:
     wp: WP26
     spec: "3.7, 6.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Breakout bar and news (owner request of 2026-11-22). A Breakout signal
       is skipped when the calendar is unavailable (NWS-008), when server time
@@ -1436,7 +1436,7 @@ requirements:
     wp: WP26
     spec: "11"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Journal for breakout signals. The signal line of OPS-001 for a Breakout
       signal has the same keys in the same order, with zone holding the
