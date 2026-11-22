@@ -23,7 +23,7 @@ namespace ZoneFvg.Bot
     /// </remarks>
     internal sealed class CTraderBroker : IBroker
     {
-        // Robot trading methods (PlaceLimitOrder, ModifyPosition, ClosePosition, CancelPendingOrder):
+        // Robot trading methods (PlaceLimitOrder, PlaceStopOrder, ModifyPosition, ClosePosition, CancelPendingOrder):
         // https://help.ctrader.com/ctrader-algo/references/General/Robot
         // Algo properties (Server, Account, Positions, PendingOrders, History, Symbols, AssetConverter):
         // https://help.ctrader.com/ctrader-algo/references/General/Algo/
@@ -104,6 +104,11 @@ namespace ZoneFvg.Bot
                 Digits = s.Digits,
                 TickSize = s.TickSize,
 
+                // EXE-019, PLT-011: the current prices for the check "entry already reached" of a stop order.
+                // Symbol.Bid and Symbol.Ask: https://help.ctrader.com/ctrader-algo/references/MarketData/Symbols/Symbol/
+                Bid = s.Bid,
+                Ask = s.Ask,
+
                 // REC-016: Sessions is deliberately left empty (no session reported: the gap check uses the
                 // weekend and holiday model alone). The reference pages of MarketHours and TradingSession
                 // do not state the time zone of StartTime and EndTime, and the core needs UTC, so the
@@ -130,6 +135,7 @@ namespace ZoneFvg.Bot
                 + " tickSize " + Number(s.TickSize)
                 + " platformPipValue " + Number(s.PipValue)
                 + " bid " + Number(s.Bid)
+                + " ask " + Number(s.Ask)
                 + " pipValuePerUnit " + Number(costs.PipValuePerUnit())
                 + " pipValuePath " + costs.PipValuePath()
                 + " lotSize " + s.LotSize.ToString(CultureInfo.InvariantCulture)
@@ -334,6 +340,49 @@ namespace ZoneFvg.Bot
                 // ProtectionType.Absolute: stop loss and take profit are prices:
                 // https://help.ctrader.com/ctrader-algo/references/Trading/ProtectionType
                 TradeResult result = _robot.PlaceLimitOrder(
+                    ToTradeType(request.Side),
+                    request.Symbol,
+                    request.VolumeUnits,
+                    request.EntryPrice,
+                    request.Label,
+                    request.StopLossPrice,
+                    request.TakeProfitPrice,
+                    ProtectionType.Absolute,
+                    request.ExpiryUtc,
+                    request.Comment);
+                long? id = result.PendingOrder != null ? result.PendingOrder.Id : result.Position?.Id;
+                return (result, id);
+            });
+        }
+
+        /// <summary>
+        /// Places a stop order (buy stop or sell stop) with stop loss and take profit given as
+        /// prices (<c>ProtectionType.Absolute</c>), expiry, label and comment in one synchronous
+        /// call (EXE-018, PLT-011). The result is mapped as for a limit order (EXE-009); the core
+        /// reads the order back and compares it with the request (EXE-010).
+        /// </summary>
+        /// <param name="request">The order.</param>
+        /// <returns>The outcome.</returns>
+        public OrderResult PlaceStopOrder(StopOrderRequest request)
+        {
+            return Send("place stop order", () =>
+            {
+                // PlaceStopOrder(TradeType, string symbolName, double volume, double targetPrice, string label,
+                //   double? stopLoss, double? takeProfit, ProtectionType? protectionType, DateTime? expiration, string comment),
+                // the same argument list as PlaceLimitOrder above. References read on 2026-11-22:
+                // - https://help.ctrader.com/ctrader-algo/references/General/Robot lists 32 PlaceStopOrder overloads in its
+                //   method table, but its page text shows only the deprecated overloads with stopLossPips and
+                //   takeProfitPips, not the signatures with ProtectionType. This call is the one of those 32 that takes
+                //   this argument list (ProtectionType in position 8, the expiration in 9, the comment in 10); it compiles
+                //   against the pinned cTrader.Automate package.
+                // - https://help.ctrader.com/ctrader-algo/references/Trading/StopTriggerMethod/ : Trade (0) is the default
+                //   trigger behaviour of stop orders: a buy stop triggers when Ask >= order price, a sell stop when
+                //   Bid <= order price. Its example calls PlaceStopOrder(TradeType.Buy, SymbolName, volume, target, label,
+                //   10, 10, ProtectionType.Relative, null, string.Empty, false, StopTriggerMethod, StopTriggerMethod):
+                //   label, stopLoss, takeProfit, protectionType, expiration, comment, then the optional arguments.
+                // - https://help.ctrader.com/ctrader-algo/references/Trading/ProtectionType : Absolute (2), stop loss and
+                //   take profit are prices.
+                TradeResult result = _robot.PlaceStopOrder(
                     ToTradeType(request.Side),
                     request.Symbol,
                     request.VolumeUnits,
