@@ -2,7 +2,8 @@
 
 A cTrader cBot for an FTMO 2-Step (Swing) account, built by AI coding agents
 under a strict process: numbered requirements, tests first, an independent
-validator agent, CI gates, and a human who is the only one allowed to merge.
+validator agent, CI gates, and an orchestrating session that merges when the
+gates are green and reports every merge to the owner.
 
 **Status:** skeleton only. No trading logic exists yet.
 
@@ -23,7 +24,7 @@ validator agent, CI gates, and a human who is the only one allowed to merge.
 | `prompts/validator.md` | Instructions for the validator agent |
 | `.claude/agents/validator.md` | The validator as a Claude Code subagent |
 | `.github/workflows/ci.yml` | Build, format, tests, coverage gate, `.algo` build, traceability, architecture and secret checks |
-| `.github/workflows/guard.yml` | Blocks changes to protected paths unless you add a label |
+| `.github/workflows/guard.yml` | Blocks changes to protected paths unless the pull request carries the label `human-approved-infra` |
 | `.github/workflows/validator.yml` | Runs the validator agent inside GitHub. Switched off in this repository (owner decision of 2026-11-13) so that nothing uses API credit. The validator agent is run from the orchestrating session instead and posts its report as a comment |
 | `tools/*.py` | The check scripts used by CI |
 | `scripts/setup-github.sh` | One-time GitHub settings: labels, merge rules, required checks |
@@ -39,15 +40,17 @@ implementer agent ──> pull request
    build, format,   requirement       rules, checks and     separate AI
    tests, 90/80     traceability,     spec cannot be        session reads the
    coverage,        core purity,      edited without        diff against each
-   .algo build      secret scan       your label            requirement
+   .algo build      secret scan       the label             requirement
         └────────────────┴──────────────────┴───────────────────┘
                          ▼
-            merge, by the rule in AGENTS.md "Review"
+            merge, by the rule in AGENTS.md "Who merges"
 ```
 
-A validator PASS only means it found no reason to block. Who may merge, and
-when the owner must do it personally, is defined in `AGENTS.md`, section
-"Review". In this repository the `validator` box is filled by a validator
+A validator PASS only means it found no reason to block. Since the owner
+decision of 2026-11-22 the owner does not review or merge pull requests: the
+orchestrating session merges. The conditions, what the owner is told after
+each merge and what stays with the owner are in `AGENTS.md`, section "Who
+merges". In this repository the `validator` box is filled by a validator
 agent run from the orchestrating session, not by the GitHub workflow.
 
 ## First-time setup
@@ -81,8 +84,10 @@ Implement prompts/WP01-core-primitives.md
 Use the validator subagent on this branch against main
 ```
 
-Then open the pull request, wait for the four checks, read the validator's
-report and the "Decisions for the human" section, and merge if you agree.
+Then the pull request is opened and the checks run. The orchestrating session
+reads the validator's report, answers the "Decisions for the human" section
+and merges by the rule in `AGENTS.md`, "Who merges". You get a plain-language
+report after each merge and can ask for any of it to be reversed.
 
 The prompts are plain Markdown and work with any coding agent. `AGENTS.md` is
 read by most agent tools; `CLAUDE.md` points Claude Code to it.
@@ -98,7 +103,9 @@ start the FTMO Challenge.
 ## Things only you can provide
 
 - Real samples of the two news feeds (`tests/ZoneFvg.Core.Tests/TestData/News/README.md`) before WP05.
-- Answers when an agent stops and asks. The agents are told not to guess.
+- The money decisions: the account, the symbols, the risk per trade and the
+  limits. Other questions of the agents are answered by the orchestrating
+  session, which tells you what it decided.
 - cTrader desktop checks for WP08 and the backtests.
 - The FTMO account and all credentials. They never go into this repository.
 

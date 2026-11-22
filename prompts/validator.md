@@ -134,4 +134,7 @@ owner; a final list of what you could not verify.
 - If you are not sure whether something is a defect, state exactly what you
   checked and what remains unknown, and put it under `questions_for_owner`.
   Do not pass it silently and do not invent a defect to be safe.
-- A PASS from you is not approval to merge. The owner decides.
+- A PASS from you is not approval to merge. The orchestrating session
+  decides by the rule in `AGENTS.md`, "Who merges". It also answers what you
+  put under `questions_for_owner` (the field keeps its name) and tells the
+  owner.

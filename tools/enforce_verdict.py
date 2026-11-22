@@ -60,7 +60,7 @@ def main() -> int:
         print("VALIDATOR GATE FAILED: verdict says PASS but not every requirement is ok")
         return 1
 
-    print("validator gate passed (the owner still decides whether to merge)")
+    print("validator gate passed (the orchestrating session merges by the rule in AGENTS.md)")
     return 0
 
 

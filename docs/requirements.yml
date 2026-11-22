@@ -1,7 +1,9 @@
 # Numbered requirements extracted from docs/spec.md (v0.10).
 #
 # Rules for this file
-# - The text of a requirement may only be changed by the human owner.
+# - The text of a requirement changes only in a pull request that carries the
+#   label `human-approved-infra` (AGENTS.md, "Who merges"). The owner's money
+#   decisions in it change only when the owner asks.
 # - Implementing agents may change ONLY the `status:` line of the requirements
 #   in their work package, from `planned` to `implemented`.
 # - verify: unit      -> covered by xUnit tests tagged [Trait("Req", "<ID>")]

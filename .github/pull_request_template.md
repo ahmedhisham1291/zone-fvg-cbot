@@ -46,10 +46,10 @@ python3 tools/check_coverage.py TestResults --package ZoneFvg.Core --min-line 90
 
 ## Before merging
 
-Who may merge is defined in `AGENTS.md`, section "Review".
+The orchestrating session merges, without the owner's review (`AGENTS.md`, section "Who merges", owner decision of 2026-11-22). Implementer and validator agents never merge.
 
 - [ ] CI jobs `build-test`, `repo-checks`, `protected-paths` are green on the head commit.
-- [ ] The validator verdict for the head commit is PASS and its report is posted as a comment.
-- [ ] The validator report has no open question for the owner, and "Decisions for the human" has nothing waiting for an answer. Otherwise the owner merges.
-- [ ] No protected path is changed. Otherwise the owner merges.
-- [ ] The owner has received a plain-language summary of anything that touches orders, risk or money.
+- [ ] If a protected path is changed: the orchestrating session has read each protected change and added the label `human-approved-infra`.
+- [ ] Work package that changes `src/` or `tests/`: the validator verdict for the head commit is PASS and its report is posted as a comment. If the validator could not be run, say so; it then runs on `main` after the merge.
+- [ ] Every question of the implementer and of the validator, and every item under "Decisions for the human", has an answer from the orchestrating session, written in this pull request.
+- [ ] After the merge the owner gets a plain-language report: what was merged, anything that touches orders, risk or money, every protected path changed, every decision made, every existing test or check changed.
