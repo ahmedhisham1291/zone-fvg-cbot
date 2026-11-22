@@ -30,6 +30,11 @@ namespace ZoneFvg.Core.App;
 /// day) or a bar series has a gap; otherwise Running. Only Running places entries.</para>
 /// <para>In a backtest with <see cref="BotParameters.BacktestHaltsLogOnly"/> (REC-014) the halts and
 /// the daily budget block are only journaled as would-halt or would-block; live this never applies.</para>
+/// <para>With <see cref="BotParameters.Breakout"/> set (REC-017) the instance runs in Breakout mode: the
+/// signal engine, the replay of recovery, the pre-trade filters and the parameter hash use the breakout
+/// parameters, and the start line ends with <c>mode=Breakout</c>. The engine then keeps no zones and no
+/// gaps, so <see cref="ZoneSnapshot"/> and <see cref="FvgSnapshot"/> are empty. Everything else is the
+/// same in both modes.</para>
 /// </remarks>
 public sealed class BotCore
 {
@@ -101,6 +106,7 @@ public sealed class BotCore
     private readonly IReadOnlyList<MonthDay> _marketHolidays;
     private readonly bool _writeTradeLog;
     private readonly bool _haltsLogOnly;
+    private readonly EntryMode _mode;
 
     // REC-014: per "event cause", the CE(S)T day of the last would-halt or would-block line.
     private readonly SortedDictionary<string, DateTime> _recordedDays = new SortedDictionary<string, DateTime>(StringComparer.Ordinal);
@@ -156,19 +162,20 @@ public sealed class BotCore
         _writeTradeLog = parameters.WriteTradeLog;
         _haltsLogOnly = parameters.BacktestHaltsLogOnly;
         _risk = parameters.Risk;
-        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution);
+        _mode = parameters.Mode;
+        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout);
         _news = CreateNews(parameters, store, http, isBacktest);
         _requests = new RequestCounter(parameters.Risk);
         _errors = new ErrorCounter(parameters.Risk);
         _events = new CoreEvents(this);
-        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly);
+        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout);
         _orders = new OrderManager(broker, _requests, _events, _haltsLogOnly);
         _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events);
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
         _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
         var tradeEvents = new CoreTradeEvents(this);
         _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, tradeEvents);
-        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly);
+        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout);
     }
 
     /// <summary>The current state (REC-001).</summary>
@@ -300,8 +307,8 @@ public sealed class BotCore
         // OPS-008: the first failed recovery after a start or a reconnect is written again.
         _limits.ResetRecovery();
         DateTime now = Now();
-        Write(
-            "start",
+        var start = new List<(string Key, string? Value)>
+        {
             ("event", reason),
             ("symbol", _symbol),
             ("version", BuildInfo.Version),
@@ -310,7 +317,15 @@ public sealed class BotCore
             ("backtest", _isBacktest ? "yes" : "no"),
             ("riskEpoch", _risk.RiskEpochDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
             ("holidays", string.Join(",", _marketHolidays)),
-            ("sessions", SessionsText()));
+            ("sessions", SessionsText()),
+        };
+        if (_mode == EntryMode.Breakout)
+        {
+            // REC-017: one more field at the end in Breakout mode; the ZoneFvg line is unchanged.
+            start.Add(("mode", "Breakout"));
+        }
+
+        Write("start", start.ToArray());
         if (reason == "start")
         {
             RecordStart(now);

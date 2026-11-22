@@ -1497,7 +1497,7 @@ requirements:
     wp: WP27
     spec: "3.7, 8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Breakout mode end to end and across a restart. With breakout parameters
       set, the bot runs the Breakout engine live and in recovery (REC-004).

@@ -41,6 +41,7 @@ public sealed class RecoveryService
 
     private readonly string _symbol;
     private readonly SignalParameters _signalParameters;
+    private readonly BreakoutParameters? _breakout;
     private readonly ExecutionParameters _executionParameters;
     private readonly bool _newsEnabled;
     private readonly IBroker _broker;
@@ -75,6 +76,10 @@ public sealed class RecoveryService
     /// emergency guard, the kill switch or the daily budget; the bot records them instead. Default
     /// false (live).
     /// </param>
+    /// <param name="breakout">
+    /// REC-017: the breakout parameters in Breakout mode, or null (the default) in ZoneFvg mode. They
+    /// select the engine of the replay and are part of the parameter hash; nothing else reads them.
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">The symbol is empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
@@ -91,7 +96,8 @@ public sealed class RecoveryService
         IExecutionEvents events,
         Func<RecoveryFindings, BotState> enterState,
         IReadOnlyCollection<MonthDay>? marketHolidays = null,
-        bool haltsRecordOnly = false)
+        bool haltsRecordOnly = false,
+        BreakoutParameters? breakout = null)
     {
         ArgumentNullException.ThrowIfNull(signalParameters);
         ArgumentNullException.ThrowIfNull(executionParameters);
@@ -101,6 +107,7 @@ public sealed class RecoveryService
         riskParameters.Validate();
         _symbol = symbol;
         _signalParameters = signalParameters;
+        _breakout = breakout;
         _executionParameters = executionParameters;
         _newsEnabled = newsEnabled;
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -111,7 +118,7 @@ public sealed class RecoveryService
         _marketHolidays = marketHolidays ?? Array.Empty<MonthDay>();
         _haltsRecordOnly = haltsRecordOnly;
         _warmup = WarmupCalculator.For(signalParameters);
-        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters);
+        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout);
         _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
         _guard = new AccountGuard(symbol, riskParameters, broker);
         _safety = new SafetyActions(symbol, executionParameters, broker, counter, events);
@@ -273,7 +280,8 @@ public sealed class RecoveryService
             feed.AddRange(data.Bars[timeFrame].Select(bar => (TimeFrame: timeFrame, Bar: bar)));
         }
 
-        var engine = new SignalEngine(_signalParameters);
+        // REC-017: the same engine as the live one; a breakout id is known because the replay returned a signal with it.
+        var engine = new SignalEngine(_signalParameters, _breakout);
         var known = new SortedSet<string>(StringComparer.Ordinal);
         var replayed = new List<ReplayedSignal>();
         IEnumerable<(TimeFrame TimeFrame, Bar Bar)> ordered = feed
