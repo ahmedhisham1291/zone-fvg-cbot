@@ -179,6 +179,29 @@ public class Rec017BreakoutModeScenarios
         ScenarioAssert.Global(h.Broker);
     }
 
+    [Theory]
+    [Trait("Req", "REC-017")]
+    [InlineData(1.5, 0.1, 100.37, 99.76, 101.56, 81000.0)]
+    [InlineData(1.0, 0.2, 100.38, 99.97, 101.17, 121000.0)]
+    public void LiveBuy_OtherBreakoutValues_TheEngineAndTheCommentUseThem(double stopAtrMult, double entryBufferAtr, double entry, double stop, double target, double volume)
+    {
+        // StopAtrMult 1.5: stop 100.36 - 0.6 = 99.76, target 100.36 + 1.2 = 101.56, 61 pips, 500 / 0.0061 = 81,967 -> 81,000.
+        // EntryBufferAtr 0.2: signal entry 100.35 + 0.02 = 100.37, order entry 100.38, stop 99.97, target 101.17, 41 pips.
+        var breakout = new BreakoutParameters { StopAtrMult = stopAtrMult, EntryBufferAtr = entryBufferAtr };
+        string hash = ParameterHash.Compute(new SignalParameters(), new ExecutionParameters(), breakout);
+        BotHarness h = Started(Data.Start, Data.Parameters() with { Breakout = breakout });
+
+        h.FeedTo(Data.Confirmation);
+
+        StopOrderRequest request = Assert.Single(h.Broker.Requests).StopOrder!;
+        Assert.Equal((entry, stop, target, volume), (request.EntryPrice, request.StopLossPrice, request.TakeProfitPrice, request.VolumeUnits));
+        Assert.Equal(Data.BuyLabel, request.Label);
+        Assert.NotEqual(Data.Hash, hash);
+        Assert.Equal(hash, OrderComment.TryParse(request.Comment)!.ParameterHash);
+        Assert.Equal(hash, h.Core.LastReport!.ParameterHash);
+        ScenarioAssert.Global(h.Broker);
+    }
+
     [Fact]
     [Trait("Req", "REC-017")]
     public void LiveBuy_CloseAboveAt0630OutsideTheWindow_NoSignal_TheFirstCloseAboveFrom0700Confirms()
