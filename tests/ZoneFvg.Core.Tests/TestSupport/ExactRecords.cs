@@ -25,10 +25,14 @@ public static class ExactRecords
             zone.ExtremeSinceTouch is null ? "-" : Bits(zone.ExtremeSinceTouch.Value));
     }
 
-    /// <summary>A text key holding every field of the signal and its gap; equal keys mean bit-identical signals.</summary>
+    /// <summary>
+    /// A text key holding every field of the signal and its gap; equal keys mean bit-identical
+    /// signals. A signal without a gap (Breakout, SIG-026) has "-" for each of the six gap parts;
+    /// Kind and Level come last.
+    /// </summary>
     public static string Key(Signal signal)
     {
-        Fvg fvg = signal.Fvg;
+        Fvg? fvg = signal.Fvg;
         return string.Join(
             "|",
             signal.ZoneId,
@@ -36,15 +40,17 @@ public static class ExactRecords
             Bits(signal.Entry),
             Bits(signal.Stop),
             Bits(signal.Target),
-            fvg.Side.ToString(),
-            Bits(fvg.Upper),
-            Bits(fvg.Lower),
-            Time(fvg.C3OpenUtc),
-            Time(fvg.C2OpenUtc),
-            Time(fvg.C1OpenUtc),
+            fvg is null ? "-" : fvg.Side.ToString(),
+            fvg is null ? "-" : Bits(fvg.Upper),
+            fvg is null ? "-" : Bits(fvg.Lower),
+            fvg is null ? "-" : Time(fvg.C3OpenUtc),
+            fvg is null ? "-" : Time(fvg.C2OpenUtc),
+            fvg is null ? "-" : Time(fvg.C1OpenUtc),
             Time(signal.ConfirmationCloseUtc),
             signal.FromReplay ? "replay" : "live",
-            Bits(signal.AtrH4));
+            Bits(signal.AtrH4),
+            signal.Kind.ToString(),
+            signal.Level is null ? "-" : Bits(signal.Level.Value));
     }
 
     /// <summary>Keys of every zone, in list order.</summary>

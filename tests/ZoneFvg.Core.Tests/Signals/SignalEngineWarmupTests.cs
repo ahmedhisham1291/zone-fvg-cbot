@@ -176,7 +176,7 @@ public class SignalEngineWarmupTests
         }
 
         Signal signal = Assert.Single(EngineFeed.AllSignals(shortRun));
-        Assert.Equal(EngineScenarios.TailOpen(6), signal.Fvg.C1OpenUtc);
+        Assert.Equal(EngineScenarios.TailOpen(6), signal.Fvg!.C1OpenUtc);
     }
 
     [Fact]

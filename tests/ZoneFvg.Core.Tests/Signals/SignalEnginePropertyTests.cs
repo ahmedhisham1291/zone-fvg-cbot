@@ -280,13 +280,13 @@ public class SignalEnginePropertyTests
             string what = at + "signal of " + a.ZoneId + " ";
             Assert.True(MirrorId(a.ZoneId) == b.ZoneId, what + "zone id " + b.ZoneId);
             Assert.True(b.Side == (a.Side == Side.Buy ? Side.Sell : Side.Buy), what + "side");
-            Assert.True(b.Fvg.Side == b.Side, what + "gap side");
+            Assert.True(b.Fvg!.Side == b.Side, what + "gap side");
             AssertReflected(a.Entry, b.Entry, what + "entry");
             AssertReflected(a.Stop, b.Stop, what + "stop");
             AssertReflected(a.Target, b.Target, what + "target");
-            AssertReflected(a.Fvg.Upper, b.Fvg.Lower, what + "gap upper");
-            AssertReflected(a.Fvg.Lower, b.Fvg.Upper, what + "gap lower");
-            Assert.True(a.Fvg.C3OpenUtc == b.Fvg.C3OpenUtc && a.Fvg.C2OpenUtc == b.Fvg.C2OpenUtc && a.Fvg.C1OpenUtc == b.Fvg.C1OpenUtc, what + "gap bar times");
+            AssertReflected(a.Fvg!.Upper, b.Fvg!.Lower, what + "gap upper");
+            AssertReflected(a.Fvg!.Lower, b.Fvg!.Upper, what + "gap lower");
+            Assert.True(a.Fvg!.C3OpenUtc == b.Fvg!.C3OpenUtc && a.Fvg!.C2OpenUtc == b.Fvg!.C2OpenUtc && a.Fvg!.C1OpenUtc == b.Fvg!.C1OpenUtc, what + "gap bar times");
             Assert.True(a.ConfirmationCloseUtc == b.ConfirmationCloseUtc, what + "confirmation time");
             Assert.True(a.FromReplay == b.FromReplay, what + "replay flag");
             Assert.True(PriceMath.AlmostEqual(a.AtrH4, b.AtrH4, PriceMath.DefaultTolerance), what + "ATR(H4) differs");
