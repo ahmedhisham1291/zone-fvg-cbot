@@ -13,7 +13,7 @@ namespace ZoneFvg.Core.Execution;
 /// <param name="Signal">The signal the order comes from.</param>
 /// <param name="Symbol">Symbol name.</param>
 /// <param name="Side">Direction.</param>
-/// <param name="Entry">Entry (limit) price on the symbol's price grid.</param>
+/// <param name="Entry">Entry (limit or stop) price on the symbol's price grid; for a breakout buy the spread is included (EXE-019).</param>
 /// <param name="StopLoss">Stop-loss price on the grid; for a sell the spread is included (EXE-007).</param>
 /// <param name="TakeProfit">Take-profit price on the grid.</param>
 /// <param name="VolumeUnits">Volume in units (RSK-001).</param>
@@ -47,11 +47,24 @@ public sealed record PlannedOrder(
     /// </summary>
     public double TickSize { get; init; }
 
-    /// <summary>The request that places this order (EXE-008).</summary>
+    /// <summary>
+    /// How the order is placed (EXE-018): <see cref="EntryOrderType.Stop"/> for a breakout signal,
+    /// <see cref="EntryOrderType.Limit"/> otherwise. Default Limit.
+    /// </summary>
+    public EntryOrderType EntryType { get; init; }
+
+    /// <summary>The limit order request that places this order (EXE-008).</summary>
     /// <returns>A limit order request with stop loss, take profit, expiry, label and comment.</returns>
     public LimitOrderRequest ToRequest()
     {
         return new LimitOrderRequest(Symbol, Side, VolumeUnits, Entry, StopLoss, TakeProfit, ExpiryUtc, Label, Comment);
+    }
+
+    /// <summary>The stop order request that places this order (EXE-018), with the same values as <see cref="ToRequest"/>.</summary>
+    /// <returns>A stop order request with stop loss, take profit, expiry, label and comment.</returns>
+    public StopOrderRequest ToStopRequest()
+    {
+        return new StopOrderRequest(Symbol, Side, VolumeUnits, Entry, StopLoss, TakeProfit, ExpiryUtc, Label, Comment);
     }
 }
 

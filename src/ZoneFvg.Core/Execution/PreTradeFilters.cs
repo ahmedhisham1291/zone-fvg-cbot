@@ -13,8 +13,8 @@ namespace ZoneFvg.Core.Execution;
 
 /// <summary>
 /// Decides whether a signal becomes an order (EXE-001 to EXE-008, EXE-011, EXE-014, EXE-015,
-/// NWS-008, NWS-009, RSK-001 to RSK-006, RSK-013). Reads the broker port at every call and keeps nothing
-/// between calls; its fields are the validated parameters and the ports.
+/// EXE-019, NWS-008, NWS-009, NWS-014, RSK-001 to RSK-006, RSK-013). Reads the broker port at every
+/// call and keeps nothing between calls; its fields are the validated parameters and the ports.
 /// </summary>
 /// <remarks>
 /// <para>Checks, in this fixed order, stopping at the first failure: inputs (fail closed);
@@ -29,6 +29,12 @@ namespace ZoneFvg.Core.Execution;
 /// stop first (EXE-007). A symbol whose digits or tick size are not usable is skipped as
 /// BrokerDataInvalid.
 /// Every check from EXE-003 on, sizing, the comment and the order use these levels.</para>
+/// <para>A signal of kind Breakout (EXE-019, NWS-014): it must have no gap and a level; the news
+/// check is <see cref="NewsService.CheckBreakoutEntry"/>; for a buy the current spread is added to
+/// the entry before rounding; directly after EXE-003 the order is skipped as EntryAlreadyReached
+/// when the ask (buy) is at or above, or the bid (sell) at or below, the order's entry, and as
+/// BrokerDataInvalid when the bid or ask is not usable; EXE-005 and EXE-006 are not run; the
+/// planned order is a stop order. A ZoneFvg signal takes exactly the path above.</para>
 /// <para>Every skip is passed to <see cref="IExecutionEvents.Skipped"/> once, with one reason and
 /// its measured values (EXE-014); a sanity-cap skip (RSK-002) also raises one alert.</para>
 /// </remarks>
@@ -59,9 +65,13 @@ public sealed class PreTradeFilters
     /// refused; <see cref="EvaluateWithWaiver"/> reports it instead.
     /// Default false (live).
     /// </param>
+    /// <param name="breakout">
+    /// Breakout parameters in Breakout mode, or null (the default) in ZoneFvg mode; used only for
+    /// the parameter hash (EXE-008, EXE-018).
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false)
+    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(signalParameters);
@@ -76,7 +86,7 @@ public sealed class PreTradeFilters
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _news = news ?? throw new ArgumentNullException(nameof(news));
         _events = events ?? throw new ArgumentNullException(nameof(events));
-        _parameterHash = ParameterHash.Compute(signalParameters, parameters);
+        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout);
         _dailyBudgetRecordOnly = dailyBudgetRecordOnly;
     }
 
@@ -125,6 +135,7 @@ public sealed class PreTradeFilters
             ?? CheckSymbol(c)
             ?? CheckNews(c)
             ?? CheckStopBounds(c)
+            ?? CheckEntryReached(c)
             ?? CheckFvgVersusSpread(c)
             ?? CheckCost(c)
             ?? CheckRoom(c)
@@ -161,10 +172,27 @@ public sealed class PreTradeFilters
             && IsPrice(s.Entry) && IsPrice(s.Stop) && IsPrice(s.Target)
             && double.IsFinite(s.AtrH4) && s.AtrH4 >= 0.0
             && s.ConfirmationCloseUtc.Kind == DateTimeKind.Utc
+            && KindIsConsistent(s);
+        return valid ? null : c.Skip(SkipReason.InvalidSignal, 0.0, 0.0, "signal has a missing, non-finite or inconsistent value");
+    }
+
+    // EXE-019 (a): a breakout signal has no gap and a level; a ZoneFvg signal has its gap; any other kind is invalid.
+    private static bool KindIsConsistent(Signal s)
+    {
+        if (s.Kind == SignalKind.Breakout)
+        {
+            return s.Fvg == null && s.Level.HasValue && IsPrice(s.Level.Value);
+        }
+
+        return s.Kind == SignalKind.ZoneFvg
             && s.Fvg != null && s.Fvg.Side == s.Side
             && IsPrice(s.Fvg.Upper) && IsPrice(s.Fvg.Lower) && s.Fvg.Upper > s.Fvg.Lower
             && s.Fvg.C3OpenUtc.Kind == DateTimeKind.Utc && s.Fvg.C2OpenUtc.Kind == DateTimeKind.Utc && s.Fvg.C1OpenUtc.Kind == DateTimeKind.Utc;
-        return valid ? null : c.Skip(SkipReason.InvalidSignal, 0.0, 0.0, "signal has a missing, non-finite or inconsistent value");
+    }
+
+    private static bool IsBreakout(Candidate c)
+    {
+        return c.Signal.Kind == SignalKind.Breakout;
     }
 
     private static SkipRecord? CheckFreshness(Candidate c)
@@ -250,7 +278,10 @@ public sealed class PreTradeFilters
 
     private SkipRecord? CheckNews(Candidate c)
     {
-        NewsDecision decision = _news.CheckEntry(c.Context.Symbol, c.Now, c.Signal.Fvg);
+        // CheckInputs has made sure that a ZoneFvg signal has its gap (EXE-019 (a)).
+        NewsDecision decision = IsBreakout(c)
+            ? _news.CheckBreakoutEntry(c.Context.Symbol, c.Now, c.Signal.ConfirmationCloseUtc)
+            : _news.CheckEntry(c.Context.Symbol, c.Now, c.Signal.Fvg!);
         switch (decision.Reason)
         {
             case NewsBlockReason.None:
@@ -259,10 +290,16 @@ public sealed class PreTradeFilters
                 return c.Skip(SkipReason.NewsCalendarUnavailable, 0.0, 0.0, "news calendar unavailable");
             case NewsBlockReason.InsideWindow:
                 return c.Skip(SkipReason.NewsWindow, 0.0, 0.0, "inside a news window at " + Second(c.Now));
+            case NewsBlockReason.BreakoutBarInWindow:
+                return c.Skip(SkipReason.NewsBreakoutBar, 0.0, 0.0, "breakout bar opening " + BarText(decision.BarOpenUtc) + " overlaps a news window");
             default:
-                string bar = decision.BarOpenUtc.HasValue ? Second(decision.BarOpenUtc.Value) : "unknown";
-                return c.Skip(SkipReason.NewsFvgBar, 0.0, 0.0, "FVG bar opening " + bar + " overlaps a news window");
+                return c.Skip(SkipReason.NewsFvgBar, 0.0, 0.0, "FVG bar opening " + BarText(decision.BarOpenUtc) + " overlaps a news window");
         }
+    }
+
+    private static string BarText(DateTime? barOpenUtc)
+    {
+        return barOpenUtc.HasValue ? Second(barOpenUtc.Value) : "unknown";
     }
 
     private SkipRecord? CheckStopBounds(Candidate c)
@@ -270,7 +307,10 @@ public sealed class PreTradeFilters
         SymbolInfo info = c.Info!;
         Signal s = c.Signal;
         double rawStop = s.Side == Side.Sell ? s.Stop + info.Spread : s.Stop;
-        c.Entry = PriceGrid.RoundToTick(s.Entry, info.TickSize);
+
+        // EXE-019 (c): a buy stop triggers on the ask, so the spread is added to a breakout buy's entry.
+        double rawEntry = IsBreakout(c) && s.Side == Side.Buy ? s.Entry + info.Spread : s.Entry;
+        c.Entry = PriceGrid.RoundToTick(rawEntry, info.TickSize);
         c.Stop = PriceGrid.RoundToTick(rawStop, info.TickSize);
         c.Target = PriceGrid.RoundToTick(s.Target, info.TickSize);
         if (!OnLossSide(s.Side, c.Entry, c.Stop))
@@ -299,10 +339,44 @@ public sealed class PreTradeFilters
         return null;
     }
 
+    // EXE-019 (d): directly after EXE-003, a breakout order whose entry the market has already reached is not placed.
+    private static SkipRecord? CheckEntryReached(Candidate c)
+    {
+        if (!IsBreakout(c))
+        {
+            return null;
+        }
+
+        SymbolInfo info = c.Info!;
+        if (!IsPrice(info.Bid) || !IsPrice(info.Ask) || PriceMath.LessThan(info.Ask, info.Bid, PriceMath.DefaultTolerance))
+        {
+            return c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, "bid " + Text(info.Bid) + " ask " + Text(info.Ask) + " of " + c.Context.Symbol + " are not usable");
+        }
+
+        if (c.Signal.Side == Side.Buy && !PriceMath.LessThan(info.Ask, c.Entry, PriceMath.DefaultTolerance))
+        {
+            return c.Skip(SkipReason.EntryAlreadyReached, info.Ask, c.Entry, "ask " + Text(info.Ask) + " at or above the entry " + Text(c.Entry));
+        }
+
+        if (c.Signal.Side == Side.Sell && !PriceMath.GreaterThan(info.Bid, c.Entry, PriceMath.DefaultTolerance))
+        {
+            return c.Skip(SkipReason.EntryAlreadyReached, info.Bid, c.Entry, "bid " + Text(info.Bid) + " at or below the entry " + Text(c.Entry));
+        }
+
+        return null;
+    }
+
     private SkipRecord? CheckFvgVersusSpread(Candidate c)
     {
+        // EXE-019 (b): not applied to a breakout signal, which has no gap.
+        if (IsBreakout(c))
+        {
+            return null;
+        }
+
         SymbolInfo info = c.Info!;
-        double heightPips = PriceMath.ToPips(c.Signal.Fvg.Upper - c.Signal.Fvg.Lower, info.PipSize);
+        Fvg fvg = c.Signal.Fvg!;
+        double heightPips = PriceMath.ToPips(fvg.Upper - fvg.Lower, info.PipSize);
         double minimum = _parameters.MinFvgSpreadMult * c.SpreadPips;
         if (PriceMath.LessThan(heightPips, minimum, PriceMath.DefaultTolerance))
         {
@@ -328,6 +402,12 @@ public sealed class PreTradeFilters
 
     private SkipRecord? CheckRoom(Candidate c)
     {
+        // EXE-019 (b): not applied to a breakout signal.
+        if (IsBreakout(c))
+        {
+            return null;
+        }
+
         ZoneType opposing = c.Signal.Side == Side.Buy ? ZoneType.Supply : ZoneType.Demand;
         double direction = c.Signal.Side == Side.Buy ? 1.0 : -1.0;
         double room = _parameters.MinRoomR * c.StopDistance;
@@ -468,6 +548,7 @@ public sealed class PreTradeFilters
         return new PlannedOrder(c.Signal, c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, c.Target, sizing.VolumeUnits, sizing.RiskMoney, c.StopPips, c.Expiry, info.Digits, label, comment, c.Now)
         {
             TickSize = info.TickSize,
+            EntryType = IsBreakout(c) ? EntryOrderType.Stop : EntryOrderType.Limit,
         };
     }
 
