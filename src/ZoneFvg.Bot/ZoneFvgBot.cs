@@ -570,9 +570,20 @@ namespace cAlgo.Robots
             var http = new HttpTransport(Http, log);
             _painter = CreatePainter(broker, isBacktest, log);
 
-            log.Info("version " + BuildInfo.Version + ", symbol " + SymbolName + ", backtest " + (isBacktest ? "yes" : "no") + ", mode " + parameters.Mode + ", model " + (parameters.Choch is null ? ChochText.Fvg : ChochText.Choch));
+            log.Info("version " + BuildInfo.Version + ", symbol " + SymbolName + ", backtest " + (isBacktest ? "yes" : "no") + ", mode " + parameters.Mode + ModelText(parameters));
             LogCosts(broker, log);
             return new BotCore(parameters, broker, store, http, log, isBacktest);
+        }
+
+        // PLT-016: the entry model exists in ZoneFvg mode only, so the other modes name no model.
+        private static string ModelText(BotParameters parameters)
+        {
+            if (parameters.Mode != CoreEntryMode.ZoneFvg)
+            {
+                return string.Empty;
+            }
+
+            return ", model " + (parameters.Choch is null ? ChochText.Fvg : ChochText.Choch);
         }
 
         private ChartPainter CreatePainter(CTraderBroker broker, bool isBacktest, AdapterLog log)

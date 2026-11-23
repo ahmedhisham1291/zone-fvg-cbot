@@ -50,7 +50,7 @@ public class ChochLimitScenarios
     }
 
     [Fact]
-    [Trait("Req", "EXE-028")]
+    [Trait("Req", "RSK-010")]
     public void SymbolAtItsEntryLimitForTheDay_SymbolEntryLimitReached()
     {
         // One bot entry on EURUSD earlier today, and at most one entry per symbol per day.

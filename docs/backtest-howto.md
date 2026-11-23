@@ -482,9 +482,12 @@ commission and spread, on the **development** period only (before November
     Choch model needs 2087 closed M15 bars (about 22 trading days) besides
     201 D1 and 248 H4 bars. At start the Log has one line `closed bars
     loaded at start against the warm-up: D1 ... of 201, H4 ... of 248, M15
-    ... of 2087`; if a loaded number is below its warm-up, the bot loads
-    more history during its first recovery, and it trades only after the
-    `from=Recovering to=Running` line.
+    ... of 2087`. In a backtest cTrader cannot load history from before the
+    backtest's start (spec 12.1): if a loaded number is below its warm-up,
+    the bot stays Recovering until the run itself has produced enough bars,
+    and it trades only after the `from=Recovering to=Running` line. That is
+    why the backtest must start at least 10 months before the period you
+    judge.
 27. **What to look at in the Log.** Every Choch signal line has
     `kind=choch`, the broken level (`level=`), `sweep=yes` or `sweep=no`,
     where the target came from (`target=zone:...`, `target=swing:...` or
