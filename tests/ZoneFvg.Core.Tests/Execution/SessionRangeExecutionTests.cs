@@ -335,10 +335,12 @@ public class SessionRangeExecutionTests
 
     [Fact]
     [Trait("Req", "EXE-024")]
-    public void CancelOrdersOf_CancelsOnlyTheBotOrderOfThatIdOnTheSymbol()
+    public void CancelOrdersOf_CancelsOnlyTheBotOrdersOfThatIdOnTheSymbol()
     {
         ExecutionHarness h = Harness();
         long mine = h.Broker.AddOrder(ExecutionData.Symbol, Side.Buy, 1000.0, 1.0864, 1.0823, 1.0943, Expiry, RangeLabel(BuyId), "c");
+        long malformed = h.Broker.AddOrder(ExecutionData.Symbol, Side.Buy, 1000.0, 1.0864, 1.0823, 1.0943, Expiry, "ZFVG|v1|" + ExecutionData.Symbol, "c");
+        long second = h.Broker.AddOrder(ExecutionData.Symbol, Side.Buy, 1000.0, 1.0864, 1.0823, 1.0943, Expiry, RangeLabel(BuyId), "c");
         long other = h.Broker.AddOrder(ExecutionData.Symbol, Side.Sell, 1000.0, 1.0767, 1.0808, 1.0687, Expiry, RangeLabel(SellId), "c");
         long otherSymbol = h.Broker.AddOrder("GBPUSD", Side.Buy, 1000.0, 1.3, 1.29, 1.32, Expiry, RangeLabel(BuyId, "GBPUSD"), "c");
         long manual = h.Broker.AddOrder(ExecutionData.Symbol, Side.Buy, 1000.0, 1.0864, 1.0823, 1.0943, Expiry, "manual " + BuyId, "c");
@@ -346,12 +348,12 @@ public class SessionRangeExecutionTests
         Assert.True(h.Trades.HasPendingOrderOf(BuyId));
         IReadOnlyList<TradeAction> actions = h.Trades.CancelOrdersOf(BuyId, "range void");
 
-        TradeAction action = Assert.Single(actions);
-        Assert.Equal(new TradeAction(mine, TradeActionOutcome.Cancelled, "range void"), action);
-        Assert.Equal(new[] { other, otherSymbol, manual }, h.Broker.GetPendingOrders().Select(o => o.Id).OrderBy(id => id).ToArray());
+        // Two orders with the label (which the bot never makes): both are cancelled, in id order.
+        Assert.Equal(new[] { new TradeAction(mine, TradeActionOutcome.Cancelled, "range void"), new TradeAction(second, TradeActionOutcome.Cancelled, "range void") }, actions);
+        Assert.Equal(new[] { malformed, other, otherSymbol, manual }, h.Broker.GetPendingOrders().Select(o => o.Id).OrderBy(id => id).ToArray());
         Assert.False(h.Trades.HasPendingOrderOf(BuyId));
         Assert.True(h.Trades.HasPendingOrderOf(SellId));
-        Assert.Equal(1, h.Broker.WriteRequestCount);
+        Assert.Equal(2, h.Broker.WriteRequestCount);
     }
 
     [Fact]
@@ -405,6 +407,7 @@ public class SessionRangeExecutionTests
         long zone = h.Broker.AddPosition(ExecutionData.Symbol, Side.Buy, 1000.0, 1.0864, 1.0823, 1.0943, RangeLabel(ExecutionData.BuyZone), "c");
         long otherSymbol = h.Broker.AddPosition("GBPUSD", Side.Buy, 1000.0, 1.3, 1.29, 1.32, RangeLabel(BuyId, "GBPUSD"), "c");
         long manual = h.Broker.AddPosition(ExecutionData.Symbol, Side.Buy, 1000.0, 1.0864, 1.0823, 1.0943, "manual", "c");
+        long malformed = h.Broker.AddPosition(ExecutionData.Symbol, Side.Buy, 1000.0, 1.0864, 1.0823, 1.0943, "ZFVG|v1|" + ExecutionData.Symbol, "c");
         DateTime before = ExecutionData.At(14, 21, 29, 59);
         DateTime at = ExecutionData.At(14, 21, 30);
 
@@ -415,7 +418,7 @@ public class SessionRangeExecutionTests
         TradeAction action = Assert.Single(h.Trades.RangeExit(at, exit));
 
         Assert.Equal(new TradeAction(mine, TradeActionOutcome.Closed, "range exit"), action);
-        Assert.Equal(new[] { tomorrow, breakout, zone, otherSymbol, manual }, h.Broker.GetPositions().Select(p => p.Id).OrderBy(id => id).ToArray());
+        Assert.Equal(new[] { tomorrow, breakout, zone, otherSymbol, manual, malformed }, h.Broker.GetPositions().Select(p => p.Id).OrderBy(id => id).ToArray());
         Assert.Equal(1, h.Broker.WriteRequestCount);
         Assert.Empty(h.Trades.RangeExit(at.AddMinutes(1.0), exit));
         Assert.False(h.Trades.RangeExitDue(at.AddMinutes(1.0), exit));

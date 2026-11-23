@@ -1480,7 +1480,7 @@ requirements:
     wp: WP34
     spec: "3.8, 9.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       SessionRange in the signal engine. With EntryMode SessionRange the
       engine feeds closed bars to the session range tracker in the order of
@@ -1598,7 +1598,7 @@ requirements:
     wp: WP34
     spec: "3.8, 5.2"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Session range order. A signal of Kind SessionRange is placed as a stop
       order with the spread rule of EXE-018 and with the signal's expiry,
@@ -1611,7 +1611,7 @@ requirements:
     wp: WP34
     spec: "3.8, 5.5"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Timed exit. At the first closed M15 bar whose close time is at or after
       RangeExitNy on the date in a position's signal id (RH- or RL-), that
