@@ -114,20 +114,6 @@ public sealed class SignalEngine
     {
     }
 
-    /// <summary>
-    /// Creates an engine in ZoneFvg mode with the Choch entry model and no bars (SIG-020, SIG-041):
-    /// not ready, Neutral bias, no zones. The zone book's confirmation window is ChochWindowBars
-    /// (SIG-036) and the warm-up is that of
-    /// <see cref="WarmupCalculator.For(SignalParameters, BreakoutParameters, SessionRangeParameters, ChochParameters)"/>.
-    /// </summary>
-    /// <param name="parameters">The signal parameters. They are validated first.</param>
-    /// <param name="choch">The Choch parameters. They are validated next.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> or <paramref name="choch"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public SignalEngine(SignalParameters parameters, ChochParameters choch)
-        : this(parameters, null, null, TimeSpan.Zero, choch ?? throw new ArgumentNullException(nameof(choch)))
-    {
-    }
 
     private SignalEngine(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, TimeSpan fridayNoEntryUtc, ChochParameters? choch)
     {
@@ -141,6 +127,25 @@ public sealed class SignalEngine
         _range = sessionRange is null ? null : new SessionRangeTracker(sessionRange, parameters.RewardRisk, fridayNoEntryUtc);
         _trendSlowEmaPeriod = breakout?.TrendSlowEmaPeriod ?? 0;
         Bias = Bias.Neutral;
+    }
+
+    /// <summary>
+    /// Creates an engine in ZoneFvg mode with the Choch entry model and no bars (SIG-020, SIG-041):
+    /// not ready, Neutral bias, no zones. The zone book's confirmation window is ChochWindowBars
+    /// (SIG-036) and the warm-up is that of
+    /// <see cref="WarmupCalculator.For(SignalParameters, BreakoutParameters, SessionRangeParameters, ChochParameters)"/>.
+    /// A factory rather than a constructor, so that the existing calls <c>new SignalEngine(parameters, null)</c>
+    /// keep meaning ZoneFvg mode with the Fvg model.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="choch">The Choch parameters. They are validated next.</param>
+    /// <returns>The engine.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> or <paramref name="choch"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public static SignalEngine WithChoch(SignalParameters parameters, ChochParameters choch)
+    {
+        ArgumentNullException.ThrowIfNull(choch);
+        return new SignalEngine(parameters, null, null, TimeSpan.Zero, choch);
     }
 
     /// <summary>

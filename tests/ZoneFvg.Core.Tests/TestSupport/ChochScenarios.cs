@@ -124,7 +124,7 @@ public static class ChochScenarios
     /// <summary>Runs a feed through a new Choch engine and records each tail bar (M15 bars from the activation on).</summary>
     public static IReadOnlyList<ChochStep> Run(IReadOnlyList<FeedBar> feed, ChochParameters? choch = null, bool replay = false, SignalParameters? parameters = null)
     {
-        var engine = new SignalEngine(parameters ?? EngineScenarios.Defaults, choch ?? Defaults);
+        var engine = SignalEngine.WithChoch(parameters ?? EngineScenarios.Defaults, choch ?? Defaults);
         return Run(engine, feed, replay);
     }
 

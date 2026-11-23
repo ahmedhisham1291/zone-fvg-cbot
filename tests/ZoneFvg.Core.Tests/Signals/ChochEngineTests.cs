@@ -1,5 +1,6 @@
 using Xunit;
 using ZoneFvg.Core.Domain;
+using ZoneFvg.Core.Indicators;
 using ZoneFvg.Core.Signals;
 
 namespace ZoneFvg.Core.Tests;

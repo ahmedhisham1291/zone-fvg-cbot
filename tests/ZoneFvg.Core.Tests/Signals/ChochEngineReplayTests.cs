@@ -37,8 +37,8 @@ public class ChochEngineReplayTests
     {
         IReadOnlyList<FeedBar> feed = Feed(TailOf(tail));
 
-        IReadOnlyList<EngineStep> first = EngineFeed.Run(new SignalEngine(EngineScenarios.Defaults, ChochScenarios.Defaults), feed);
-        IReadOnlyList<EngineStep> second = EngineFeed.Run(new SignalEngine(EngineScenarios.Defaults, ChochScenarios.Defaults), feed);
+        IReadOnlyList<EngineStep> first = EngineFeed.Run(SignalEngine.WithChoch(EngineScenarios.Defaults, ChochScenarios.Defaults), feed);
+        IReadOnlyList<EngineStep> second = EngineFeed.Run(SignalEngine.WithChoch(EngineScenarios.Defaults, ChochScenarios.Defaults), feed);
 
         EngineFeed.AssertSameSteps(first, second);
         Assert.Single(EngineFeed.AllSignals(first));
@@ -107,7 +107,7 @@ public class ChochEngineReplayTests
         Assert.Equal(248, warmup[TimeFrame.H4]);
         Assert.Equal(((120 + 1) * 16) + 32 + 100 + 3 + 14 + 2, warmup[TimeFrame.M15]);
         Assert.Equal(ChochScenarios.Warmup, warmup[TimeFrame.M15]);
-        Assert.Equal(2087, new SignalEngine(EngineScenarios.Defaults, ChochScenarios.Defaults).WarmupBars[TimeFrame.M15]);
+        Assert.Equal(2087, SignalEngine.WithChoch(EngineScenarios.Defaults, ChochScenarios.Defaults).WarmupBars[TimeFrame.M15]);
     }
 
     [Fact]
@@ -135,8 +135,8 @@ public class ChochEngineReplayTests
     [Trait("Req", "SIG-041")]
     public void Constructor_NullOrInvalidChochParameters_Refused()
     {
-        Assert.Throws<ArgumentNullException>(() => new SignalEngine(EngineScenarios.Defaults, (ChochParameters)null!));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new SignalEngine(EngineScenarios.Defaults, new ChochParameters { MinRewardRisk = 0.5 }));
+        Assert.Throws<ArgumentNullException>(() => SignalEngine.WithChoch(EngineScenarios.Defaults, (ChochParameters)null!));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SignalEngine.WithChoch(EngineScenarios.Defaults, new ChochParameters { MinRewardRisk = 0.5 }));
     }
 
     [Fact]
