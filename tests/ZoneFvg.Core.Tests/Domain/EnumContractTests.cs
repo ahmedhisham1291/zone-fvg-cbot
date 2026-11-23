@@ -44,7 +44,8 @@ public class EnumContractTests
     [Trait("Req", "SIG-026")]
     public void SignalKind_Members_MatchTheArchitectureContract()
     {
-        AssertMembers<SignalKind>("ZoneFvg", "Breakout");
+        // WP34 (SIG-034) appends SessionRange; the first two members keep their names and values.
+        AssertMembers<SignalKind>("ZoneFvg", "Breakout", "SessionRange");
     }
 
     [Fact]
