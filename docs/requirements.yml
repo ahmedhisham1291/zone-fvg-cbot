@@ -1620,6 +1620,21 @@ requirements:
       is closed when it reopens, as for the Friday close. The duty runs in
       every connected state, Recovering included, reads the positions from the
       broker each time and does not touch positions of other kinds.
+  - id: EXE-026
+    wp: WP36
+    spec: "3.8, 5.5"
+    verify: scenario
+    status: planned
+    text: >-
+      Timed exit and reported trading hours (found in the owner's backtest
+      of 2026-11-23). When the timed exit of EXE-025 becomes due at a closed
+      M15 bar, the close is sent without looking at the symbol's reported
+      market state: the bar is proof that the market trades. When the exit
+      becomes due without a bar (the timer), the reported market state is
+      used as before and the duty waits while it says closed. When the
+      broker refuses the close, the duty retries as EXE-025 says, and from
+      the bar path it sends at most one close request per closed M15 bar.
+      Nothing else of EXE-025 changes, and no other mode or duty changes.
   - id: NWS-014
     wp: WP26
     spec: "3.7, 6.1"

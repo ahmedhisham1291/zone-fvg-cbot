@@ -267,6 +267,8 @@ Chosen with `EntryMode` = SessionRange. It follows the D1 trend into a break of 
 
 **Timed exit.** At the first closed M15 bar whose close time is at or after `RangeExitNy` (16:30) on the date in the position's signal id, an open position of this mode is closed at market. If the market is closed at that moment, the position is closed when the market reopens, as for the Friday close (5.5). The duty runs in every connected state, as the Friday close does.
 
+**Reported trading hours (added on 23 November 2026, after the owner's first backtest of this mode).** The bar that makes the exit due is itself proof that the market trades. At that bar the close is sent whatever trading hours the platform reports. On FTMO's cTrader the reported hours of gold do not move with winter time: they end at 20:50 UTC all year, while in winter gold trades until 21:49 UTC, so a bot that trusts them waits from 21:30 UTC until 22:05 UTC and carries the position into the daily break. The wait for a reopening applies only when the exit becomes due without a bar, or when the broker refuses the close.
+
 **Signal id.** `RH-yyyyMMdd` for a buy at the range high and `RL-yyyyMMdd` for a sell at the range low, from the date that names the trading day. It takes the place of the zone id in the label (5.2), in recovery (8.3), in the journal and in the trade log.
 
 **Skipped when** (besides the checks of 3.6 that apply): price has already reached the entry when the order is about to be placed.
