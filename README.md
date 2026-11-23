@@ -5,21 +5,26 @@ under a strict process: numbered requirements, tests first, an independent
 validator agent, CI gates, and an orchestrating session that merges when the
 gates are green and reports every merge to the owner.
 
-**Status:** skeleton only. No trading logic exists yet.
-
-> This repository skeleton was written without a .NET SDK, so the project
-> files and the first CI run are **unverified**. Work package WP00 exists to
-> make them green. Expect a few small fixes there.
+**Status:** the bot is built: the core logic, the cTrader adapter, the
+simulation tools and the deployment files. It has two entry modes, chosen
+per instance with the parameter `EntryMode` (spec v0.10): **Breakout**, the
+default, and **ZoneFvg**. `docs/requirements.yml` holds 126 requirements;
+116 are implemented (count of `python3 tools/check_traceability.py`). Of the
+other ten, nine are checked by hand on cTrader and wait for the owner's
+signed test records (`docs/test-records/`), and one (REC-016, symbol trading
+sessions) is still planned. No backtest result is recorded yet, so nothing here
+says whether either mode is profitable. How to run the backtests:
+`docs/backtest-howto.md`. How to deploy: `deploy/README.md`.
 
 ## What is here
 
 | Path | What it is |
 |---|---|
-| `docs/spec.md` | The specification (v0.8) |
-| `docs/requirements.yml` | 94 numbered requirements, each tied to a work package and a way of proving it |
+| `docs/spec.md` | The specification (v0.10) |
+| `docs/requirements.yml` | 126 numbered requirements, each tied to a work package and a way of proving it |
 | `docs/architecture.md` | Layers and type contracts all work packages share |
 | `AGENTS.md` | Rules every agent must follow |
-| `prompts/WP00` … `WP11` | One detailed implementation prompt per work package |
+| `prompts/WP00` … `WP30` | One detailed implementation prompt per work package (not every number has one) |
 | `prompts/00-orchestrator.md` | The order of work and the loop for each work package |
 | `prompts/validator.md` | Instructions for the validator agent |
 | `.claude/agents/validator.md` | The validator as a Claude Code subagent |
@@ -94,10 +99,15 @@ read by most agent tools; `CLAUDE.md` points Claude Code to it.
 
 ## Order of work
 
-`WP00` → `WP01` → (`WP02` → `WP03`), `WP04`, `WP05` → `WP06` → `WP07`, `WP09`
-→ `WP08` → `WP11`. `WP10` any time after `WP01`.
+The first build: `WP00` → `WP01` → (`WP02` → `WP03`), `WP04`, `WP05` →
+`WP06` → `WP07`, `WP09` → `WP08` → `WP11`. `WP10` any time after `WP01`.
+The later packages (`WP12` to `WP30`) build on it; each prompt names what
+it depends on or reads first. The Breakout mode came in `WP25` → `WP26` →
+`WP27`, then `WP29` and `WP30`, then `WP28` (the cBot parameters and the
+guides).
 See `prompts/00-orchestrator.md` for the gates only you can pass: checking
-detection by eye, the backtests, the fault-injection tests and the decision to
+detection by eye, the backtests, the fault-injection tests, the two records
+before Breakout mode trades on the Challenge account, and the decision to
 start the FTMO Challenge.
 
 ## Things only you can provide

@@ -153,6 +153,10 @@ How:
 On the laptop stage: stop each instance, change the parameter in the instance's
 parameter panel, start it.
 
+`EntryMode` is a parameter too: change it, like any other parameter, only
+when the bot is flat on that symbol (`deploy/README.md`, section "Entry
+mode").
+
 ## 6. Weekly checks (Saturday)
 
 | # | Check | How | Action if wrong |
