@@ -312,7 +312,7 @@ public class ChochEngineTests
             (100.05, 100.1, 100.0, 100.1),
             (100.15, 100.3, 100.15, 100.25),
         };
-        IReadOnlyList<FeedBar> feed = ChochScenarios.History(BiasHistory.Long, tail, flatBefore: ChochScenarios.Warmup - 7);
+        IReadOnlyList<FeedBar> feed = ChochScenarios.History(BiasHistory.Long, tail, flatBefore: ChochScenarios.Warmup - 7, tailBeforeActivation: 7);
 
         IReadOnlyList<ChochStep> withBuffer = ChochScenarios.Run(feed);
         IReadOnlyList<ChochStep> withoutBuffer = ChochScenarios.Run(feed, parameters: EngineScenarios.Defaults with { StopBufferAtr = 0.0 });

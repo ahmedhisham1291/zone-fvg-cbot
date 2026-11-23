@@ -87,31 +87,45 @@ public static class ChochScenarios
     }
 
     /// <summary>
-    /// <see cref="H4"/> with an unbroken swing high at <paramref name="high"/> three bars before the
-    /// broken one at 101.0 (the bar opening at the activation - 112 hours). It lies outside the 15
-    /// bars of ATR(H4), so ATR(H4) stays 15 / 14, and before the swing at 101.0, so the zone's break
-    /// of structure is unchanged.
+    /// <see cref="H4"/> with an unbroken swing high at <paramref name="high"/> four bars before the
+    /// broken one at 101.0 (the bar opening at the activation - 116 hours). It lies outside the 15
+    /// bars of ATR(H4), so ATR(H4) stays 15 / 14, and far enough before the swing at 101.0 that this
+    /// stays a swing high and the most recent one before the leg, so the zone's break of structure is
+    /// unchanged.
     /// </summary>
     public static IReadOnlyList<Bar> H4WithSwingHigh(double high)
     {
         IReadOnlyList<Bar> h4 = H4();
-        return h4.ReplaceAt(h4.Count - 28, 100.0, high, 99.5, 100.0);
+        return h4.ReplaceAt(h4.Count - 29, 100.0, high, 99.5, 100.0);
     }
 
     /// <summary>Open time of the swing bar of <see cref="H4WithSwingHigh"/>.</summary>
-    public static DateTime AddedSwingOpen => EngineScenarios.Activation.AddHours(-112.0);
+    public static DateTime AddedSwingOpen => EngineScenarios.Activation.AddHours(-116.0);
 
-    /// <summary>The feed: D1 of the bias, the H4 bars and <paramref name="flatBefore"/> flat M15 bars then the tail; mirrored around 200 when asked.</summary>
+    /// <summary>
+    /// The feed: D1 of the bias, the H4 bars and <paramref name="flatBefore"/> flat M15 bars then the
+    /// tail, whose first <paramref name="tailBeforeActivation"/> bars open before the activation (m0 is
+    /// the first tail bar at or after it); mirrored around 200 when asked.
+    /// </summary>
     public static IReadOnlyList<FeedBar> History(
         BiasHistory bias,
         (double Open, double High, double Low, double Close)[] tail,
         bool mirrored = false,
         IReadOnlyList<Bar>? h4 = null,
         int flatBefore = Warmup,
-        int extraD1 = 0)
+        int extraD1 = 0,
+        int tailBeforeActivation = 0)
     {
         IReadOnlyList<Bar> h4Bars = h4 ?? H4();
-        IReadOnlyList<Bar> m15 = EngineScenarios.M15(flatBefore, tail);
+        BarBuilder builder = new BarBuilder(TimeFrame.M15)
+            .At(EngineScenarios.Activation.AddMinutes(-15.0 * (flatBefore + tailBeforeActivation)))
+            .Repeat(flatBefore, (b, _) => b.Ohlc(100.6, 100.65, 100.55, 100.6));
+        foreach ((double open, double high, double low, double close) in tail)
+        {
+            builder.Ohlc(open, high, low, close);
+        }
+
+        IReadOnlyList<Bar> m15 = builder.Build();
         if (mirrored)
         {
             h4Bars = h4Bars.Mirror(EngineScenarios.Pivot);
