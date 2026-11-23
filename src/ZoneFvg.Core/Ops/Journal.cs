@@ -55,7 +55,8 @@ public sealed class Journal
     /// result (taken or skipped), bias, zone, zoneProximal, zoneDistal, fvgUpper, fvgLower,
     /// entry, stop, target, stopPips (1 decimal), volume (0 decimals), spreadPips (1 decimal),
     /// costToRisk (3 decimals), news, skip (reason or <c>none</c>) (OPS-001). For a breakout signal
-    /// two more keys follow: kind (<c>breakout</c>) and level (OPS-010).
+    /// two more keys follow: kind (<c>breakout</c>) and level (OPS-010); for a session range signal
+    /// kind (<c>range</c>) and level, the range edge that is traded (SIG-034).
     /// </summary>
     /// <param name="entry">The signal fields.</param>
     /// <returns>The line written.</returns>
@@ -88,6 +89,12 @@ public sealed class Journal
         if (entry.Kind == SignalKind.Breakout)
         {
             fields.Add(("kind", "breakout"));
+            fields.Add(("level", JournalFormat.Price(entry.Level)));
+        }
+        else if (entry.Kind == SignalKind.SessionRange)
+        {
+            // SIG-034: the same two keys for a session range signal; the level is the range edge that is traded.
+            fields.Add(("kind", "range"));
             fields.Add(("level", JournalFormat.Price(entry.Level)));
         }
 

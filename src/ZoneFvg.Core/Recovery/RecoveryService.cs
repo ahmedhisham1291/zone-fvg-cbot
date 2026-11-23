@@ -35,6 +35,9 @@ namespace ZoneFvg.Core.Recovery;
 /// Used at once and leaves the zone book (architecture section 10, "Terminal zones"), and a
 /// breakout id exists only through its signal, so the replayed signals are how the rebuilt layer
 /// identifies the zone or breakout of an existing order or position.</para>
+/// <para>In SessionRange mode (SIG-034) the replay runs the session range engine, and a setup id is
+/// known in the same way, through its replayed signal. A pending order whose setup the replay
+/// found void is cancelled (EXE-024); a position keeps its setup whatever followed.</para>
 /// </remarks>
 public sealed class RecoveryService
 {
@@ -47,6 +50,7 @@ public sealed class RecoveryService
     private readonly string _symbol;
     private readonly SignalParameters _signalParameters;
     private readonly BreakoutParameters? _breakout;
+    private readonly SessionRangeParameters? _sessionRange;
     private readonly ExecutionParameters _executionParameters;
     private readonly bool _newsEnabled;
     private readonly IBroker _broker;
@@ -86,8 +90,14 @@ public sealed class RecoveryService
     /// validated here (REC-019). They select the engine of the replay, are part of the parameter
     /// hash, and make the D1 series stale after one bar length instead of two (REC-018).
     /// </param>
+    /// <param name="sessionRange">
+    /// SIG-034: the session range parameters in SessionRange mode, or null (the default) in the
+    /// other modes; validated here. They select the engine of the replay (with
+    /// <see cref="ExecutionParameters.FridayNoEntryUtc"/>) and its warm-up, and are part of the
+    /// parameter hash. A pending order whose setup the replay found void is cancelled (EXE-024).
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    /// <exception cref="ArgumentException">The symbol is empty.</exception>
+    /// <exception cref="ArgumentException">The symbol is empty, or breakout and session range parameters are both set (SIG-034).</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public RecoveryService(
         string symbol,
@@ -103,7 +113,8 @@ public sealed class RecoveryService
         Func<RecoveryFindings, BotState> enterState,
         IReadOnlyCollection<MonthDay>? marketHolidays = null,
         bool haltsRecordOnly = false,
-        BreakoutParameters? breakout = null)
+        BreakoutParameters? breakout = null,
+        SessionRangeParameters? sessionRange = null)
     {
         ArgumentNullException.ThrowIfNull(signalParameters);
         ArgumentNullException.ThrowIfNull(executionParameters);
@@ -112,9 +123,16 @@ public sealed class RecoveryService
         executionParameters.Validate();
         riskParameters.Validate();
         breakout?.Validate();
+        sessionRange?.Validate();
+        if (breakout != null && sessionRange != null)
+        {
+            throw new ArgumentException("Breakout and session range parameters must not both be set: one entry mode per instance (SIG-034).", nameof(sessionRange));
+        }
+
         _symbol = symbol;
         _signalParameters = signalParameters;
         _breakout = breakout;
+        _sessionRange = sessionRange;
         _executionParameters = executionParameters;
         _newsEnabled = newsEnabled;
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -124,8 +142,8 @@ public sealed class RecoveryService
         _enterState = enterState ?? throw new ArgumentNullException(nameof(enterState));
         _marketHolidays = marketHolidays ?? Array.Empty<MonthDay>();
         _haltsRecordOnly = haltsRecordOnly;
-        _warmup = WarmupCalculator.For(signalParameters, breakout);
-        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout);
+        _warmup = WarmupCalculator.For(signalParameters, breakout, sessionRange);
+        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout, sessionRange);
         _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
         _guard = new AccountGuard(symbol, riskParameters, broker);
         _safety = new SafetyActions(symbol, executionParameters, broker, counter, events);
@@ -189,14 +207,17 @@ public sealed class RecoveryService
         ReplayStep replay = RebuildSignalLayer(data, now);
         BrokerStep view = ReadBroker();
         AdoptStep adopt = AdoptPositions(view, replay.KnownZones);
-        OrderStep orders = CheckPendingOrders(view, replay.KnownZones, now);
+        OrderStep orders = CheckPendingOrders(view, replay.KnownZones, replay.VoidIds, now);
         IReadOnlyList<string> strangers = HandleStrangers(adopt);
         JournalStep journaled = BackfillJournal(now);
         GuardStatus guard = RecalculateLimits(now);
         CatchUpStep catchUp = CatchUpDuties(now, guard);
         IReadOnlyList<Bar> m15 = data.Bars[TimeFrame.M15];
         IReadOnlyList<Bar> recent = m15.Skip(Math.Max(0, m15.Count - RecentM15Count)).ToList().AsReadOnly();
-        var findings = new RecoveryFindings(now, true, Array.Empty<string>(), replay.Engine, data.LastBars, recent, guard, catchUp.WeekendClosePending, strangers, replay.Signals);
+        var findings = new RecoveryFindings(now, true, Array.Empty<string>(), replay.Engine, data.LastBars, recent, guard, catchUp.WeekendClosePending, strangers, replay.Signals)
+        {
+            RangeVoidId = replay.CurrentVoidId,
+        };
         BotState state = ReportAndResume(findings);
         return new RecoveryReport
         {
@@ -288,8 +309,13 @@ public sealed class RecoveryService
         }
 
         // REC-017: the same engine as the live one; a breakout id is known because the replay returned a signal with it.
-        var engine = new SignalEngine(_signalParameters, _breakout);
+        // SIG-034: the same for a session range id; a setup the replay found void is remembered for step 5.
+        SignalEngine engine = _sessionRange is null
+            ? new SignalEngine(_signalParameters, _breakout)
+            : new SignalEngine(_signalParameters, _sessionRange, _executionParameters.FridayNoEntryUtc);
         var known = new SortedSet<string>(StringComparer.Ordinal);
+        var voided = new SortedSet<string>(StringComparer.Ordinal);
+        SessionRangeSetup? lastVoid = null;
         var replayed = new List<ReplayedSignal>();
         IEnumerable<(TimeFrame TimeFrame, Bar Bar)> ordered = feed
             .OrderBy(item => BarIntakeOrder.CloseTimeUtc(item.TimeFrame, item.Bar))
@@ -304,10 +330,20 @@ public sealed class RecoveryService
                 _events.Skipped(skip);
                 replayed.Add(new ReplayedSignal(signal, engine.Bias, skip));
             }
+
+            if (engine.LastRangeVoid is not null)
+            {
+                lastVoid = engine.LastRangeVoid;
+                voided.Add(lastVoid.Id);
+            }
         }
 
         known.UnionWith(engine.Zones.Select(zone => zone.Id));
-        return new ReplayStep(engine, known, replayed.AsReadOnly());
+
+        // EXE-024: the void stays known when it is the one of the current trading day (the tracker's setup).
+        SessionRangeSetup? today = engine.RangeSetup;
+        string? currentVoid = lastVoid is not null && today is not null && string.Equals(lastVoid.Id, today.Id, StringComparison.Ordinal) ? lastVoid.Id : null;
+        return new ReplayStep(engine, known, voided, currentVoid, replayed.AsReadOnly());
     }
 
     // Step 3: the bot's positions and pending orders on this symbol, from the broker only.
@@ -353,13 +389,14 @@ public sealed class RecoveryService
     }
 
     // Step 5 (REC-006): keep an order only with stop, target and expiry and a known zone; cancel the others.
-    private OrderStep CheckPendingOrders(BrokerStep view, SortedSet<string> knownZones, DateTime now)
+    // EXE-024: the order of a session range setup that the replay found void is cancelled as well.
+    private OrderStep CheckPendingOrders(BrokerStep view, SortedSet<string> knownZones, SortedSet<string> voidIds, DateTime now)
     {
         var kept = new List<long>();
         var cancelled = new List<string>();
         foreach (PendingOrderInfo order in view.Orders)
         {
-            string? why = CancelReason(order, knownZones);
+            string? why = CancelReason(order, knownZones, voidIds);
             if (why == null)
             {
                 kept.Add(order.Id);
@@ -490,7 +527,7 @@ public sealed class RecoveryService
         return string.Equals(plan.ParameterHash, _parameterHash, StringComparison.Ordinal) ? null : "parameter hash " + plan.ParameterHash + " differs";
     }
 
-    private static string? CancelReason(PendingOrderInfo order, SortedSet<string> knownZones)
+    private static string? CancelReason(PendingOrderInfo order, SortedSet<string> knownZones, SortedSet<string> voidIds)
     {
         if (!order.StopLoss.HasValue)
         {
@@ -510,6 +547,11 @@ public sealed class RecoveryService
         if (!OrderLabel.TryParse(order.Label, out string _, out string zoneId))
         {
             return "label not readable";
+        }
+
+        if (voidIds.Contains(zoneId))
+        {
+            return "setup " + zoneId + " void";
         }
 
         return knownZones.Contains(zoneId) ? null : "zone " + zoneId + " unknown or ended";
@@ -544,7 +586,7 @@ public sealed class RecoveryService
 
     private sealed record DataStep(bool Complete, IReadOnlyList<string> Problems, Dictionary<TimeFrame, IReadOnlyList<Bar>> Bars, Bar?[] LastBars, IReadOnlyList<AcceptedGapList> AcceptedGaps);
 
-    private sealed record ReplayStep(SignalEngine Engine, SortedSet<string> KnownZones, IReadOnlyList<ReplayedSignal> Signals);
+    private sealed record ReplayStep(SignalEngine Engine, SortedSet<string> KnownZones, SortedSet<string> VoidIds, string? CurrentVoidId, IReadOnlyList<ReplayedSignal> Signals);
 
     private sealed record BrokerStep(IReadOnlyList<PositionInfo> Positions, IReadOnlyList<PendingOrderInfo> Orders);
 

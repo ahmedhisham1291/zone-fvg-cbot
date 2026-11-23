@@ -11,7 +11,7 @@ namespace ZoneFvg.Core.Ops;
 /// zone id and edges, FVG edges, entry, stop, target, stop pips, volume, spread, cost-to-risk,
 /// news status and skip reason. A data record; a null value is journaled as <c>NA</c>. For a
 /// breakout signal (OPS-010) the zone id is the breakout id, the zone and gap edges are null, and
-/// <see cref="Kind"/> and <see cref="Level"/> are set.
+/// <see cref="Kind"/> and <see cref="Level"/> are set; the same for a session range signal (SIG-034).
 /// </summary>
 /// <param name="TimeUtc">Server time of the decision, kind UTC.</param>
 /// <param name="Symbol">Symbol name.</param>
@@ -52,7 +52,7 @@ public sealed record SignalJournalEntry(
     /// <summary>The entry mode of the signal (OPS-010). Default ZoneFvg.</summary>
     public SignalKind Kind { get; init; }
 
-    /// <summary>The broken level of a breakout signal (OPS-010); null for a ZoneFvg signal.</summary>
+    /// <summary>The broken level of a breakout signal (OPS-010), the traded range edge of a session range signal (SIG-034); null for a ZoneFvg signal.</summary>
     public double? Level { get; init; }
 
     /// <summary>
@@ -145,10 +145,10 @@ public sealed record SignalJournalEntry(
         };
     }
 
-    // OPS-010: a breakout signal has no zone, so its zone edges are NA whatever zone the caller passes.
+    // OPS-010: a breakout signal has no zone, so its zone edges are NA whatever zone the caller passes; SIG-034: nor has a session range signal.
     private static Zone? ZoneOf(Signal signal, Zone? zone)
     {
-        return signal.Kind == SignalKind.Breakout ? null : zone;
+        return signal.Kind == SignalKind.Breakout || signal.Kind == SignalKind.SessionRange ? null : zone;
     }
 
     private static double? SpreadPipsOf(SymbolInfo? symbol)

@@ -34,6 +34,12 @@ namespace ZoneFvg.Core.Signals;
 /// becomes a <see cref="SignalKind.Breakout"/> signal when the engine is ready. With the trend
 /// filter on (SIG-028) each D1 bar also brings the fast and slow D1 EMA to the tracker, and the D1
 /// warm-up covers the slow EMA; the bias and ZoneFvg mode are unchanged.</para>
+/// <para>SessionRange mode (SIG-034, spec 3.8), chosen by creating the engine with session range
+/// parameters: the intake order, the bias and the warm-up gate are the same; H4 bars are only
+/// stored, so no zone is detected; M15 bars are stored and go to a <see cref="SessionRangeTracker"/>
+/// with the bias and the latest ATR(D1) and ATR(H4). A setup becomes a
+/// <see cref="SignalKind.SessionRange"/> signal when the engine is ready; a void notice is shown in
+/// <see cref="LastRangeVoid"/>.</para>
 /// </remarks>
 public sealed class SignalEngine
 {
@@ -48,6 +54,7 @@ public sealed class SignalEngine
     private readonly BarStore _bars;
     private readonly ZoneBook _book;
     private readonly BreakoutTracker? _tracker;
+    private readonly SessionRangeTracker? _range;
 
     // SIG-028: period of the slow D1 EMA of the breakout trend filter; 0 when the filter is off or in ZoneFvg mode.
     private readonly int _trendSlowEmaPeriod;
@@ -81,13 +88,34 @@ public sealed class SignalEngine
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public SignalEngine(SignalParameters parameters, BreakoutParameters? breakout)
+        : this(parameters, breakout, null, TimeSpan.Zero)
+    {
+    }
+
+    /// <summary>
+    /// Creates an engine in SessionRange mode with no bars (SIG-020, SIG-034): not ready, Neutral
+    /// bias, no zones, with a <see cref="SessionRangeTracker"/> of these parameters,
+    /// <see cref="SignalParameters.RewardRisk"/> and the Friday cap of the order expiry.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="sessionRange">The session range parameters. They are validated by the tracker.</param>
+    /// <param name="fridayNoEntryUtc">FridayNoEntryUtc of the execution parameters: the latest expiry of a Friday setup (SIG-032).</param>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> or <paramref name="sessionRange"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public SignalEngine(SignalParameters parameters, SessionRangeParameters sessionRange, TimeSpan fridayNoEntryUtc)
+        : this(parameters, null, sessionRange ?? throw new ArgumentNullException(nameof(sessionRange)), fridayNoEntryUtc)
+    {
+    }
+
+    private SignalEngine(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, TimeSpan fridayNoEntryUtc)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         _parameters = parameters;
-        _bars = new BarStore(parameters, breakout);
+        _bars = new BarStore(parameters, breakout, sessionRange);
         _book = new ZoneBook(parameters);
         _tracker = breakout is null ? null : new BreakoutTracker(breakout, parameters.RewardRisk);
+        _range = sessionRange is null ? null : new SessionRangeTracker(sessionRange, parameters.RewardRisk, fridayNoEntryUtc);
         _trendSlowEmaPeriod = breakout?.TrendSlowEmaPeriod ?? 0;
         Bias = Bias.Neutral;
     }
@@ -113,6 +141,20 @@ public sealed class SignalEngine
     /// Always null in ZoneFvg mode.
     /// </summary>
     public BreakoutReference? Reference => _tracker?.Reference;
+
+    /// <summary>
+    /// SessionRange mode (SIG-032, SIG-034): the setup of the trading day of the last M15 bar, also
+    /// after its void; null before the evaluation, on a day without a setup and in the other modes.
+    /// </summary>
+    public SessionRangeSetup? RangeSetup => _range?.Setup;
+
+    /// <summary>
+    /// SessionRange mode (SIG-033, SIG-034): the setup that the last accepted bar made void, null
+    /// when that bar made none void and always null in the other modes. It is reported also while
+    /// the engine is not ready and during a replay, so the caller can cancel the order of that
+    /// setup (EXE-024). Reading it changes nothing.
+    /// </summary>
+    public SessionRangeSetup? LastRangeVoid { get; private set; }
 
     /// <summary>
     /// The non-terminal zones (Active or Touched), ordered by id with ordinal comparison (SIG-014);
@@ -142,7 +184,8 @@ public sealed class SignalEngine
     /// <summary>
     /// Feeds one closed bar (SIG-001, SIG-004) and returns the signals it confirms, ordered by zone
     /// id, at most one per zone (SIG-018); none while the engine is not ready (SIG-020). In
-    /// Breakout mode at most one signal, of kind Breakout (SIG-026).
+    /// Breakout mode at most one signal, of kind Breakout (SIG-026); in SessionRange mode at most
+    /// one signal, of kind SessionRange (SIG-034).
     /// </summary>
     /// <remarks>
     /// Bars must arrive in strictly increasing order of the pair (close time, rank), where the close
@@ -165,6 +208,7 @@ public sealed class SignalEngine
 
         _created = 0;
         _ended.Clear();
+        LastRangeVoid = null;
         _bars.Add(timeFrame, bar);
         _hasAccepted = true;
         _lastCloseUtc = closeUtc;
@@ -182,15 +226,69 @@ public sealed class SignalEngine
 
                 return NoSignals;
             case TimeFrame.H4:
-                if (_tracker is null)
+                if (_tracker is null && _range is null)
                 {
                     OnH4Closed(bar);
                 }
 
                 return NoSignals;
             default:
+                if (_range is not null)
+                {
+                    return OnRangeM15Closed(_range, bar, replay);
+                }
+
                 return _tracker is null ? OnM15Closed(bar, replay) : OnBreakoutM15Closed(_tracker, bar, replay);
         }
+    }
+
+    /// <summary>
+    /// SessionRange mode (SIG-033, SIG-034): tells the tracker that the order of the setup with this
+    /// id is no longer pending (filled, expired, cancelled or never placed), so a later bar does not
+    /// report it void. Nothing happens for another id and in the other modes.
+    /// </summary>
+    /// <param name="id">The setup id, RH- or RL-.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="id"/> is null.</exception>
+    public void OrderNoLongerPending(string id)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        _range?.OrderNoLongerPending(id);
+    }
+
+    // SIG-034: ATR(D1) and ATR(H4) of the last closed bars, null while their window is not full. The intake
+    // order (SIG-004) has made sure that this bar opens after the last M15 bar, so the tracker does not throw.
+    private IReadOnlyList<Signal> OnRangeM15Closed(SessionRangeTracker tracker, Bar bar, bool replay)
+    {
+        IReadOnlyList<Bar> d1 = _bars.Bars(TimeFrame.D1);
+        IReadOnlyList<Bar> h4 = _bars.Bars(TimeFrame.H4);
+        double? atrD1 = d1.Count == 0 ? null : Atr.Value(d1, d1.Count - 1, _parameters.AtrPeriod);
+        double? atrH4 = h4.Count == 0 ? null : Atr.Value(h4, h4.Count - 1, _parameters.AtrPeriod);
+        SessionRangeEvent? answer = tracker.OnM15Closed(bar, Bias, atrD1, atrH4);
+        if (answer is null)
+        {
+            return NoSignals;
+        }
+
+        SessionRangeSetup setup = answer.Setup;
+        if (answer.Kind == SessionRangeEventKind.Void)
+        {
+            LastRangeVoid = setup;
+            return NoSignals;
+        }
+
+        if (!IsReady)
+        {
+            return NoSignals;
+        }
+
+        DateTime closeUtc = BarIntakeOrder.CloseTimeUtc(TimeFrame.M15, bar);
+        var signal = new Signal(setup.Id, setup.Side, setup.Entry, setup.Stop, setup.Target, null, closeUtc, replay, atrH4.GetValueOrDefault())
+        {
+            Kind = SignalKind.SessionRange,
+            Level = setup.Entry,
+            ExpiryUtc = setup.ExpiryUtc,
+        };
+        return Array.AsReadOnly(new[] { signal });
     }
 
     // SIG-022, SIG-028: the D1 bar becomes the reference; with the trend filter on, the tracker also gets the

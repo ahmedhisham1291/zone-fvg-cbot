@@ -40,7 +40,7 @@ public enum PlaceOutcome
     /// Nothing was sent and the placement is not resent: an unclear placement found nothing at the
     /// broker and may not be resent (EXE-009, EXE-020), the broker's history could not be read (no
     /// list, or a list with a missing entry; EXE-021, EXE-023), or the entry type does not fit the
-    /// signal (EXE-022).
+    /// signal (EXE-022), or the session range setup became void (EXE-024).
     /// </summary>
     Abandoned,
 }
@@ -112,7 +112,7 @@ public sealed class OrderManager
     /// Places the order idempotently (EXE-009). The checks run in this order. First, when an
     /// earlier placement of the label is unresolved, nothing is sent or queried and the result is
     /// AwaitingResolution. Then, before anything is sent or queried, an order whose entry type does
-    /// not fit its signal (EXE-022: Stop only for Kind Breakout, Limit only for Kind ZoneFvg; an
+    /// not fit its signal (EXE-022: Stop only for Kind Breakout or SessionRange (EXE-024), Limit only for Kind ZoneFvg; an
     /// undefined kind or entry type fits nothing) is recorded as skipped with InvalidSignal and
     /// "entry type &lt;EntryType&gt; does not fit signal kind &lt;Kind&gt;", and abandoned; this also
     /// holds for a resend. Then, if an order or position with its label exists at the broker,
@@ -171,6 +171,31 @@ public sealed class OrderManager
             {
                 results.Add(result);
             }
+        }
+
+        return results.AsReadOnly();
+    }
+
+    /// <summary>
+    /// EXE-024 (a void session range setup, SIG-033): every unresolved placement whose signal has
+    /// this id is dropped and never resent; each is recorded as skipped with reason
+    /// UnclearOutcomeNotResent and the given reason as detail, and returned as Abandoned. Nothing is
+    /// sent to the broker and nothing is read from it.
+    /// </summary>
+    /// <param name="signalId">The signal id (zone id) of the placements to drop.</param>
+    /// <param name="reason">Why, for the skip record and the result.</param>
+    /// <returns>One Abandoned result per dropped placement, in the order the placements were made.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public IReadOnlyList<PlaceResult> AbandonUnresolved(string signalId, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(signalId);
+        ArgumentNullException.ThrowIfNull(reason);
+        var results = new List<PlaceResult>();
+        DateTime now = _broker.ServerTimeUtc;
+        foreach (PlannedOrder order in _unresolved.Where(o => string.Equals(o.Signal.ZoneId, signalId, StringComparison.Ordinal)).ToList())
+        {
+            _unresolved.Remove(order);
+            results.Add(Abandon(order, now, now - order.Signal.ConfirmationCloseUtc, reason));
         }
 
         return results.AsReadOnly();
@@ -317,12 +342,13 @@ public sealed class OrderManager
         return new PlaceResult(PlaceOutcome.Unclear, order.Label, null, result.ErrorCode ?? "unclear");
     }
 
-    // EXE-022: a stop order only for Kind Breakout, a limit order only for Kind ZoneFvg; null when the order fits.
+    // EXE-022: a stop order only for Kind Breakout or (EXE-024) SessionRange, a limit order only for Kind ZoneFvg; null when the order fits.
     private static string? EntryTypeMisfit(PlannedOrder order)
     {
         SignalKind kind = order.Signal.Kind;
         EntryOrderType type = order.EntryType;
-        bool fits = (kind == SignalKind.Breakout && type == EntryOrderType.Stop) || (kind == SignalKind.ZoneFvg && type == EntryOrderType.Limit);
+        bool stopKind = kind == SignalKind.Breakout || kind == SignalKind.SessionRange;
+        bool fits = (stopKind && type == EntryOrderType.Stop) || (kind == SignalKind.ZoneFvg && type == EntryOrderType.Limit);
         if (fits)
         {
             return null;

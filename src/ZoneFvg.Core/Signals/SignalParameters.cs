@@ -154,6 +154,12 @@ public static class WarmupCalculator
     public const int M15BarsPerH4Bar = 16;
 
     /// <summary>
+    /// Number of M15 bars in the longest trading day of SessionRange mode (SIG-030, SIG-034): 100,
+    /// the 25 hours of the trading day in which summer time ends.
+    /// </summary>
+    public const int M15BarsPerTradingDay = 100;
+
+    /// <summary>
     /// Bars needed per timeframe (SIG-020):
     /// D1 = 4 x BiasEmaPeriod + 1;
     /// H4 = MaxZoneAgeBars + swing lookback (100) + 2 x SwingStrength + MaxImpulseBars + MaxBaseBars + AtrPeriod + 2;
@@ -186,14 +192,47 @@ public static class WarmupCalculator
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters, BreakoutParameters? breakout)
     {
+        return For(parameters, breakout, null);
+    }
+
+    /// <summary>
+    /// Bars needed per timeframe (SIG-020, SIG-028, SIG-034) as
+    /// <see cref="For(SignalParameters, BreakoutParameters)"/>, except that in SessionRange mode
+    /// (session range parameters set) each requirement also covers what that mode needs: D1 at
+    /// least the bias window and ATR(D1), AtrPeriod + 1 bars; H4 at least ATR(H4), AtrPeriod + 1
+    /// bars; M15 at least one trading day, <see cref="M15BarsPerTradingDay"/> bars. With the
+    /// default parameters the result equals <see cref="For(SignalParameters)"/>: 201 D1, 248 H4
+    /// and 1968 M15 bars.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="breakout">The breakout parameters, or null outside Breakout mode. They are validated next.</param>
+    /// <param name="sessionRange">The session range parameters, or null outside SessionRange mode. They are validated next.</param>
+    /// <returns>The requirement for D1, H4 and M15 as a read-only dictionary that enumerates D1, H4, M15.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
+    /// <exception cref="ArgumentException">Breakout and session range parameters are both set: one mode per instance.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange)
+    {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         breakout?.Validate();
+        sessionRange?.Validate();
+        if (breakout is not null && sessionRange is not null)
+        {
+            throw new ArgumentException("Breakout and session range parameters must not both be set: one entry mode per instance (SIG-034).", nameof(sessionRange));
+        }
 
         int emaPeriod = Math.Max(parameters.BiasEmaPeriod, breakout?.TrendSlowEmaPeriod ?? 0);
         int d1 = (Ema.WindowMultiple * emaPeriod) + 1;
         int h4 = parameters.MaxZoneAgeBars + SwingDetector.LookbackBars + (2 * parameters.SwingStrength) + parameters.MaxImpulseBars + parameters.MaxBaseBars + parameters.AtrPeriod + 2;
         int m15 = ((parameters.MaxZoneAgeBars + 1) * M15BarsPerH4Bar) + parameters.ConfirmWindowBars + parameters.AtrPeriod + 2;
+        if (sessionRange is not null)
+        {
+            // SIG-034: one trading day of M15 bars besides what the bias and the two ATRs need.
+            d1 = Math.Max(d1, parameters.AtrPeriod + 1);
+            h4 = Math.Max(h4, parameters.AtrPeriod + 1);
+            m15 = Math.Max(m15, M15BarsPerTradingDay);
+        }
 
         // Sorted by descending enum value, which is D1, H4, M15: a defined enumeration order.
         var bars = new SortedDictionary<TimeFrame, int>(Comparer<TimeFrame>.Create((left, right) => ((int)right).CompareTo((int)left)))

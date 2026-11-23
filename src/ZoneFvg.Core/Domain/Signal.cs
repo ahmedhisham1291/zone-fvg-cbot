@@ -3,11 +3,11 @@ using System;
 namespace ZoneFvg.Core.Domain;
 
 /// <summary>
-/// A trade signal of the signal layer (SIG-017, SIG-018, SIG-026). Contract of
+/// A trade signal of the signal layer (SIG-017, SIG-018, SIG-026, SIG-034). Contract of
 /// docs/architecture.md section 3. A signal says nothing about whether an order is placed: the
 /// execution layer decides that.
 /// </summary>
-/// <param name="ZoneId">Id of the zone that produced the signal (SIG-013, SIG-017); for a breakout signal the breakout id (SIG-025, SIG-026).</param>
+/// <param name="ZoneId">Id of the zone that produced the signal (SIG-013, SIG-017); for a breakout signal the breakout id (SIG-025, SIG-026); for a session range signal the setup id RH- or RL- (SIG-032, SIG-034).</param>
 /// <param name="Side">Buy from a demand zone, Sell from a supply zone (SIG-017, SIG-018).</param>
 /// <param name="Entry">Limit entry price inside the gap, at EntryLevelPct of the gap height from its far edge (SIG-017); for a breakout signal the stop-entry level (SIG-024).</param>
 /// <param name="Stop">Stop price beyond the zone and the extreme since the touch, plus the ATR(M15) buffer (SIG-017).</param>
@@ -39,7 +39,15 @@ public sealed record Signal(
 
     /// <summary>
     /// For a breakout signal the reference high (buy) or low (sell) that was broken (SIG-024,
-    /// SIG-026); null for a ZoneFvg signal.
+    /// SIG-026); for a session range signal the range edge that is traded, which is its entry
+    /// (SIG-034); null for a ZoneFvg signal.
     /// </summary>
     public double? Level { get; init; }
+
+    /// <summary>
+    /// For a session range signal the UTC expiry of its order, RangeLastEntryNy of the trading
+    /// day or the Friday cap (SIG-032, SIG-034); the execution layer shortens it for news
+    /// (EXE-024). Null for the other kinds, whose expiry the execution layer sets (EXE-015).
+    /// </summary>
+    public DateTime? ExpiryUtc { get; init; }
 }
