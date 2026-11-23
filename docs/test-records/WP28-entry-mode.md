@@ -155,7 +155,7 @@ Expected: no "Invalid .cbotset file format" message; the bot does not refuse
 to start (a refusal would name the parameter); the first adapter line names
 the symbol of the file and ends with `mode Breakout`; the `hash=` of the
 core `start` line is `8aa3f28a` for the four forex files and `4af5c9fc` for
-gold (before WP32, without the two filter lines: `119a3864` and `66c5a44e`). Because the bot refuses to start while `RiskEpochDate` is empty or
+gold. A file without the two filter lines gives the same hashes, because the cBot defaults are 200 and 08:00; only `TrendSlowEmaPeriod=0` and `BreakoutLastConfirmUtc=17:00` give the hashes from before WP32, `119a3864` and `66c5a44e`. Because the bot refuses to start while `RiskEpochDate` is empty or
 invalid, a start proves that the file was read (`deploy/README.md`, fact 4).
 
 The five lines of the group Entry mode carry the default values, so a start with the files as
