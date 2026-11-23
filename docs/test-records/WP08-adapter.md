@@ -42,9 +42,13 @@ this record (docs/test-records/README.md).
 Start the instance.
 
 Expected:
-- `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no`.
-- `ZFVG adapter symbol EURUSD account USD pipSize 0.0001 platformPipValue ... pipValuePerUnit 0.0001 ... roundTripCommissionPerLot ...`.
-- A core `start` journal line with `version=0.1.0` and `hash=` (parameter hash).
+- `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`
+  (with the defaults; `mode ZoneFvg` when `EntryMode` is ZoneFvg).
+- `ZFVG adapter symbol EURUSD account USD pipSize 0.0001 digits ... platformPipValue ... pipValuePerUnit 0.0001 ... roundTripCommissionPerLot ...`.
+- A core `start` journal line with `version=0.1.0` and `hash=` (parameter
+  hash; `119a3864` with the defaults of the preparation). In Breakout mode
+  the line ends with `mode=Breakout`; in ZoneFvg mode it has no `mode=`
+  field.
 - A recovery report, then the state Running (or Blocked, with the reason, if
   for example the calendar is not yet loaded).
 - No Telegram token, chat id or heartbeat address appears anywhere in the log.
@@ -58,9 +62,12 @@ Pass / fail: (fill in)
 Wait for the next M15 close after the start.
 
 Expected: one line `ZFVG adapter first live bar after start: M15 open
-HH:mm close HH:mm server time ...`. The open time is the open of the bar that
-has just finished on the chart (not of the new bar), and the close time is at
-or before the server time.
+yyyy-MM-dd HH:mm:ss close yyyy-MM-dd HH:mm:ss passed for time yyyy-MM-dd
+HH:mm:ss` (all UTC). The open time is the open of the bar that has just
+finished on the chart (not of the new bar), the close time is 15 minutes
+later, and the close time is at or before the time after "passed for time".
+If an H4 or D1 bar closes at the same moment, the line names that bar
+(`H4` or `D1`) instead, because it is passed first; the same checks apply.
 
 Observed: (fill in)
 
@@ -76,8 +83,9 @@ on cTrader"): D1 bars open at 21:00 UTC while New York is on daylight saving
 time and at 22:00 UTC otherwise, five a week, the first of the week on Sunday
 evening UTC and running 24 hours; there is no short daily bar for Sunday. H4
 bars follow every four hours from the weekly open. A bar's close is its open
-plus 24 hours or 4 hours. At the daily close the journal shows the D1 bar
-processed before the H4 bar, and the H4 bar before the M15 bar. If the D1 bars
+plus 24 hours or 4 hours. The bot prints no line for a processed bar. Around
+the daily close the Log shows no `error` line with `Bar rejected (SIG-004)`
+(that line would mean a bar came out of order). If the D1 bars
 open at 00:00 UTC or a short Sunday bar exists, record it here: Breakout mode
 then does not go live before a follow-up.
 
@@ -103,7 +111,9 @@ Pass / fail: (fill in)
 
 Open the instance's parameter panel.
 
-Expected: groups Signal, Execution, Risk, News, Operations; every parameter of
+Expected: groups Entry mode, Signal, Execution, Risk, News, Operations
+(Entry mode: EntryMode Breakout, BreakoutEntryBufferAtr 0.1, BreakoutStopAtr
+1.0); every parameter of
 spec section 7 with its default (BiasEmaPeriod 50, AtrPeriod 14, ...,
 MaxSpreadPips 1.5, NewsEnabled true, NewsBeforeMin/NewsAfterMin 30,
 NewsMaxCacheHours 48, NewsRefreshHours 4, MaxRequestsPerDay 100,
