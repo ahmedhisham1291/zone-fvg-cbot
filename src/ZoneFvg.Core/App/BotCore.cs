@@ -705,7 +705,9 @@ public sealed class BotCore
         }
 
         _engine = findings.Engine;
-        _voidRangeId = null;
+
+        // EXE-024: the void of the current trading day found by the replay stays known after a restart.
+        _voidRangeId = findings.RangeVoidId;
         _hasFed = false;
         foreach (TimeFrame timeFrame in BarIntakeOrder.SameInstant)
         {

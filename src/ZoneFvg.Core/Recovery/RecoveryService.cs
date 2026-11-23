@@ -214,7 +214,10 @@ public sealed class RecoveryService
         CatchUpStep catchUp = CatchUpDuties(now, guard);
         IReadOnlyList<Bar> m15 = data.Bars[TimeFrame.M15];
         IReadOnlyList<Bar> recent = m15.Skip(Math.Max(0, m15.Count - RecentM15Count)).ToList().AsReadOnly();
-        var findings = new RecoveryFindings(now, true, Array.Empty<string>(), replay.Engine, data.LastBars, recent, guard, catchUp.WeekendClosePending, strangers, replay.Signals);
+        var findings = new RecoveryFindings(now, true, Array.Empty<string>(), replay.Engine, data.LastBars, recent, guard, catchUp.WeekendClosePending, strangers, replay.Signals)
+        {
+            RangeVoidId = replay.CurrentVoidId,
+        };
         BotState state = ReportAndResume(findings);
         return new RecoveryReport
         {
@@ -312,6 +315,7 @@ public sealed class RecoveryService
             : new SignalEngine(_signalParameters, _sessionRange, _executionParameters.FridayNoEntryUtc);
         var known = new SortedSet<string>(StringComparer.Ordinal);
         var voided = new SortedSet<string>(StringComparer.Ordinal);
+        SessionRangeSetup? lastVoid = null;
         var replayed = new List<ReplayedSignal>();
         IEnumerable<(TimeFrame TimeFrame, Bar Bar)> ordered = feed
             .OrderBy(item => BarIntakeOrder.CloseTimeUtc(item.TimeFrame, item.Bar))
@@ -329,12 +333,17 @@ public sealed class RecoveryService
 
             if (engine.LastRangeVoid is not null)
             {
-                voided.Add(engine.LastRangeVoid.Id);
+                lastVoid = engine.LastRangeVoid;
+                voided.Add(lastVoid.Id);
             }
         }
 
         known.UnionWith(engine.Zones.Select(zone => zone.Id));
-        return new ReplayStep(engine, known, voided, replayed.AsReadOnly());
+
+        // EXE-024: the void stays known when it is the one of the current trading day (the tracker's setup).
+        SessionRangeSetup? today = engine.RangeSetup;
+        string? currentVoid = lastVoid is not null && today is not null && string.Equals(lastVoid.Id, today.Id, StringComparison.Ordinal) ? lastVoid.Id : null;
+        return new ReplayStep(engine, known, voided, currentVoid, replayed.AsReadOnly());
     }
 
     // Step 3: the bot's positions and pending orders on this symbol, from the broker only.
@@ -577,7 +586,7 @@ public sealed class RecoveryService
 
     private sealed record DataStep(bool Complete, IReadOnlyList<string> Problems, Dictionary<TimeFrame, IReadOnlyList<Bar>> Bars, Bar?[] LastBars, IReadOnlyList<AcceptedGapList> AcceptedGaps);
 
-    private sealed record ReplayStep(SignalEngine Engine, SortedSet<string> KnownZones, SortedSet<string> VoidIds, IReadOnlyList<ReplayedSignal> Signals);
+    private sealed record ReplayStep(SignalEngine Engine, SortedSet<string> KnownZones, SortedSet<string> VoidIds, string? CurrentVoidId, IReadOnlyList<ReplayedSignal> Signals);
 
     private sealed record BrokerStep(IReadOnlyList<PositionInfo> Positions, IReadOnlyList<PendingOrderInfo> Orders);
 

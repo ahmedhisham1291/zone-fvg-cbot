@@ -79,6 +79,13 @@ public sealed class RecoveryFindings
     /// <summary>The strangers found, each as "id (reason)" (REC-007).</summary>
     public IReadOnlyList<string> Strangers { get; }
 
+    /// <summary>
+    /// SessionRange mode (EXE-024): the id of the current trading day's setup when the replay found
+    /// it void, so that an order with that id that appears later is still cancelled; otherwise null,
+    /// and always null in the other modes.
+    /// </summary>
+    public string? RangeVoidId { get; init; }
+
     /// <summary>The newest replayed bar of the timeframe, or null (REC-004).</summary>
     /// <param name="timeFrame">D1, H4 or M15.</param>
     /// <returns>The bar, or null.</returns>
