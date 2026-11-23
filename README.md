@@ -24,7 +24,7 @@ says whether either mode is profitable. How to run the backtests:
 | `docs/requirements.yml` | 126 numbered requirements, each tied to a work package and a way of proving it |
 | `docs/architecture.md` | Layers and type contracts all work packages share |
 | `AGENTS.md` | Rules every agent must follow |
-| `prompts/WP00` … `WP11` | One detailed implementation prompt per work package |
+| `prompts/WP00` … `WP30` | One detailed implementation prompt per work package (not every number has one) |
 | `prompts/00-orchestrator.md` | The order of work and the loop for each work package |
 | `prompts/validator.md` | Instructions for the validator agent |
 | `.claude/agents/validator.md` | The validator as a Claude Code subagent |
@@ -99,10 +99,15 @@ read by most agent tools; `CLAUDE.md` points Claude Code to it.
 
 ## Order of work
 
-`WP00` → `WP01` → (`WP02` → `WP03`), `WP04`, `WP05` → `WP06` → `WP07`, `WP09`
-→ `WP08` → `WP11`. `WP10` any time after `WP01`.
+The first build: `WP00` → `WP01` → (`WP02` → `WP03`), `WP04`, `WP05` →
+`WP06` → `WP07`, `WP09` → `WP08` → `WP11`. `WP10` any time after `WP01`.
+The later packages (`WP12` to `WP30`) build on it; each prompt names what
+it depends on or reads first. The Breakout mode came in `WP25` → `WP26` →
+`WP27`, then `WP29` and `WP30`, then `WP28` (the cBot parameters and the
+guides).
 See `prompts/00-orchestrator.md` for the gates only you can pass: checking
-detection by eye, the backtests, the fault-injection tests and the decision to
+detection by eye, the backtests, the fault-injection tests, the two records
+before Breakout mode trades on the Challenge account, and the decision to
 start the FTMO Challenge.
 
 ## Things only you can provide

@@ -14,6 +14,11 @@ Two variants:
 - **VPS** (spec 10.2): the four containers of `deploy/docker-compose.yml`. All
   14 tests, repeated in full even if they passed on the laptop.
 
+The record is run in the mode that goes live (spec 12.3 and 13.1), with the
+parameter files of `deploy/README.md`, section "Entry mode". The pending
+entry order of tests 2 and 3 is a limit order in ZoneFvg mode and a stop
+order in Breakout mode.
+
 Commands are explained, with documentation links, in `deploy/README.md`. Run
 them in `/opt/zfvg`. Container names are `zfvg-eurusd-1`, `zfvg-gbpusd-1`,
 `zfvg-usdjpy-1`, `zfvg-audusd-1`; the network is `zfvg_default`. The examples
@@ -101,9 +106,10 @@ position keeps its stop and target; no new order for that zone; Telegram
 | Observed | | |
 | Pass / fail | | |
 
-### Test 2. Reboot the server while a limit order is pending
+### Test 2. Reboot the server while an entry order is pending
 
-Precondition: a bot pending limit order exists. VPS only.
+Precondition: a bot pending entry order exists (a limit order in ZoneFvg
+mode, a stop order in Breakout mode). VPS only.
 
 1. Note the order's price, stop, target and expiry in the cTrader app.
 2. `sudo reboot`
@@ -123,7 +129,8 @@ cancelled with a reason otherwise.
 
 ### Test 3. Order fills while the bot is stopped
 
-Precondition: a bot pending order exists.
+Precondition: a bot pending entry order exists (limit or stop order, as in
+test 2).
 
 VPS: `docker compose stop eurusd`. Watch the order in the cTrader app until it
 fills (this needs the market; it may take several attempts). Then
