@@ -58,8 +58,23 @@ public sealed class BarStore
     /// <exception cref="ArgumentException">Breakout and session range parameters are both set.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public BarStore(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange)
+        : this(parameters, breakout, sessionRange, null)
     {
-        _warmupBars = WarmupCalculator.For(parameters, breakout, sessionRange);
+    }
+
+    /// <summary>
+    /// Creates an empty store sized for the given parameters (SIG-020, SIG-028, SIG-034, SIG-041):
+    /// the warm-up of <see cref="WarmupCalculator.For(SignalParameters, BreakoutParameters, SessionRangeParameters, ChochParameters)"/>.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="breakout">The breakout parameters, or null outside Breakout mode.</param>
+    /// <param name="sessionRange">The session range parameters, or null outside SessionRange mode.</param>
+    /// <param name="choch">The Choch parameters, or null outside the Choch model.</param>
+    /// <exception cref="ArgumentException">More than one of breakout, session range and Choch parameters is set.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public BarStore(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, ChochParameters? choch)
+    {
+        _warmupBars = WarmupCalculator.For(parameters, breakout, sessionRange, choch);
         _d1 = new RingBuffer(_warmupBars[TimeFrame.D1] + CapacityMargin);
         _h4 = new RingBuffer(_warmupBars[TimeFrame.H4] + CapacityMargin);
         _m15 = new RingBuffer(_warmupBars[TimeFrame.M15] + CapacityMargin);

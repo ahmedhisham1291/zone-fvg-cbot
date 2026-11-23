@@ -38,8 +38,15 @@ internal sealed class ZoneOutcomeCounts
         counts[0] += activity.Created;
         foreach (ZoneEnd end in activity.Ended)
         {
-            counts[1 + (int)end.Reason]++;
+            counts[1 + Slot(end.Reason)]++;
         }
+    }
+
+    // SIG-037: NoChoch, the window end of the Choch model, shares the slot of NoFvg, the window end of the
+    // Fvg model; an instance runs one model, so the line of the Fvg model keeps its keys and values.
+    private static int Slot(ZoneEndReason reason)
+    {
+        return reason == ZoneEndReason.NoChoch ? (int)ZoneEndReason.NoFvg : (int)reason;
     }
 
     /// <summary>
