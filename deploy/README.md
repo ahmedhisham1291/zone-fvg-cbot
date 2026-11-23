@@ -8,9 +8,10 @@ administrator. Follow the steps in order and do not skip a check.
   [`docs/runbook.md`](../docs/runbook.md).
 - The 14 fault-injection tests you must pass before the Challenge:
   [`docs/test-records/WP11-fault-injection.md`](../docs/test-records/WP11-fault-injection.md).
-- The entry mode (Breakout or ZoneFvg), how to change it, and the two records
-  you sign before an instance trades in Breakout mode on the Challenge
-  account: section "Entry mode" below, before Part A.
+- The entry mode (Breakout or ZoneFvg), which mode and values the live
+  files carry, how to change them, and the two records you sign before an
+  instance trades in Breakout mode on the Challenge account: section "Entry
+  mode" below, before Part A.
 
 ## How to read this guide
 
@@ -124,7 +125,7 @@ Everything else (sizing, account limits, news, recovery, FTMO guards,
 alerts) is the same in both modes. The three parameters of the group
 "Entry mode" are the first three lines of every file in `deploy/params/`:
 
-| Parameter | Value in the files | What it does |
+| Parameter | Value in the example files | What it does |
 |---|---|---|
 | `EntryMode` | `Breakout` | `Breakout` or `ZoneFvg`. Any other text makes the bot refuse to start and name the parameter |
 | `BreakoutEntryBufferAtr` | `0.1` | Breakout mode: how far beyond the confirming bar the stop order is placed, in ATR(M15) |
@@ -136,6 +137,34 @@ name the parameter, also with `EntryMode=ZoneFvg`. They are used in Breakout
 mode only; in ZoneFvg mode they produce no signal and are not part of the
 parameter hash. The gold file
 uses the same three values as the forex files.
+
+**Which mode and which values go live (spec 13.1, "What goes live").** The
+example files carry `EntryMode=Breakout` only because Breakout is the
+cBot's default. That is not a choice of the mode. Before the laptop stage,
+write into the five files:
+
+- `EntryMode`: the mode chosen by the acceptance procedure
+  ([`docs/backtest-howto.md`](../docs/backtest-howto.md), Part 4). A mode
+  that did not pass, or was not chosen, is never set on the Challenge
+  account.
+- The accepted settings: the values of the backtest run that the
+  acceptance report judged, symbol by symbol.
+- Every other value stays at its default, except the values that step 10.3
+  and "Gold (XAUUSD)" below tell you to set.
+
+The laptop stage, the fault tests and the soak test run with these files
+(spec 12.3 and 13.1), not with the example values.
+
+**Check the hash.** The core `start` line shows `hash=` followed by eight
+characters. It must equal, symbol by symbol, the `hash=` of the accepted
+backtest run of that symbol (the same line in its Log). The hash covers the
+signal and execution values of the files and, in Breakout mode, the three
+breakout values with the trading window; it does not cover the risk and
+news values (`src/ZoneFvg.Core/Execution/ParameterHash.cs`). If a hash
+differs, a value differs from the accepted run: stop that instance and
+compare the files before it trades. For the example files as they are,
+the hashes are `119a3864` (the four forex files) and `66c5a44e` (gold) in
+Breakout mode, and `f681dff2` and `8793fa69` with `EntryMode=ZoneFvg`.
 
 **Check after each start.** The first adapter line ends with the mode, for
 example `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
@@ -151,12 +180,15 @@ order of the bot. Why:
   stranger after the restart: it is kept with its existing stop loss and
   take profit, counted in the risk totals and the Friday close, and
   reported (spec 8.3, step 6).
-- A pending order placed under the old values is kept across the restart
-  with its old levels and size (`docs/architecture.md` section 10, row "A
-  pending order placed under other parameter values"). So before you change
-  a parameter or the mode, wait until no bot order is pending (an entry
-  order lives two hours at most: `EntryExpiryBars` 8 bars of 15 minutes), or
-  cancel it by hand in the cTrader app.
+- A pending order placed under the old values of the same mode is kept
+  across the restart with its old levels and size (`docs/architecture.md`
+  section 10, row "A pending order placed under other parameter values").
+  After a change of the mode itself, the restart cancels a pending order of
+  the other mode, because the new mode does not know its zone or breakout.
+  In both cases the order is not what the new values would place. So
+  before you change a parameter or the mode, wait until no bot order is
+  pending (an entry order lives two hours at most: `EntryExpiryBars` 8 bars
+  of 15 minutes), or cancel it by hand in the cTrader app.
 
 **Before Breakout mode trades on the Challenge account.** Two records must
 be run and signed by you on a demo or FTMO Free Trial account first
@@ -176,7 +208,8 @@ be run and signed by you on a demo or FTMO Free Trial account first
    then does not go live before a follow-up decides how Monday's reference
    day is formed. The entry-mode record
    [`docs/test-records/WP28-entry-mode.md`](../docs/test-records/WP28-entry-mode.md)
-   asks for the same observation (its step 7).
+   asks for the same observation (its step 7). You sign this gate in the
+   last row of the sign-off table of that record (steps 7 and WP08 step 3).
 
 Until both are signed, no instance trades in Breakout mode on the Challenge
 account.
@@ -214,12 +247,17 @@ before you pay for a server.
    update restarts (spec 10.5).
 3. Install the bot and check one instance exactly as in
    [`docs/test-records/WP08-adapter.md`](../docs/test-records/WP08-adapter.md),
-   "Preparation" and steps 1 to 5. Fill in that record.
+   "Preparation" and steps 1 to 5. Fill in that record. Then set the EURUSD
+   instance to the mode and the accepted settings of your EURUSD file
+   (section "Entry mode", "Which mode and which values go live"); the
+   preparation's "leave everything else at its default" is for the record
+   only. Check that the `hash=` of the `start` line equals the accepted run's.
 4. Add four more instances on **M15** charts of GBPUSD, USDJPY, AUDUSD and
-   XAUUSD (gold) with the same parameters (only `HeartbeatUrl` differs, one
-   monitor per symbol). The gold instance also has its own three values (see
-   "Gold (XAUUSD)" below): use `deploy/params/xauusd.cbotset.example`.
-   All five instances use the same `EntryMode` (see "Entry mode" above).
+   XAUUSD (gold), each with the values of its own file (only `HeartbeatUrl`
+   differs among the forex files, one monitor per symbol). The gold
+   instance also has its own three values (see "Gold (XAUUSD)" below).
+   All five instances use the chosen `EntryMode`, and each `hash=` equals
+   the accepted run of its symbol (see "Entry mode" above).
 5. Optional, one instance only: right-click it and choose **Start in external
    process**, then close the cTrader window; the cBot keeps running in a CLI
    process (source: https://help.ctrader.com/ctrader-cli/cbots/, "Launch from
@@ -558,8 +596,10 @@ service user.
 | `HeartbeatUrl` | One check per symbol at your heartbeat-monitoring service, so an alert names the symbol that stopped |
 | `ProfitTargetPercent` | 10 in the Challenge, 5 in the Verification |
 
-Leave every other value at the spec default, including the three values of
-the group "Entry mode" (section "Entry mode" above). `MaxSpreadPips` is 1.5 for the
+The three values of the group "Entry mode" and the accepted settings are
+those of section "Entry mode", "Which mode and which values go live": the
+chosen mode, never simply the default. Leave every other value at the spec
+default. `MaxSpreadPips` is 1.5 for the
 four forex symbols until the broker conditions (spec 10.4) say otherwise. A value
 left as `CHANGE_ME...` makes the bot refuse to start (`RiskEpochDate`) or fail
 safely (no calendar means no entries; failed alerts are logged).
@@ -581,6 +621,9 @@ parameter file is a copy of the forex file with exactly these differences:
 | `MinStopPips` | 12.0 | 800.0 | 8.00 USD per ounce |
 | `MaxVolumeUnits` | 500000.0 | 200.0 | Gold volume is in ounces |
 | `HeartbeatUrl` | one check per symbol | its own check | So an alert names gold |
+
+If the accepted settings differ between symbols (section "Entry mode"),
+each file carries those of its own symbol as well.
 
 No other parameter is in pips; the ATR and R multiples scale by themselves.
 The cBot's default values stay the forex values, so a gold instance started
@@ -661,8 +704,9 @@ Sources: https://docs.docker.com/reference/cli/docker/compose/up/ ;
 https://docs.docker.com/reference/cli/docker/compose/logs/
 Press Ctrl+C to stop watching (the bot keeps running). Expected, as in WP08
 record step 1: `ZFVG adapter version ...`, `symbol EURUSD`, `backtest no`,
-`mode Breakout` (or `mode ZoneFvg`, section "Entry mode"); a core `start`
-line; a recovery report; state Running (or Blocked with a reason);
+`mode Breakout` (or `mode ZoneFvg`): the chosen mode of section "Entry
+mode"; a core `start` line whose `hash=` equals the accepted run of that
+symbol; a recovery report; state Running (or Blocked with a reason);
 a Telegram "Started" message; no token or address visible in the log.
 
 12.5 Local storage location and persistence (fact 6):
