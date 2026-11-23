@@ -147,8 +147,16 @@ write into the five files:
   ([`docs/backtest-howto.md`](../docs/backtest-howto.md), Part 4). A mode
   that did not pass, or was not chosen, is never set on the Challenge
   account.
-- The accepted settings: the values of the backtest run that the
-  acceptance report judged, symbol by symbol.
+- The accepted settings: only the searched parameters (spec 7), with the
+  values of the backtest run that the acceptance report judged, symbol by
+  symbol. In Breakout mode these are `BiasEmaPeriod`, `BreakoutStopAtr` and
+  `RewardRisk`; in ZoneFvg mode `BiasEmaPeriod`, `ImpulseAtrMult`,
+  `MinFvgAtr` and `RewardRisk`.
+- Never copy the backtest-only values into a live file. `NewsEnabled`,
+  `InitialCapital` and `DrawObjects` stay at their defaults (news on,
+  100000, no drawings), and `RiskEpochDate` is the date step 10.3 names,
+  not the backtest's start date. The parameter hash does not cover the news
+  and risk values, so it cannot catch this mistake.
 - Every other value stays at its default, except the values that step 10.3
   and "Gold (XAUUSD)" below tell you to set.
 
