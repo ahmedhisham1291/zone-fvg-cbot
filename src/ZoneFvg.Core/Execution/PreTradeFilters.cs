@@ -69,9 +69,13 @@ public sealed class PreTradeFilters
     /// Breakout parameters in Breakout mode, or null (the default) in ZoneFvg mode; used only for
     /// the parameter hash (EXE-008, EXE-018).
     /// </param>
+    /// <param name="sessionRange">
+    /// Session range parameters in SessionRange mode, or null (the default) in the other modes;
+    /// used only for the parameter hash (EXE-008, SIG-034).
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null)
+    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(signalParameters);
@@ -86,7 +90,7 @@ public sealed class PreTradeFilters
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _news = news ?? throw new ArgumentNullException(nameof(news));
         _events = events ?? throw new ArgumentNullException(nameof(events));
-        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout);
+        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout, sessionRange);
         _dailyBudgetRecordOnly = dailyBudgetRecordOnly;
     }
 
@@ -177,11 +181,17 @@ public sealed class PreTradeFilters
     }
 
     // EXE-019 (a): a breakout signal has no gap and a level; a ZoneFvg signal has its gap; any other kind is invalid.
+    // EXE-024: a session range signal has no gap, a level and a UTC expiry.
     private static bool KindIsConsistent(Signal s)
     {
         if (s.Kind == SignalKind.Breakout)
         {
             return s.Fvg == null && s.Level.HasValue && IsPrice(s.Level.Value);
+        }
+
+        if (s.Kind == SignalKind.SessionRange)
+        {
+            return s.Fvg == null && s.Level.HasValue && IsPrice(s.Level.Value) && s.ExpiryUtc.HasValue && s.ExpiryUtc.Value.Kind == DateTimeKind.Utc;
         }
 
         return s.Kind == SignalKind.ZoneFvg
@@ -193,6 +203,17 @@ public sealed class PreTradeFilters
     private static bool IsBreakout(Candidate c)
     {
         return c.Signal.Kind == SignalKind.Breakout;
+    }
+
+    private static bool IsRange(Candidate c)
+    {
+        return c.Signal.Kind == SignalKind.SessionRange;
+    }
+
+    // EXE-018, EXE-024: the kinds placed as a stop order, with the spread on a buy's entry and the entry-reached check.
+    private static bool IsStopEntry(Candidate c)
+    {
+        return IsBreakout(c) || IsRange(c);
     }
 
     private static SkipRecord? CheckFreshness(Candidate c)
@@ -279,9 +300,18 @@ public sealed class PreTradeFilters
     private SkipRecord? CheckNews(Candidate c)
     {
         // CheckInputs has made sure that a ZoneFvg signal has its gap (EXE-019 (a)).
-        NewsDecision decision = IsBreakout(c)
-            ? _news.CheckBreakoutEntry(c.Context.Symbol, c.Now, c.Signal.ConfirmationCloseUtc)
-            : _news.CheckEntry(c.Context.Symbol, c.Now, c.Signal.Fvg!);
+        NewsDecision decision;
+        if (IsRange(c))
+        {
+            decision = RangeNews(c);
+        }
+        else
+        {
+            decision = IsBreakout(c)
+                ? _news.CheckBreakoutEntry(c.Context.Symbol, c.Now, c.Signal.ConfirmationCloseUtc)
+                : _news.CheckEntry(c.Context.Symbol, c.Now, c.Signal.Fvg!);
+        }
+
         switch (decision.Reason)
         {
             case NewsBlockReason.None:
@@ -297,6 +327,19 @@ public sealed class PreTradeFilters
         }
     }
 
+    // EXE-024 (spec 3.8, 6.1): the news checks of every entry, the calendar and the window at the current time.
+    // The mode has no bar of its own that news could have made, so no bar is checked against the windows.
+    private NewsDecision RangeNews(Candidate c)
+    {
+        if (_news.StatusAt(c.Now) == NewsStatus.Unavailable)
+        {
+            return new NewsDecision(NewsBlockReason.CalendarUnavailable, null);
+        }
+
+        bool inside = _news.CalendarAt(c.Now).IsInWindow(c.Context.Symbol, c.Now);
+        return new NewsDecision(inside ? NewsBlockReason.InsideWindow : NewsBlockReason.None, null);
+    }
+
     private static string BarText(DateTime? barOpenUtc)
     {
         return barOpenUtc.HasValue ? Second(barOpenUtc.Value) : "unknown";
@@ -309,7 +352,7 @@ public sealed class PreTradeFilters
         double rawStop = s.Side == Side.Sell ? s.Stop + info.Spread : s.Stop;
 
         // EXE-019 (c): a buy stop triggers on the ask, so the spread is added to a breakout buy's entry.
-        double rawEntry = IsBreakout(c) && s.Side == Side.Buy ? s.Entry + info.Spread : s.Entry;
+        double rawEntry = IsStopEntry(c) && s.Side == Side.Buy ? s.Entry + info.Spread : s.Entry;
         c.Entry = PriceGrid.RoundToTick(rawEntry, info.TickSize);
         c.Stop = PriceGrid.RoundToTick(rawStop, info.TickSize);
         c.Target = PriceGrid.RoundToTick(s.Target, info.TickSize);
@@ -342,7 +385,7 @@ public sealed class PreTradeFilters
     // EXE-019 (d): directly after EXE-003, a breakout order whose entry the market has already reached is not placed.
     private static SkipRecord? CheckEntryReached(Candidate c)
     {
-        if (!IsBreakout(c))
+        if (!IsStopEntry(c))
         {
             return null;
         }
@@ -368,8 +411,8 @@ public sealed class PreTradeFilters
 
     private SkipRecord? CheckFvgVersusSpread(Candidate c)
     {
-        // EXE-019 (b): not applied to a breakout signal, which has no gap.
-        if (IsBreakout(c))
+        // EXE-019 (b): not applied to a breakout signal, which has no gap; nor to a session range signal (EXE-024).
+        if (IsStopEntry(c))
         {
             return null;
         }
@@ -402,8 +445,8 @@ public sealed class PreTradeFilters
 
     private SkipRecord? CheckRoom(Candidate c)
     {
-        // EXE-019 (b): not applied to a breakout signal.
-        if (IsBreakout(c))
+        // EXE-019 (b): not applied to a breakout signal; nor to a session range signal (EXE-024).
+        if (IsStopEntry(c))
         {
             return null;
         }
@@ -435,7 +478,8 @@ public sealed class PreTradeFilters
 
     private SkipRecord? CheckExpiry(Candidate c)
     {
-        DateTime normal = c.Now + TimeSpan.FromTicks(BarLength.Ticks * _parameters.EntryExpiryBars);
+        // EXE-024: a session range order ends at the signal's expiry; CheckInputs has made sure that it has one.
+        DateTime normal = IsRange(c) ? c.Signal.ExpiryUtc.GetValueOrDefault() : c.Now + TimeSpan.FromTicks(BarLength.Ticks * _parameters.EntryExpiryBars);
         DateTime? window = _news.CalendarAt(c.Now).NextWindowStart(c.Context.Symbol, c.Now);
         c.Expiry = window.HasValue && window.Value < normal ? window.Value : normal;
         TimeSpan life = c.Expiry - c.Now;
@@ -548,7 +592,7 @@ public sealed class PreTradeFilters
         return new PlannedOrder(c.Signal, c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, c.Target, sizing.VolumeUnits, sizing.RiskMoney, c.StopPips, c.Expiry, info.Digits, label, comment, c.Now)
         {
             TickSize = info.TickSize,
-            EntryType = IsBreakout(c) ? EntryOrderType.Stop : EntryOrderType.Limit,
+            EntryType = IsStopEntry(c) ? EntryOrderType.Stop : EntryOrderType.Limit,
         };
     }
 

@@ -31,13 +31,18 @@ public static class ParameterHash
     /// part come TrendSlowEmaPeriod (SIG-028) when it is not 0 and BreakoutLastConfirmUtc (SIG-029)
     /// when it differs from the window end, so that parameters with both filters off keep the hash
     /// they had before 23 November 2026.
+    /// With session range parameters (SessionRange mode, spec 3.8) the text ends with RangeStartNy,
+    /// RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr and RangeStopAtr in the same
+    /// formats (SIG-034); without them nothing is appended, so the hashes of the other modes do not
+    /// change.
     /// </summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
-    /// <param name="breakout">Breakout parameters in Breakout mode, or null in ZoneFvg mode.</param>
+    /// <param name="breakout">Breakout parameters in Breakout mode, or null in the other modes.</param>
+    /// <param name="sessionRange">Session range parameters in SessionRange mode, or null in the other modes.</param>
     /// <returns>The canonical text.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
-    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null)
+    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null)
     {
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(execution);
@@ -88,18 +93,30 @@ public static class ParameterHash
             }
         }
 
+        if (sessionRange != null)
+        {
+            // SIG-034: the names of spec section 7, which differ from the core's for three of them.
+            Add(text, "RangeStartNy", sessionRange.RangeStartNy);
+            Add(text, "RangeEndNy", sessionRange.RangeEndNy);
+            Add(text, "RangeLastEntryNy", sessionRange.LastEntryNy);
+            Add(text, "RangeExitNy", sessionRange.ExitNy);
+            Add(text, "RangeMinWidthAtr", sessionRange.MinWidthAtr);
+            Add(text, "RangeStopAtr", sessionRange.StopAtrMult);
+        }
+
         return text.ToString();
     }
 
-    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018).</summary>
+    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018, SIG-034).</summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
-    /// <param name="breakout">Breakout parameters in Breakout mode, or null in ZoneFvg mode.</param>
+    /// <param name="breakout">Breakout parameters in Breakout mode, or null in the other modes.</param>
+    /// <param name="sessionRange">Session range parameters in SessionRange mode, or null in the other modes.</param>
     /// <returns>8 lowercase hex characters.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
-    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null)
+    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null)
     {
-        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout)));
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout, sessionRange)));
         var hex = new StringBuilder(Length);
         for (int i = 0; i < Length / 2; i++)
         {

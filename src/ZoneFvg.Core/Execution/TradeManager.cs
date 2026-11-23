@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.Risk;
+using ZoneFvg.Core.Signals;
 using static ZoneFvg.Core.Domain.Invariant;
 
 namespace ZoneFvg.Core.Execution;
@@ -177,6 +179,112 @@ public sealed class TradeManager
         }
 
         return actions.AsReadOnly();
+    }
+
+    /// <summary>
+    /// EXE-025 (spec 3.8, 5.5): true when a bot position of the symbol whose signal id is a session
+    /// range id (RH- or RL-, <see cref="SessionRangeId"/>) has reached its timed exit: the server
+    /// time is at or after <paramref name="exitNy"/> New York on the date in the id, which is the
+    /// close time of the first M15 bar at or after that time, since the exit lies on a 15-minute
+    /// boundary. Positions of other kinds are not looked at. The positions are read from the broker.
+    /// </summary>
+    /// <param name="serverTimeUtc">Broker server time, kind UTC.</param>
+    /// <param name="exitNy">RangeExitNy, a New York time of day.</param>
+    /// <returns>True when <see cref="RangeExit"/> would close a position.</returns>
+    /// <exception cref="ArgumentException">The server time is not UTC.</exception>
+    public bool RangeExitDue(DateTime serverTimeUtc, TimeSpan exitNy)
+    {
+        return RangeExitPositions(serverTimeUtc, exitNy).Count > 0;
+    }
+
+    /// <summary>
+    /// EXE-025: closes at market, in id order, every position for which <see cref="RangeExitDue"/>
+    /// holds, with the detail "range exit". A position that closed is gone from the broker, so it is
+    /// closed once; a close that failed is alerted (CloseFailed) and tried again at the next call.
+    /// Pending orders and positions of other kinds are not touched.
+    /// </summary>
+    /// <param name="serverTimeUtc">Broker server time, kind UTC.</param>
+    /// <param name="exitNy">RangeExitNy, a New York time of day.</param>
+    /// <returns>One action per position, Closed or CloseFailed.</returns>
+    /// <exception cref="ArgumentException">The server time is not UTC.</exception>
+    public IReadOnlyList<TradeAction> RangeExit(DateTime serverTimeUtc, TimeSpan exitNy)
+    {
+        var actions = new List<TradeAction>();
+        foreach (PositionInfo position in RangeExitPositions(serverTimeUtc, exitNy))
+        {
+            actions.Add(Close(position, null, "range exit"));
+        }
+
+        return actions.AsReadOnly();
+    }
+
+    /// <summary>
+    /// EXE-024: cancels, in id order, every pending bot order of the symbol whose label carries this
+    /// signal id. When no such order is pending nothing is sent. The orders are read from the broker.
+    /// </summary>
+    /// <param name="signalId">The signal id (zone id) in the label.</param>
+    /// <param name="reason">Why, for the actions and alerts.</param>
+    /// <returns>One action per order, Cancelled or CancelFailed.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public IReadOnlyList<TradeAction> CancelOrdersOf(string signalId, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(signalId);
+        ArgumentNullException.ThrowIfNull(reason);
+        var actions = new List<TradeAction>();
+        foreach (PendingOrderInfo order in OrdersOf(signalId))
+        {
+            OrderResult result = _broker.CancelOrder(order.Id);
+            _counter.Record(_broker.ServerTimeUtc);
+            if (result.Outcome == OrderOutcome.Success)
+            {
+                actions.Add(new TradeAction(order.Id, TradeActionOutcome.Cancelled, reason));
+            }
+            else
+            {
+                _events.Alert(new ExecutionAlert(AlertKind.CancelFailed, _symbol, "order " + Text(order.Id) + " (" + reason + ") cancel " + result.Outcome + " " + (result.ErrorCode ?? string.Empty)));
+                actions.Add(new TradeAction(order.Id, TradeActionOutcome.CancelFailed, reason));
+            }
+        }
+
+        return actions.AsReadOnly();
+    }
+
+    /// <summary>
+    /// SIG-033, EXE-024: true when a bot order of the symbol whose label carries this signal id is
+    /// pending at the broker now.
+    /// </summary>
+    /// <param name="signalId">The signal id (zone id) in the label.</param>
+    /// <returns>True when such an order is pending.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="signalId"/> is null.</exception>
+    public bool HasPendingOrderOf(string signalId)
+    {
+        ArgumentNullException.ThrowIfNull(signalId);
+        return OrdersOf(signalId).Count > 0;
+    }
+
+    private List<PendingOrderInfo> OrdersOf(string signalId)
+    {
+        return _broker.GetPendingOrders()
+            .Where(o => RiskEngine.IsBotLabel(o.Label) && string.Equals(o.Symbol, _symbol, StringComparison.Ordinal) && string.Equals(IdOf(o.Label), signalId, StringComparison.Ordinal))
+            .OrderBy(o => o.Id)
+            .ToList();
+    }
+
+    private List<PositionInfo> RangeExitPositions(DateTime serverTimeUtc, TimeSpan exitNy)
+    {
+        if (serverTimeUtc.Kind != DateTimeKind.Utc)
+        {
+            throw new ArgumentException("The server time must be a UTC time (kind UTC).", nameof(serverTimeUtc));
+        }
+
+        return BotPositions()
+            .Where(p => SessionRangeId.TryTradingDate(IdOf(p.Label), out DateTime tradingDate) && serverTimeUtc >= NewYorkClock.UtcInTradingDay(tradingDate, exitNy))
+            .ToList();
+    }
+
+    private static string? IdOf(string label)
+    {
+        return OrderLabel.TryParse(label, out string _, out string zoneId) ? zoneId : null;
     }
 
     private bool TrySetStop(PositionInfo position, CommentPlan plan)

@@ -11,4 +11,7 @@ public enum EntryMode
 
     /// <summary>Breakout of the reference day's range (spec 3.7): <see cref="BotParameters.Breakout"/> is set.</summary>
     Breakout,
+
+    /// <summary>Break of the session range (spec 3.8, SIG-034): <see cref="BotParameters.SessionRange"/> is set.</summary>
+    SessionRange,
 }

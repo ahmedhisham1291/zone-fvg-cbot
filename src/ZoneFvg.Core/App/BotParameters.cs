@@ -71,20 +71,34 @@ public sealed record BotParameters
     /// </summary>
     public BreakoutParameters? Breakout { get; init; }
 
-    /// <summary>The entry mode (REC-017): <see cref="EntryMode.Breakout"/> when <see cref="Breakout"/> is set, otherwise <see cref="EntryMode.ZoneFvg"/>.</summary>
-    public EntryMode Mode => Breakout is null ? EntryMode.ZoneFvg : EntryMode.Breakout;
+    /// <summary>
+    /// SIG-034 (spec 3.8): the session range parameters. Null (the default) leaves the mode to
+    /// <see cref="Breakout"/>; a value is SessionRange mode, in which the signal engine, the replay
+    /// of recovery, the pre-trade filters, the timed exit (EXE-025) and the parameter hash use these
+    /// parameters. <see cref="Validate"/> checks them and refuses them together with
+    /// <see cref="Breakout"/>: one mode per instance.
+    /// </summary>
+    public SessionRangeParameters? SessionRange { get; init; }
+
+    /// <summary>
+    /// The entry mode (REC-017, SIG-034): <see cref="EntryMode.Breakout"/> when <see cref="Breakout"/>
+    /// is set, otherwise <see cref="EntryMode.SessionRange"/> when <see cref="SessionRange"/> is set,
+    /// otherwise <see cref="EntryMode.ZoneFvg"/>.
+    /// </summary>
+    public EntryMode Mode => Breakout is not null ? EntryMode.Breakout : SessionRange is not null ? EntryMode.SessionRange : EntryMode.ZoneFvg;
 
     /// <summary>
     /// Checks every value and throws for the first problem: the symbol must start with six letters
     /// and contain no '|'; each parameter group and the market holidays must be valid; outside backtests with NewsEnabled
     /// true the feed address must be set; <see cref="BacktestHaltsLogOnly"/> may be true only in a
     /// backtest (REC-014). When <see cref="Breakout"/> is set it must be valid, and its window must
-    /// equal the session times of the execution parameters (REC-017).
+    /// equal the session times of the execution parameters (REC-017). When <see cref="SessionRange"/>
+    /// is set it must be valid and <see cref="Breakout"/> must be null (SIG-034).
     /// </summary>
     /// <param name="isBacktest">True in a backtest.</param>
     /// <exception cref="ArgumentNullException">A parameter group is null.</exception>
-    /// <exception cref="ArgumentException">A value is invalid; for the breakout window the parameter name is <c>Breakout</c>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">A parameter group, the breakout parameters included, has a value out of range.</exception>
+    /// <exception cref="ArgumentException">A value is invalid; for the breakout window the parameter name is <c>Breakout</c>, for breakout and session range parameters set together <c>SessionRange</c>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter group, the breakout and session range parameters included, has a value out of range.</exception>
     public void Validate(bool isBacktest)
     {
         if (BacktestHaltsLogOnly && !isBacktest)
@@ -110,6 +124,7 @@ public sealed record BotParameters
         News.Validate();
         Ops.Validate();
         ValidateBreakout();
+        ValidateSessionRange();
         MonthDay.ParseList(MarketHolidays);
         if (!isBacktest && News.NewsEnabled && string.IsNullOrWhiteSpace(NewsFeedUrl))
         {
@@ -133,5 +148,21 @@ public sealed record BotParameters
                 + " must equal Execution.SessionStartUtc " + Text(Execution.SessionStartUtc) + " and Execution.SessionEndUtc " + Text(Execution.SessionEndUtc) + " (REC-017).",
                 nameof(Breakout));
         }
+    }
+
+    // SIG-034: one mode per instance; the session range parameters validate themselves (SIG-032).
+    private void ValidateSessionRange()
+    {
+        if (SessionRange is null)
+        {
+            return;
+        }
+
+        if (Breakout is not null)
+        {
+            throw new ArgumentException("Breakout and SessionRange must not both be set: one entry mode per instance (SIG-034).", nameof(SessionRange));
+        }
+
+        SessionRange.Validate();
     }
 }

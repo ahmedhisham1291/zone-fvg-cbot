@@ -108,6 +108,9 @@ public sealed class BotCore
     private readonly bool _haltsLogOnly;
     private readonly EntryMode _mode;
 
+    // SIG-034, EXE-025: the session range parameters in SessionRange mode, null in the other modes.
+    private readonly SessionRangeParameters? _sessionRange;
+
     // REC-014: per "event cause", the CE(S)T day of the last would-halt or would-block line.
     private readonly SortedDictionary<string, DateTime> _recordedDays = new SortedDictionary<string, DateTime>(StringComparer.Ordinal);
 
@@ -129,6 +132,12 @@ public sealed class BotCore
     private int _lastFedRank;
     private int _tradeLogLines;
     private DateTime? _fridayCloseDeferredDay;
+
+    // EXE-024: the id of the last setup the live engine reported void; its orders are cancelled at every M15 bar.
+    private string? _voidRangeId;
+
+    // EXE-025: the day of the last "deferred" line of the timed exit, one line per day.
+    private DateTime? _rangeExitDeferredDay;
 
     /// <summary>
     /// Creates the core of one instance (docs/architecture.md section 3). Validates every
@@ -163,19 +172,20 @@ public sealed class BotCore
         _haltsLogOnly = parameters.BacktestHaltsLogOnly;
         _risk = parameters.Risk;
         _mode = parameters.Mode;
-        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout);
+        _sessionRange = parameters.SessionRange;
+        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout, parameters.SessionRange);
         _news = CreateNews(parameters, store, http, isBacktest);
         _requests = new RequestCounter(parameters.Risk);
         _errors = new ErrorCounter(parameters.Risk);
         _events = new CoreEvents(this);
-        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout);
+        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout, parameters.SessionRange);
         _orders = new OrderManager(broker, _requests, _events, _haltsLogOnly);
         _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events);
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
         _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
         var tradeEvents = new CoreTradeEvents(this);
         _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, tradeEvents);
-        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout);
+        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout, parameters.SessionRange);
     }
 
     /// <summary>The current state (REC-001).</summary>
@@ -324,6 +334,11 @@ public sealed class BotCore
             // REC-017: one more field at the end in Breakout mode; the ZoneFvg line is unchanged.
             start.Add(("mode", "Breakout"));
         }
+        else if (_mode == EntryMode.SessionRange)
+        {
+            // SIG-034: the same field in SessionRange mode.
+            start.Add(("mode", "SessionRange"));
+        }
 
         Write("start", start.ToArray());
         if (reason == "start")
@@ -373,6 +388,7 @@ public sealed class BotCore
         CheckLiveGap(timeFrame, bar, now);
         IReadOnlyList<Zone> zonesBefore = _engine.Zones;
         IReadOnlyList<Signal> signals = _engine.OnBarClosed(timeFrame, bar, false);
+        SessionRangeSetup? voided = _engine.LastRangeVoid;
         _lastBars[rank] = bar;
         _hasFed = true;
         _lastFedCloseUtc = close;
@@ -395,10 +411,13 @@ public sealed class BotCore
         }
 
         WeekendDuty();
+        RangeVoidDuty(voided);
+        RangeExitDuty(now);
         UpdateCalendar(now);
         ApplyState("M15 bar closed at " + Minute(close), now);
         ResolvePending(guard, now);
         PlaceSignals(signals, zonesBefore, guard, now);
+        ReleaseRangeSetup();
 
         // OPS-009 is journal only: counted after the bar state is updated and its signals are placed, so a failure here cannot lose a signal.
         CountZoneOutcomes(timeFrame, close, _engine.LastActivity);
@@ -461,6 +480,7 @@ public sealed class BotCore
         // decision of 2026-11-16). Friday close against a closed market is deferred to the reopen (EXE-016).
         CheckEmergencyGuard(now);
         FridayCloseDuty(now);
+        RangeExitDuty(now);
         WeekendDuty();
 
         UpdateCalendar(now);
@@ -685,6 +705,7 @@ public sealed class BotCore
         }
 
         _engine = findings.Engine;
+        _voidRangeId = null;
         _hasFed = false;
         foreach (TimeFrame timeFrame in BarIntakeOrder.SameInstant)
         {
@@ -1025,6 +1046,64 @@ public sealed class BotCore
             _fridayCloseDeferredDay = now.Date;
             Write("friday-close", ("event", "deferred"), ("reason", "market-closed"));
         }
+    }
+
+    // EXE-024 (SIG-033): a void setup's unresolved placement is never resent and its pending order is cancelled;
+    // nothing is sent when no such order is pending. An order of that id that appears later (an unclear
+    // placement) is cancelled at a later bar. Read from the broker each time; only the id is remembered.
+    private void RangeVoidDuty(SessionRangeSetup? voided)
+    {
+        if (voided != null)
+        {
+            _voidRangeId = voided.Id;
+            Write("range", ("event", "void"), ("id", voided.Id));
+            foreach (PlaceResult result in _orders.AbandonUnresolved(voided.Id, "setup void"))
+            {
+                Write("order", ("event", "resolved"), ("label", result.Label), ("outcome", result.Outcome.ToString()), ("detail", result.Detail));
+            }
+        }
+
+        if (_voidRangeId != null)
+        {
+            JournalActions("range-void", _trades.CancelOrdersOf(_voidRangeId, "range void"));
+        }
+    }
+
+    // EXE-025: in SessionRange mode only; against a closed market no request is sent and the exit, which stays
+    // due, is made at the first call after the reopen (as EXE-016). Positions are read from the broker each time.
+    private void RangeExitDuty(DateTime now)
+    {
+        if (_sessionRange == null || !_trades.RangeExitDue(now, _sessionRange.ExitNy))
+        {
+            return;
+        }
+
+        if (_safety.MarketOpen())
+        {
+            JournalActions("range-exit", _trades.RangeExit(now, _sessionRange.ExitNy));
+            return;
+        }
+
+        if (_rangeExitDeferredDay != now.Date)
+        {
+            // One line per day, not per minute.
+            _rangeExitDeferredDay = now.Date;
+            Write("range-exit", ("event", "deferred"), ("reason", "market-closed"));
+        }
+    }
+
+    // SIG-033, EXE-024: once the day's order is not pending at the broker (never placed, filled, expired or
+    // cancelled) and no placement of the symbol is unresolved, the tracker stops watching the setup for a void.
+    private void ReleaseRangeSetup()
+    {
+        SignalEngine engine = _engine!;
+        SessionRangeSetup? setup = engine.RangeSetup;
+        if (setup == null || _orders.HasUnresolved(_symbol) || _trades.HasPendingOrderOf(setup.Id))
+        {
+            return;
+        }
+
+        engine.OrderNoLongerPending(setup.Id);
     }
 
     private void ResolvePending(GuardStatus guard, DateTime now)
