@@ -1896,16 +1896,17 @@ requirements:
     text: >-
       Choch target (buy). The opposing levels are the proximal lines of the
       non-terminal supply zones in the book and the prices of the confirmed
-      H4 swing highs of SIG-006, each only when strictly above the entry
-      (PriceMath). The target is the lowest opposing level minus
+      H4 swing highs of SIG-006 that no later H4 bar has closed above (a
+      broken high is no longer resistance; decision of 2026-11-23), each only
+      when strictly above the entry (PriceMath). The target is the lowest opposing level minus
       ChochTargetBufferAtr x ATR(H4); its source is "zone:<id>" or
       "swing:<yyyyMMdd-HHmm of the swing bar>", and when a zone proximal and
       a swing price are equal the zone is the source. Without any opposing
       level the target is entry + RewardRisk x (entry - stop), source
       "default". The target is computed whatever reward it gives; whether it
       is enough is the execution layer's check (EXE-028). Sell mirrors this
-      with demand zones, H4 swing lows, the highest level below the entry
-      and the buffer added.
+      with demand zones, H4 swing lows not closed below by a later H4 bar,
+      the highest level below the entry and the buffer added.
 
   - id: SIG-041
     wp: WP37
