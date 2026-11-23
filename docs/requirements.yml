@@ -1411,6 +1411,88 @@ requirements:
       BreakoutLastConfirmUtc equal to the window end the rule has no effect.
       It must lie after the window start and not after the window end;
       other values are refused at start.
+  - id: SIG-030
+    wp: WP33
+    spec: "3.8"
+    verify: unit
+    status: planned
+    text: >-
+      New York time and trading day (owner request of 2026-11-23). The core
+      computes New York wall-clock time from UTC without a time zone database:
+      UTC-4 from 07:00 UTC on the second Sunday of March until 06:00 UTC on
+      the first Sunday of November, UTC-5 otherwise. A trading day starts at
+      17:00 New York, ends at 17:00 New York on the next calendar day and is
+      named by the date on which it ends. A time of day of the SessionRange
+      mode is placed in the trading day by its distance from 17:00: 17:00 is
+      its first minute and 16:59 its last.
+  - id: SIG-031
+    wp: WP33
+    spec: "3.8"
+    verify: unit
+    status: planned
+    text: >-
+      Session range. The range bars of a trading day are the closed M15 bars
+      whose open time is at or after RangeStartNy and before RangeEndNy of
+      that trading day. The range high is their highest high and the range low
+      their lowest low. The range is evaluated once per trading day, at the
+      first closed M15 bar of the trading day whose close time is at or after
+      RangeEndNy. No setup results when that close time is at or after
+      RangeLastEntryNy, when fewer than 16 range bars exist, when the trading
+      day ends on a Saturday or a Sunday, when the bias (SIG-005) is neutral,
+      when range high minus range low is below RangeMinWidthAtr x ATR(D1) of
+      the last closed D1 bar, or when that ATR or the ATR(H4) of the last
+      closed H4 bar is missing (fail closed). The width is compared with
+      PriceMath: a width equal to the threshold passes.
+  - id: SIG-032
+    wp: WP33
+    spec: "3.8"
+    verify: unit
+    status: planned
+    text: >-
+      Session range setup. With a long bias the setup is a buy stop at the
+      range high; with a short bias a sell stop at the range low. Stop: entry
+      minus (buy) or plus (sell) RangeStopAtr x ATR(H4). Target: entry plus
+      (buy) or minus (sell) RewardRisk x stop distance. Expiry: the UTC
+      instant of RangeLastEntryNy of the trading day; when the evaluation
+      falls on a Friday (UTC date), not later than FridayNoEntryUtc of that
+      date. Id: RH-yyyyMMdd (buy) or RL-yyyyMMdd (sell) from the date that
+      names the trading day. A trading day gives at most one setup. The
+      parameters are checked at start: the four times lie on a 15-minute
+      boundary and, in the order of the trading day, RangeStartNy is before
+      RangeEndNy, RangeEndNy is not after RangeLastEntryNy and RangeLastEntryNy
+      is before RangeExitNy; the window holds at least 16 M15 bars;
+      RangeMinWidthAtr is finite and not negative; RangeStopAtr is finite and
+      greater than zero. The message names the parameter, its rule and the
+      rejected value.
+  - id: SIG-033
+    wp: WP33
+    spec: "3.8"
+    verify: unit
+    status: planned
+    text: >-
+      Void. After a setup and until the caller reports that its order is no
+      longer pending (filled, expired or cancelled), a closed M15 bar that
+      opened at or after RangeEndNy of the trading day and whose low is at or
+      below the range low (buy setup), or whose high is at or above the range
+      high (sell setup), makes the setup void. The tracker reports the void
+      once. The trading day gives no further setup.
+  - id: SIG-034
+    wp: WP34
+    spec: "3.8, 9.3"
+    verify: scenario
+    status: planned
+    text: >-
+      SessionRange in the signal engine. With EntryMode SessionRange the
+      engine feeds closed bars to the session range tracker in the order of
+      SIG-004 and emits its setup as a signal of Kind SessionRange with the
+      entry, stop, target, expiry and id of SIG-032. The ZoneFvg and Breakout
+      trackers are not run in this mode and this tracker is not run in the
+      other modes: their signals, journal lines and parameter hashes stay bit
+      for bit what they were. After a restart the tracker's state for the
+      current trading day is rebuilt from closed bars alone, and a setup found
+      by that replay is not executable (as SIG-026 for Breakout). The warm-up
+      covers one trading day of M15 bars besides what the bias and the two
+      ATRs need.
   - id: EXE-018
     wp: WP26
     spec: "3.7, 5.2"
@@ -1512,6 +1594,32 @@ requirements:
       UnclearOutcomeNotResent, also when another entry of the list carries
       the order's label (fail closed, an unexpected value).
 
+  - id: EXE-024
+    wp: WP34
+    spec: "3.8, 5.2"
+    verify: scenario
+    status: planned
+    text: >-
+      Session range order. A signal of Kind SessionRange is placed as a stop
+      order with the spread rule of EXE-018 and with the signal's expiry,
+      shortened by a news window as for every order. Every pre-trade filter
+      applies. When the tracker reports the setup void (SIG-033), the pending
+      order with that signal id is cancelled; nothing is done when no such
+      order is pending. EXE-021 to EXE-023 apply to this kind as to Breakout,
+      and EXE-022 allows a stop order for Kind SessionRange.
+  - id: EXE-025
+    wp: WP34
+    spec: "3.8, 5.5"
+    verify: scenario
+    status: planned
+    text: >-
+      Timed exit. At the first closed M15 bar whose close time is at or after
+      RangeExitNy on the date in a position's signal id (RH- or RL-), that
+      position is closed at market, once, with exit reason ClosedByBot and the
+      detail "range exit". If the market is closed at that moment the position
+      is closed when it reopens, as for the Friday close. The duty runs in
+      every connected state, Recovering included, reads the positions from the
+      broker each time and does not touch positions of other kinds.
   - id: NWS-014
     wp: WP26
     spec: "3.7, 6.1"
@@ -1656,3 +1764,17 @@ requirements:
       embedded history has events, NewsEnabled works as before. Live,
       nothing changes: an empty RiskEpochDate refuses the start, and the
       news filter blocks entries without a trusted calendar.
+  - id: PLT-015
+    wp: WP35
+    spec: "3.8, 7"
+    verify: unit
+    status: planned
+    text: >-
+      SessionRange in the cBot. EntryMode accepts SessionRange. The group
+      "Entry mode" gains RangeStartNy "19:00", RangeEndNy "03:00",
+      RangeLastEntryNy "12:00", RangeExitNy "16:30", RangeMinWidthAtr 0.5 and
+      RangeStopAtr 1.0. They are checked at start in every mode, and a refusal
+      names the parameter as cTrader shows it. The parameter hash appends them
+      only in SessionRange mode, so the hashes of the other modes do not
+      change. The start line shows mode SessionRange. Breakout stays the
+      default.

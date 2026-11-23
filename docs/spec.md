@@ -56,12 +56,13 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | K. What goes live (added on 23 November 2026, after the review of the cBot parameters and guides) | The live parameter files carry the chosen mode and the accepted settings, and the hash at start must equal the hash of the accepted run. When ZoneFvg is the chosen mode, Breakout is run once on the holdout as the benchmark input only | 13.1 |
 | L. A backtest runs with the defaults (added on 23 November 2026, owner request) | In a backtest an empty `RiskEpochDate` means the backtest's first day, and `NewsEnabled` has no effect while the embedded news history has no events. Live, both stay as before: `RiskEpochDate` must be set and the news filter blocks without a calendar | 7 |
 | M. Breakout filters (added on 23 November 2026, owner request after the first backtests) | Breakout trades only when the D1 EMA(50) is on the trade's side of the D1 EMA(200), and only on a breakout confirmed by a bar that closes before 08:00 UTC. Both are cBot settings; 0 and 17:00 switch them off | 3.1, 3.7, 7 |
+| N. SessionRange mode (added on 23 November 2026, owner request after the strategy search) | A third entry mode: a stop order at the edge of the Asian-session range (19:00 to 03:00 New York) on the side of the D1 trend, when the range is at least half a daily ATR wide; stop 1.0 x ATR(H4), target 2R, the order ends at 12:00 New York and an open position is closed at 16:30 New York. It was the only rule of the search that held on the years the search had not used, and only on gold. Breakout stays the default. Gold's smallest stop and widest spread are restated in the platform's pip of 1 USD: 8 and 0.4 | 3, 3.6, 3.8, 5.5, 7, 13.1, 14 |
 | Proposed, marked in the plan pull request | Breakout values: entry buffer 0.1 x ATR(M15), stop 1.0 x ATR(H4), target 2R, order life 8 bars. No trailing stop in the baseline (it is the first variant to test). Symbols unchanged; index CFDs are an open question | 3.7, 7, 12.4, 14 |
 | FTMO wording | The gap-trading rule is restated as FTMO's page reads on 22 November 2026: two separate situations joined by "or" | 15.2 |
 
 ## 1. Purpose and scope
 
-A cTrader cBot that trades four forex pairs and gold (XAUUSD) in the direction of the higher-timeframe trend, with one of two entry modes per instance (section 3). **Breakout** (the default from v0.10) enters with a stop order after an M15 bar closes beyond the previous day's range. **ZoneFvg** waits for price to return to a higher-timeframe supply or demand zone, then enters on a lower-timeframe fair value gap (FVG).
+A cTrader cBot that trades four forex pairs and gold (XAUUSD) in the direction of the higher-timeframe trend, with one of three entry modes per instance (section 3). **Breakout** (the default from v0.10) enters with a stop order after an M15 bar closes beyond the previous day's range. **ZoneFvg** waits for price to return to a higher-timeframe supply or demand zone, then enters on a lower-timeframe fair value gap (FVG).
 
 **In scope (v1)**
 
@@ -95,7 +96,7 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 | Item | Setting | Status and reason |
 |---|---|---|
 | Symbols | EURUSD, GBPUSD, USDJPY, AUDUSD, XAUUSD | Decided. Liquid majors, low spread. XAUUSD (gold) added by the owner on 17 November 2026; one instance per symbol |
-| Entry mode | `Breakout` (default) or `ZoneFvg`, one per instance | Decided on 22 November 2026 (owner request). Sections 3 and 3.7. Both modes use the bias, the M15 chart and everything from section 4 on |
+| Entry mode | `Breakout` (default), `ZoneFvg` or `SessionRange` (added on 23 November 2026), one per instance | Decided on 22 November 2026 (owner request). Sections 3 and 3.7. Both modes use the bias, the M15 chart and everything from section 4 on |
 | Bias timeframe | D1 | Decided. Trend filter |
 | Zone timeframe | H4 | Decided. Higher-timeframe zones |
 | Entry timeframe | M15 (the chart the bot runs on) | Decided. Lower-timeframe FVG |
@@ -111,6 +112,8 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 All rules are evaluated on **closed bars only**. Long rules are shown; short rules are the mirror image. ATR means ATR(14) on the timeframe named.
 
 **Two entry modes (v0.10).** An instance runs in one mode, set by `EntryMode` and fixed while it runs. Sections 3.1 (bias), 3.3 (two layers) and 3.6 (skips), and everything from section 4 on, apply to both modes. Sections 3.2, 3.4 and 3.5 describe the ZoneFvg mode. Section 3.7 describes the Breakout mode, in which no zones are detected.
+
+**SessionRange mode (added on 23 November 2026).** A third mode, described in 3.8. What the paragraph above says about both modes holds for it too; sections 3.2, 3.4, 3.5 and 3.7 do not describe it.
 
 **Indicator definitions (v0.8).** Every indicator depends only on a fixed window of recent bars, so a restarted bot reproduces the same values exactly.
 
@@ -189,7 +192,7 @@ Naming the three most recently closed M15 bars c3, c2, c1 (c1 is the newest):
 ### 3.6 Signal is skipped when
 
 - It is not live: its confirmation bar closed more than one bar ago (for example, it was found during a restart replay).
-- Stop distance is under `MinStopPips` (12 pips for the forex pairs, 800 pips for gold) or over 2.0 x ATR(H4).
+- Stop distance is under `MinStopPips` (12 pips for the forex pairs, 8 pips for gold: FTMO's cTrader reports a gold pip of 1 USD, and the 800 of earlier versions assumed a pip of 0.01 USD) or over 2.0 x ATR(H4).
 - **Cost check fails:** spread plus round-trip commission, in pips, is more than `CostToRiskMax` (10%) of the stop distance.
 - An active supply zone sits between entry and 1.5R above entry (ZoneFvg mode).
 - The news filter blocks it (section 6).
@@ -232,6 +235,45 @@ Chosen with `EntryMode` = Breakout, the default. It follows the D1 trend into a 
 **What stays the same.** One position or pending order per symbol, sizing and the ladder, every account limit and circuit breaker, the session and Friday rules, the news windows, order expiry, idempotent placement, recovery, Friday close, alerts and the simulation tools.
 
 **What the baseline does not have.** No trailing stop, no break-even move and no partial close: a trade ends at its stop, its target or the Friday close, as in ZoneFvg mode. Every exit therefore stays at the broker and works with the bot offline, and results come as clean wins and losses, which the ladder of 4.1 is built on. A trailing stop is the first variant to test (12.4).
+
+### 3.8 SessionRange mode (added on 23 November 2026)
+
+Chosen with `EntryMode` = SessionRange. It follows the D1 trend into a break of the range that price made in the Asian session. The reason for the mode is the strategy search of 23 November 2026 (`research/search/REPORT-2026-11-23.md`): of 1,358 rule variants this rule was the only one that still made money on the two years the search had not used, and it did so on gold only. For this bot it is unproven until section 12 says otherwise.
+
+**New York time.** The times of this mode are New York wall-clock times, because the sessions they describe move with daylight saving time. The core computes New York time from UTC with the United States rule: UTC-4 from 07:00 UTC on the second Sunday of March until 06:00 UTC on the first Sunday of November, UTC-5 otherwise. No time zone database is used.
+
+**Trading day.** A trading day starts at 17:00 New York and ends at 17:00 New York on the next calendar day. It is named by the date on which it ends. A trading day that ends on a Saturday or a Sunday gives no signal. The times of this mode are read in the order of the trading day: 19:00 comes two hours after its start, 03:00 ten hours, 12:00 nineteen hours and 16:30 twenty-three and a half hours after it.
+
+**The range.** The range bars of a trading day are the closed M15 bars that opened at or after `RangeStartNy` (19:00) and before `RangeEndNy` (03:00). The range high is their highest high, the range low their lowest low.
+
+**Evaluation.** The range is evaluated once per trading day: at the first closed M15 bar of that trading day whose close time is at or after `RangeEndNy`. A setup exists only if all of these hold; otherwise the trading day gives no signal:
+
+- that close time is before `RangeLastEntryNy` (12:00);
+- there are at least 16 range bars (half of the window);
+- the bias of 3.1 is long or short (`TrendSlowEmaPeriod` is a Breakout setting and is not used here);
+- range high minus range low is at least `RangeMinWidthAtr` (0.5) x ATR(D1) of the last closed D1 bar;
+- ATR(H4) of the last closed H4 bar exists.
+
+**Order levels.** With a long bias: a buy stop at the range high. With a short bias: a sell stop at the range low. Only the side of the bias is traded.
+
+- **Stop:** `RangeStopAtr` (1.0) x ATR(H4) from the entry.
+- **Target:** `RewardRisk` (2.0) x stop distance.
+- **Spread:** as in 3.7.
+- **Order expiry:** `RangeLastEntryNy` of the trading day. On a Friday it is not later than `FridayNoEntryUtc`. A news window shortens it as for every order (section 6).
+
+**Void.** While the day's order is pending, a closed M15 bar that opened at or after `RangeEndNy` and whose low is at or below the range low (buy setup), or whose high is at or above the range high (sell setup), makes the setup void: price went the other way first. The order is cancelled and the trading day gives no further signal.
+
+**One signal per trading day.** After a setup, whatever becomes of its order, the trading day gives no further signal.
+
+**Timed exit.** At the first closed M15 bar whose close time is at or after `RangeExitNy` (16:30) on the date in the position's signal id, an open position of this mode is closed at market. If the market is closed at that moment, the position is closed when the market reopens, as for the Friday close (5.5). The duty runs in every connected state, as the Friday close does.
+
+**Signal id.** `RH-yyyyMMdd` for a buy at the range high and `RL-yyyyMMdd` for a sell at the range low, from the date that names the trading day. It takes the place of the zone id in the label (5.2), in recovery (8.3), in the journal and in the trade log.
+
+**Skipped when** (besides the checks of 3.6 that apply): price has already reached the entry when the order is about to be placed.
+
+**What stays the same.** One position or pending order per symbol, sizing and the ladder, every account limit and circuit breaker, the session and Friday rules, the news windows, idempotent placement, recovery, Friday close, alerts and the simulation tools.
+
+**What the search measured.** Gold, 6 May 2020 to 22 November 2026, with the rules of this section, gold's smallest stop of 8 USD, an assumed spread of 0.30 USD and no news filter: 202 trades, 55% winners, +0.28R per trade, +56R, largest drawdown 9.4R; +12R in the development years (to October 2024) and +44R in the holdout. With cTrader's own way of filling orders in a backtest the total is +44R. The live bot will differ again: the news filter shortens orders on days with news, and spreads vary.
 
 ## 4. Risk and position sizing
 
@@ -347,7 +389,7 @@ Protection against code errors rather than market risk.
 
 ### 5.5 Open position management (v1 baseline)
 
-- No break-even move and no trailing stop. The trade ends at stop, target or Friday close.
+- No break-even move and no trailing stop. The trade ends at stop, target or Friday close. In SessionRange mode it also ends at the timed exit of 3.8 (added on 23 November 2026).
 - Friday 20:00 UTC: close positions and cancel pending orders. If the market is already closed then (an early close before a holiday), no request is sent; the positions are closed and the orders cancelled when the market reopens (v0.9).
 
 ## 6. News filter
@@ -443,7 +485,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 
 | Parameter | Default | Role | Test range |
 |---|---|---|---|
-| EntryMode (new in 0.10) | Breakout | Entry mode of the instance: Breakout or ZoneFvg (section 3) | Both are backtested |
+| EntryMode (new in 0.10) | Breakout | Entry mode of the instance: Breakout, ZoneFvg or SessionRange (section 3) | Both are backtested |
 | BreakoutEntryBufferAtr (new in 0.10) | 0.1 | Breakout entry beyond the confirming bar (x ATR M15) | Fixed |
 | BreakoutStopAtr (new in 0.10) | 1.0 | Breakout stop distance (x ATR H4) | **Optimise** (Breakout mode) 0.75 to 1.5, step 0.25 |
 | BiasTimeFrame | D1 | Trend filter timeframe | Fixed |
@@ -463,7 +505,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | EntryLevelPct | 50 | Entry depth into the gap | Test 0, 50, 100 |
 | EntryExpiryBars | 8 | Limit order life | Fixed |
 | StopBufferAtr | 0.1 | Stop buffer | Fixed |
-| MinStopPips | 12 (was 8); gold 800 | Smallest allowed stop | Per symbol |
+| MinStopPips | 12 (was 8); gold 8 (a gold pip is 1 USD on FTMO's cTrader; written as 800 before, for a pip of 0.01 USD) | Smallest allowed stop | Per symbol |
 | MaxStopAtr | 2.0 | Largest allowed stop (x ATR H4) | Fixed |
 | RewardRisk | 2.0 | Target in R | **Optimise** 1.5 to 3.0, step 0.5 |
 | MinRoomR | 1.5 | Clear space to opposing zone | Fixed |
@@ -485,10 +527,15 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | SessionStartUtc / SessionEndUtc | 07:00 / 17:00 | Trading window | Fixed |
 | FridayNoEntryUtc (new) | 12:00 | Last entry time on Friday | Fixed |
 | FridayCloseUtc | 20:00 | Weekend flat time | Fixed |
-| MaxSpreadPips | 1.5; gold 40 | Spread filter | Per symbol |
+| MaxSpreadPips | 1.5; gold 0.4 (a gold pip is 1 USD; written as 40 before) | Spread filter | Per symbol |
 | NewsEnabled (new) | true; in a backtest whose embedded news history has no events the filter is off for that run and the start log says so (added 23 November 2026) | News filter on or off | Test on and off |
 | TrendSlowEmaPeriod (new in v0.10) | 200 (0 = off) | Breakout trend filter (3.1) | Test 0 and 200 |
 | BreakoutLastConfirmUtc (new in v0.10) | 08:00 (17:00 = off) | Latest close time of a confirming bar (3.7) | Test 08:00 and 17:00 |
+| RangeStartNy / RangeEndNy (added 23 November 2026) | 19:00 / 03:00 | SessionRange: the range window, New York time (3.8) | Fixed |
+| RangeLastEntryNy (added 23 November 2026) | 12:00 | SessionRange: the day's order ends, New York time | Fixed |
+| RangeExitNy (added 23 November 2026) | 16:30 | SessionRange: an open position is closed, New York time | Fixed |
+| RangeMinWidthAtr (added 23 November 2026) | 0.5 | SessionRange: smallest range, in ATR(D1) | Test 0 and 0.5 |
+| RangeStopAtr (added 23 November 2026) | 1.0 | SessionRange: stop distance, in ATR(H4) | Fixed |
 | NewsBeforeMin / NewsAfterMin (new) | 30 / 30 | Window around events | Fixed |
 | NewsFailMode (new) | Block | Behaviour without calendar | Fixed |
 | NewsSources (new in 0.3) | ForexFactory | ForexFactory only until a second feed is added (owner decision 2026-11-14) | n/a |
@@ -825,6 +872,8 @@ If the holdout fails, the strategy is rejected or redesigned; the holdout is not
 
 **Two entry modes (v0.10).** The development column is applied to each mode separately. A mode may go live only if it passes by itself. For the ZoneFvg mode the benchmark is the Breakout mode (12.1 step 10). For the Breakout mode the row "Versus benchmark" is not applied until a simpler benchmark exists; every other row applies. If both pass, the mode with the better return-to-drawdown ratio on development data is chosen. The holdout is then run once, for the chosen mode only: running both modes on the holdout and keeping the better one would turn the holdout into a tuning step. If the chosen mode is ZoneFvg, its holdout row "Versus benchmark" needs Breakout trade logs of the holdout period: the Breakout mode is then run once on the holdout, after the choice, with the same data and costs and its accepted settings, as the benchmark input of that row only. Its result changes nothing about the choice and is not used for tuning (added on 23 November 2026).
 
+**A mode on one symbol (added on 23 November 2026).** SessionRange is meant for gold alone at first. The rows "Profitable symbols" and "Share of profit from one symbol" cannot be applied to one symbol, and the trade counts were written for five. Which marks such a mode must pass is the owner's decision before go / no-go 1 and is open (section 14, question 4). Until it is made, the mode is not accepted.
+
 **What goes live (added on 23 November 2026).** The parameter files of the instances that go live carry the chosen mode in `EntryMode` and the accepted settings, that is the values of the run the acceptance report judged; every other value stays at its default. The laptop stage, the fault tests (12.3) and the soak test are run with these files. The parameter hash that the bot prints at start must equal, symbol by symbol, the hash of the accepted backtest run (the hash covers the signal, execution and breakout values; the risk and news values are not part of it and are set as sections 4 and 6 say). A mode that did not pass, or was not chosen, is never the `EntryMode` of an instance on the Challenge account.
 
 ### 13.2 Reliability thresholds
@@ -869,6 +918,7 @@ Every quarter, re-run the backtest including the latest data and compare live re
 1. On what date did you buy the Challenge? It decides which option in section 15.7 is open to you.
 2. Will this account be used only by the bot?
 3. Index CFDs (for example US500 and US100) for the Breakout mode (v0.10). They are not part of v0.10: the bot accepts only symbols that start with six letters, and an index needs its own news currency, exposure cap, stop and spread values. To add them, the developer needs the symbol line the cBot prints at start on your FTMO cTrader account for each index (name, digits, tick size, lot size, volume steps, commission, sessions).
+4. Which acceptance marks does a mode pass that runs on one symbol (SessionRange on gold, 13.1)? The search measured it once on the holdout already, so the holdout of 12.1 is no longer unused for this rule: the remaining clean evidence is a forward test on the Free Trial or a demo account.
 
 **Resolved:** account (FTMO 2-Step, Swing, cTrader, 100,000 USD, bought and not started), symbols (four majors, plus gold from v0.9), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
 
