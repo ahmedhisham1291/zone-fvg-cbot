@@ -303,7 +303,7 @@ Chosen with `EntryMode` = ZoneFvg and `EntryModel` = Choch. `EntryModel` = Choch
 
 - **Entry:** buy limit at the broken swing high (the CHoCH level, marked BRK in the owner's charts). The order fills on the retest.
 - **Stop:** the lowest low from the touch bar to the confirming bar (normally the sweep low), minus `StopBufferAtr` (0.1) x ATR(M15). With `ChochStopAtDistal` = true (default false; **proposal**) the lower of that low and the zone's distal line is used, as in the Fvg model. The owner's examples had stops of 7 to 13 pips. For sells the spread is added as in 3.5.
-- **Target:** just before the next opposing level: the nearest of the proximal lines of the active and touched supply zones and the confirmed H4 swing highs (3.2 step 2) that lie above the entry, minus `ChochTargetBufferAtr` (0.1; **proposal**) x ATR(H4). When there is none, entry + `RewardRisk` (2.0) x stop distance (**proposal**).
+- **Target:** just before the next opposing level: the nearest of the proximal lines of the active and touched supply zones and the confirmed H4 swing highs (3.2 step 2) that no later H4 bar has closed above (a broken high is no longer resistance; 23 November 2026) and that lie above the entry, minus `ChochTargetBufferAtr` (0.1; **proposal**) x ATR(H4). When there is none, entry + `RewardRisk` (2.0) x stop distance (**proposal**).
 - **Order expiry:** `EntryExpiryBars` (8 bars, 2 hours; **proposal**: the same value as the Fvg model), shortened if a news window starts sooner (section 6).
 
 **Skipped when** (besides the checks of 3.6 that apply):
