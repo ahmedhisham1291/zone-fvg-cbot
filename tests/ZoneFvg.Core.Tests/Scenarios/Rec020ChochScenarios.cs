@@ -183,7 +183,7 @@ public class Rec020ChochScenarios
         string stranger = Assert.Single(core.LastReport!.Strangers);
         Assert.StartsWith(id.ToString(CultureInfo.InvariantCulture) + " (parameter hash " + RecoveryData.Hash + " differs)", stranger, StringComparison.Ordinal);
         Assert.Empty(core.LastReport.PositionsAdopted);
-        Assert.NotEqual(RecoveryData.Hash, Data.Hash);
+        Assert.NotEqual(Data.Hash, RecoveryData.Hash);
         ScenarioAssert.Global(h.Broker);
     }
 
