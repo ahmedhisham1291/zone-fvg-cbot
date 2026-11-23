@@ -163,10 +163,12 @@ step 1).
     If `extract` stops with an error, it says which trade and why. Two runs
     pasted into one file, or a missing trade, are refused on purpose.
 11. Repeat steps 6 to 10 for GBPUSD, USDJPY and AUDUSD, and for XAUUSD
-    (with its own values from step 6). Add `--log xauusd-breakout-dev.csv`
-    (or `--dev xauusd-breakout-dev.csv` for `accept`) to the commands below.
-    Then do steps 6 to 11 again with `EntryMode` = `ZoneFvg`, which gives
-    the files `eurusd-zonefvg-dev.csv` and so on.
+    (with its own values from step 6). With gold, add
+    `--log xauusd-breakout-dev.csv` (or `--dev xauusd-breakout-dev.csv` for
+    `accept`) to the commands below.
+    Then do steps 6 to 10 again for every symbol with `EntryMode` =
+    `ZoneFvg`, which gives the files `eurusd-zonefvg-dev.csv` and so on
+    (with gold, `xauusd-zonefvg-dev.csv`; see step 15 for its benchmark).
 
 ## Part 3. Compute the numbers
 
@@ -215,6 +217,11 @@ of the two modes in one command, except as `--benchmark` in step 15.
     dotnet run --project tools/sim -- accept --dev eurusd-zonefvg-dev.csv --dev gbpusd-zonefvg-dev.csv --dev usdjpy-zonefvg-dev.csv --dev audusd-zonefvg-dev.csv --benchmark eurusd-breakout-dev.csv --benchmark gbpusd-breakout-dev.csv --benchmark usdjpy-breakout-dev.csv --benchmark audusd-breakout-dev.csv --seed 1
     ```
 
+    With gold, the ZoneFvg command also takes
+    `--dev xauusd-zonefvg-dev.csv --benchmark xauusd-breakout-dev.csv`, so
+    that both sides of the benchmark row cover the same five symbols (spec
+    12.1 step 10: the same data).
+
     Optional extra inputs, each made like the development files: `--stress`
     for the cost-stress backtests (spread and commission +50%, step 6),
     `--benchmark` for the benchmark bot (step 10), and at the very end
@@ -222,11 +229,14 @@ of the two modes in one command, except as `--benchmark` in step 15.
     rows as missing (INCOMPLETE), not as passed.
 
     **Read this for the Breakout report.** The Breakout mode has no
-    benchmark yet (spec 12.1 step 10), so its report always shows the rows
-    "Versus benchmark (return-to-drawdown)" with the value "no benchmark log"
-    and the result NOT EVALUATED, and the last line then says
-    `Overall: INCOMPLETE` unless another row fails. That is expected and is
-    not a failure of the other rows. Spec 13.1 says the row "Versus
+    benchmark yet (spec 12.1 step 10). Its report has two rows "Versus
+    benchmark (return-to-drawdown)", both with the result NOT EVALUATED:
+    the Development row with the value "no benchmark log", and the Holdout
+    row with the value "no holdout log" (after a holdout run, "no benchmark
+    log"). The line `Overall: INCOMPLETE` under the table follows from that
+    unless another row fails; after it the report goes on with the section
+    "Challenge simulation used for the two challenge rows". That is
+    expected and is not a failure of the other rows. Spec 13.1 says the row "Versus
     benchmark" is not applied to the Breakout mode; every other row is. So
     judge the Breakout mode by all the other rows.
 
@@ -263,6 +273,17 @@ How to act on it (spec 12.1, 13.1 and 13.4):
 - **Development passes:** robustness, variants, then the holdout, once, and
   for the chosen mode only. Running both modes on the holdout and keeping
   the better one would turn the holdout into a tuning step (spec 13.1).
+- **Holdout benchmark, when ZoneFvg is the chosen mode** (spec 13.1). The
+  ZoneFvg holdout row "Versus benchmark" needs Breakout trade logs of the
+  holdout period. So, after the choice, run the Breakout mode once on the
+  holdout, with the same data and costs and its accepted settings, and
+  give its files as `--benchmark-holdout` (for example
+  `--benchmark-holdout eurusd-breakout-holdout.csv`, one per symbol, beside
+  `--holdout eurusd-zonefvg-holdout.csv`). This run is the benchmark input
+  of that row only: its result changes nothing about the choice and is
+  never used for tuning. When Breakout is the chosen mode, no
+  `--benchmark-holdout` is given and its benchmark rows stay NOT
+  EVALUATED, as in step 15.
 - **Holdout fails:** the strategy is rejected or redesigned; the holdout is
   not used again for tuning.
 
