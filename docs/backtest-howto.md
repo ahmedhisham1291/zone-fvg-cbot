@@ -83,13 +83,20 @@ step 1).
      step 7. With a different starting capital the FTMO emergency guard
      fires at once (10,000 against 100,000 is already 90% below), and from
      WP22 on the bot refuses to start and says why in the Log.
-   - **RiskEpochDate:** the start date of the backtest (step 7). A later
-     date silently switches off the ladder steps and the kill switch; from
-     WP22 on the bot refuses to start with a RiskEpochDate after the
-     backtest's start.
-   - **NewsEnabled:** false, until the developer says the embedded news
-     history is in the bot. Without it, a backtest with the news filter on
-     has no events to block.
+   - **RiskEpochDate:** leave it empty. In a backtest an empty
+     RiskEpochDate means the backtest's first day (its Prague date at the
+     start), so nothing has to be typed (from WP31 on). The `start` line in
+     the Log shows that day as `riskEpoch=yyyy-MM-dd`. You can still set it
+     by hand for a run with a different epoch: it must not be after the
+     backtest's start (step 7), or the bot refuses to start; a later date
+     would silently switch off the ladder steps and the kill switch.
+   - **NewsEnabled:** leave it at the default (true). While the news history
+     embedded in the bot has no events, the bot switches the news filter off
+     for that backtest by itself (from WP31 on): the `start` line shows
+     `news=disabled`, and one line before it says
+     `ZFVG adapter news filter off for this backtest: the embedded news history has no events`.
+     Once the history has events, the filter works as set. You can still
+     set NewsEnabled to false by hand for a run without the news filter.
    - **DrawObjects:** true only if you want to see the zones and gaps on the
      chart; it needs Visual mode on (step 7). The drawings exist in ZoneFvg
      mode only: in Breakout mode the bot keeps no zones and no gaps, so
