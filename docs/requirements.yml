@@ -1768,7 +1768,7 @@ requirements:
     wp: WP35
     spec: "3.8, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       SessionRange in the cBot. EntryMode accepts SessionRange. The group
       "Entry mode" gains RangeStartNy "19:00", RangeEndNy "03:00",

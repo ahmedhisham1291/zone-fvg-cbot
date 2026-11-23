@@ -47,10 +47,12 @@ also checks: the first adapter line now ends with `, mode Breakout` or
 
 Open the instance's parameter panel.
 
-Expected: a group **Entry mode** with five parameters and these defaults:
+Expected: a group **Entry mode** with eleven parameters and these defaults:
 `EntryMode` Breakout, `BreakoutEntryBufferAtr` 0.1, `BreakoutStopAtr` 1.0,
-`TrendSlowEmaPeriod` 200, `BreakoutLastConfirmUtc` 08:00 (the last two added
-by WP32).
+`TrendSlowEmaPeriod` 200, `BreakoutLastConfirmUtc` 08:00 (these two added
+by WP32), `RangeStartNy` 19:00, `RangeEndNy` 03:00, `RangeLastEntryNy`
+12:00, `RangeExitNy` 16:30, `RangeMinWidthAtr` 0.5, `RangeStopAtr` 1.0
+(these six added by WP35 for the SessionRange mode).
 The groups Signal, Execution, Risk, News and Operations are unchanged.
 
 Observed: (fill in)
@@ -98,8 +100,8 @@ Stop the instance between the runs, and start it after each change. Put the
 value back afterwards.
 
 a. `EntryMode` = `Abc`. Expected: `ZFVG adapter refused to start: invalid
-   parameter: EntryMode must be one of: ZoneFvg, Breakout. (Parameter
-   'EntryMode')`, then the instance stops. No order is placed.
+   parameter: EntryMode must be one of: ZoneFvg, Breakout, SessionRange.
+   (Parameter 'EntryMode')`, then the instance stops. No order is placed.
 b. `EntryMode` = Breakout, `BreakoutStopAtr` = 0. Expected:
    `ZFVG adapter refused to start: invalid parameter: BreakoutStopAtr:
    StopAtrMult must be a finite number greater than zero but was 0.
@@ -154,16 +156,18 @@ the instance once with it.
 Expected: no "Invalid .cbotset file format" message; the bot does not refuse
 to start (a refusal would name the parameter); the first adapter line names
 the symbol of the file and ends with `mode Breakout`; the `hash=` of the
-core `start` line is `8aa3f28a` for the four forex files and `4af5c9fc` for
-gold. A file without the two filter lines gives the same hashes, because the cBot defaults are 200 and 08:00; only `TrendSlowEmaPeriod=0` and `BreakoutLastConfirmUtc=17:00` give the hashes from before WP32, `119a3864` and `66c5a44e`. Because the bot refuses to start while `RiskEpochDate` is empty or
+core `start` line is `8aa3f28a` for the four forex files and `fbdef461` for
+gold (from WP35 on: the gold file has `MinStopPips=8.0` and
+`MaxSpreadPips=0.4`; with the old 800 and 40 it was `4af5c9fc`). A file without the two filter lines gives the same hashes, because the cBot defaults are 200 and 08:00; only `TrendSlowEmaPeriod=0` and `BreakoutLastConfirmUtc=17:00` give the hashes from before WP32, `119a3864` and, for the gold file of WP35, `f900f393` (`66c5a44e` with the old gold values). Because the bot refuses to start while `RiskEpochDate` is empty or
 invalid, a start proves that the file was read (`deploy/README.md`, fact 4).
 
-The five lines of the group Entry mode carry the default values, so a start with the files as
+The eleven lines of the group Entry mode carry the default values, so a start with the files as
 they are cannot show that their names are read. Therefore, once more: make
 a copy of the EURUSD file with `EntryMode=ZoneFvg` and start the instance
 with it. Expected: the first adapter line ends with `mode ZoneFvg`, the core
 `start` line has no `mode=` field, and its `hash=` is `f681dff2`. Do the
-same with the gold file: `mode ZoneFvg` and `hash=8793fa69`.
+same with the gold file: `mode ZoneFvg` and `hash=05ee8872` (`8793fa69` with the
+old gold values 800 and 40).
 
 How the hashes were found: the core's own rule
 (`src/ZoneFvg.Core/Execution/ParameterHash.cs`), applied to the values of

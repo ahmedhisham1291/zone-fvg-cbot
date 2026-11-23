@@ -38,7 +38,7 @@ namespace cAlgo.Robots
         // Parameter attribute (Name, DefaultValue, Group): https://help.ctrader.com/ctrader-algo/references/Attributes/ParameterAttribute/
         // Parameter types: https://help.ctrader.com/ctrader-algo/guides/parameter-types
 
-        /// <summary>Entry mode of this instance, Breakout or ZoneFvg (PLT-012, spec 3.7 and 7).</summary>
+        /// <summary>Entry mode of this instance, Breakout, ZoneFvg or SessionRange (PLT-012, PLT-015, spec 3.7, 3.8 and 7).</summary>
         [Parameter("EntryMode", DefaultValue = "Breakout", Group = "Entry mode")]
         public string EntryMode { get; set; } = "Breakout";
 
@@ -57,6 +57,30 @@ namespace cAlgo.Robots
         /// <summary>Latest close time of a confirming bar, UTC, HH:mm; equal to SessionEndUtc switches it off (SIG-029, spec 3.7).</summary>
         [Parameter("BreakoutLastConfirmUtc", DefaultValue = "08:00", Group = "Entry mode")]
         public string BreakoutLastConfirmUtc { get; set; } = "08:00";
+
+        /// <summary>SessionRange: start of the range window, New York time, HH:mm (PLT-015, SIG-031, spec 3.8).</summary>
+        [Parameter("RangeStartNy", DefaultValue = "19:00", Group = "Entry mode")]
+        public string RangeStartNy { get; set; } = "19:00";
+
+        /// <summary>SessionRange: end of the range window, New York time, HH:mm (PLT-015, SIG-031, spec 3.8).</summary>
+        [Parameter("RangeEndNy", DefaultValue = "03:00", Group = "Entry mode")]
+        public string RangeEndNy { get; set; } = "03:00";
+
+        /// <summary>SessionRange: the day's order ends, New York time, HH:mm (PLT-015, SIG-032, spec 3.8).</summary>
+        [Parameter("RangeLastEntryNy", DefaultValue = "12:00", Group = "Entry mode")]
+        public string RangeLastEntryNy { get; set; } = "12:00";
+
+        /// <summary>SessionRange: an open position is closed, New York time, HH:mm (PLT-015, EXE-025, spec 3.8).</summary>
+        [Parameter("RangeExitNy", DefaultValue = "16:30", Group = "Entry mode")]
+        public string RangeExitNy { get; set; } = "16:30";
+
+        /// <summary>SessionRange: smallest range in ATR(D1) (PLT-015, SIG-031, spec 3.8).</summary>
+        [Parameter("RangeMinWidthAtr", DefaultValue = 0.5, Group = "Entry mode")]
+        public double RangeMinWidthAtr { get; set; }
+
+        /// <summary>SessionRange: stop distance in ATR(H4) (PLT-015, SIG-032, spec 3.8).</summary>
+        [Parameter("RangeStopAtr", DefaultValue = 1.0, Group = "Entry mode")]
+        public double RangeStopAtr { get; set; }
 
         /// <summary>Trend filter timeframe (SIG-005). Fixed: D1.</summary>
         [Parameter("BiasTimeFrame", DefaultValue = "D1", Group = "Signal")]
@@ -346,7 +370,7 @@ namespace cAlgo.Robots
                 parameters = BuildParameters(isBacktest);
                 parameters.Validate(isBacktest);
 
-                // PLT-012: the breakout values are checked in both modes by the core's own method; they are
+                // PLT-012: the breakout values are checked in every mode by the core's own method; they are
                 // passed to the core in Breakout mode only.
                 BuildBreakout(parameters.Execution).Validate();
                 _core = Create(parameters, isBacktest);
@@ -548,6 +572,10 @@ namespace cAlgo.Robots
             // The signal texts are parsed before the time texts, as before PLT-012, so the order of the refusals is unchanged.
             SignalParameters signal = BuildSignal();
             ExecutionParameters execution = BuildExecution();
+
+            // PLT-015: the six range values are parsed and checked in every mode, with the names cTrader
+            // shows; they are passed to the core in SessionRange mode only.
+            SessionRangeParameters sessionRange = SessionRangeText.Build(RangeStartNy, RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr, RangeStopAtr);
             string newsHistory = isBacktest ? ReadNewsHistory() : string.Empty;
             return new BotParameters
             {
@@ -555,14 +583,17 @@ namespace cAlgo.Robots
                 Signal = signal,
                 Execution = execution,
 
-                // PLT-012: the mode selects whether the breakout parameters are passed; the core checks their values.
-                // A mode the adapter does not know is refused, never run as ZoneFvg.
+                // PLT-012, PLT-015: the mode selects whether the breakout or the session range parameters are
+                // passed, never both; the core checks their values. A mode the adapter does not know is refused,
+                // never run as ZoneFvg.
                 Breakout = mode switch
                 {
                     CoreEntryMode.Breakout => BuildBreakout(execution),
                     CoreEntryMode.ZoneFvg => null,
-                    _ => throw new ArgumentException(nameof(EntryMode) + " must be one of: ZoneFvg, Breakout.", nameof(EntryMode)),
+                    CoreEntryMode.SessionRange => null,
+                    _ => throw new ArgumentException(nameof(EntryMode) + " must be one of: ZoneFvg, Breakout, SessionRange.", nameof(EntryMode)),
                 },
+                SessionRange = mode == CoreEntryMode.SessionRange ? sessionRange : null,
                 Risk = BuildRisk(isBacktest),
                 News = BuildNews(isBacktest, newsHistory),
 

@@ -157,6 +157,14 @@ parameter panel, start it.
 when the bot is flat on that symbol (`deploy/README.md`, section "Entry
 mode").
 
+Do not change `EntryMode` while the instance has an order or a position.
+This matters most for SessionRange (spec 3.8): its position is closed at
+`RangeExitNy` (16:30 New York) only by an instance that runs in
+SessionRange mode. If the instance starts in another mode while a
+SessionRange position (label with `RH-` or `RL-`) is open, the position
+keeps its stop loss, its take profit and the Friday close, but nothing
+closes it at 16:30 New York.
+
 ## 6. Weekly checks (Saturday)
 
 | # | Check | How | Action if wrong |
