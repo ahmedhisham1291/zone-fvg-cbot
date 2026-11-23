@@ -14,10 +14,12 @@ Read this file fully before doing anything. Then read, in this order:
 ## What this project is
 
 A cTrader cBot (C#) that trades four forex pairs and gold in the direction
-of the D1 trend, one instance per symbol, with one of two entry modes per
+of the D1 trend, one instance per symbol, with one of three entry modes per
 instance (spec v0.10): a breakout of the previous day's range, entered with
-a stop order (Breakout, the default), or higher-timeframe supply and demand
-zones with a lower-timeframe fair value gap entry (ZoneFvg).
+a stop order (Breakout, the default), higher-timeframe supply and demand
+zones with a lower-timeframe fair value gap entry (ZoneFvg), or a break of
+the Asian-session range on the side of the D1 trend (SessionRange, added on
+23 November 2026).
 
 | Path | Content |
 |---|---|
