@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.10 · 22 November 2026 (v0.9 of 17 November 2026, with the owner's request of 22 November 2026 for a breakout entry mode)
+Version 0.11 · 23 November 2026 (v0.10 of 22 November 2026, with the owner's answers of 23 November 2026 on his manual supply and demand method: a second entry model for the ZoneFvg mode, section 3.9)
 
 ## 0. What changed in v0.2
 
@@ -57,12 +57,13 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | L. A backtest runs with the defaults (added on 23 November 2026, owner request) | In a backtest an empty `RiskEpochDate` means the backtest's first day, and `NewsEnabled` has no effect while the embedded news history has no events. Live, both stay as before: `RiskEpochDate` must be set and the news filter blocks without a calendar | 7 |
 | M. Breakout filters (added on 23 November 2026, owner request after the first backtests) | Breakout trades only when the D1 EMA(50) is on the trade's side of the D1 EMA(200), and only on a breakout confirmed by a bar that closes before 08:00 UTC. Both are cBot settings; 0 and 17:00 switch them off | 3.1, 3.7, 7 |
 | N. SessionRange mode (added on 23 November 2026, owner request after the strategy search) | A third entry mode: a stop order at the edge of the Asian-session range (19:00 to 03:00 New York) on the side of the D1 trend, when the range is at least half a daily ATR wide; stop 1.0 x ATR(H4), target 2R, the order ends at 12:00 New York and an open position is closed at 16:30 New York. It was the only rule of the search that held on the years the search had not used, and only on gold. Breakout stays the default. Gold's smallest stop and widest spread are restated in the platform's pip of 1 USD: 8 and 0.4 | 3, 3.6, 3.8, 5.5, 7, 13.1, 14 |
+| O. CHoCH entry model (v0.11, owner's answers of 23 November 2026) | In ZoneFvg mode the entry trigger at a touched H4 zone is chosen with `EntryModel`: **Fvg** (sections 3.4 and 3.5, unchanged, the default until the owner switches after a backtest) or **Choch** (new, 3.9): at an H4 demand zone an M15 bar closes above the most recent M15 swing high (the change of character), and a buy limit waits at that broken level for the retest; the stop goes just below the lowest low since the touch; the target is just before the next opposing H4 zone or swing level and the trade is skipped when that gives less than 1:2. Supply zones mirror it. The direction comes from the zone. All day: `SessionStartUtc` 00:00 and `SessionEndUtc` 24:00 are accepted, and the owner's choice for Choch is all day; the Friday and news rules stay. No trailing stop. Values marked "proposal" in 3.9 and 7 wait for the owner's confirmation | 3.3, 3.6, 3.9, 5.1, 5.2, 6.1, 7, 14 |
 | Proposed, marked in the plan pull request | Breakout values: entry buffer 0.1 x ATR(M15), stop 1.0 x ATR(H4), target 2R, order life 8 bars. No trailing stop in the baseline (it is the first variant to test). Symbols unchanged; index CFDs are an open question | 3.7, 7, 12.4, 14 |
 | FTMO wording | The gap-trading rule is restated as FTMO's page reads on 22 November 2026: two separate situations joined by "or" | 15.2 |
 
 ## 1. Purpose and scope
 
-A cTrader cBot that trades four forex pairs and gold (XAUUSD) in the direction of the higher-timeframe trend, with one of three entry modes per instance (section 3). **Breakout** (the default from v0.10) enters with a stop order after an M15 bar closes beyond the previous day's range. **ZoneFvg** waits for price to return to a higher-timeframe supply or demand zone, then enters on a lower-timeframe fair value gap (FVG).
+A cTrader cBot that trades four forex pairs and gold (XAUUSD) in the direction of the higher-timeframe trend, with one of three entry modes per instance (section 3). **Breakout** (the default from v0.10) enters with a stop order after an M15 bar closes beyond the previous day's range. **ZoneFvg** waits for price to return to a higher-timeframe supply or demand zone, then enters on a lower-timeframe fair value gap (FVG), or, with `EntryModel` = Choch (v0.11), on the retest of a lower-timeframe change of character (section 3.9).
 
 **In scope (v1)**
 
@@ -100,7 +101,8 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 | Bias timeframe | D1 | Decided. Trend filter |
 | Zone timeframe | H4 | Decided. Higher-timeframe zones |
 | Entry timeframe | M15 (the chart the bot runs on) | Decided. Lower-timeframe FVG |
-| Trading window | 07:00 to 17:00 UTC | Assumed. London and New York sessions |
+| Trading window | 07:00 to 17:00 UTC; 00:00 to 24:00 (all day) for the Choch entry model | 07:00 to 17:00 assumed (London and New York sessions). All day for Choch: owner's answer of 23 November 2026 (3.9) |
+| Entry model in ZoneFvg mode | `Fvg` (default) or `Choch` (v0.11) | Owner's answers of 23 November 2026. Section 3.9. Fvg stays the default until the owner switches after the backtest of both |
 | Account | FTMO 2-Step Challenge, Swing type, cTrader, 100,000 USD simulated capital, used only by this bot | Decided and already bought (section 15). Manual trades on the same symbols would confuse recovery |
 | Language | C# in cTrader Algo | Widest documentation and examples |
 | Hosting | Stage 1: your laptop on a demo account for a few days. Stage 2: rented Linux VPS, cTrader CLI in Docker | Decided. See section 10 |
@@ -112,6 +114,8 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 All rules are evaluated on **closed bars only**. Long rules are shown; short rules are the mirror image. ATR means ATR(14) on the timeframe named.
 
 **Two entry modes (v0.10).** An instance runs in one mode, set by `EntryMode` and fixed while it runs. Sections 3.1 (bias), 3.3 (two layers) and 3.6 (skips), and everything from section 4 on, apply to both modes. Sections 3.2, 3.4 and 3.5 describe the ZoneFvg mode. Section 3.7 describes the Breakout mode, in which no zones are detected.
+
+**Entry model of the ZoneFvg mode (v0.11, added on 23 November 2026).** Inside ZoneFvg mode, `EntryModel` chooses the trigger at a touched zone: `Fvg` (3.4 and 3.5, the default) or `Choch` (3.9). Zone detection (3.2), the two layers (3.3) and everything from section 4 on are shared; 3.9 lists what differs.
 
 **SessionRange mode (added on 23 November 2026).** A third mode, described in 3.8. What the paragraph above says about both modes holds for it too; sections 3.2, 3.4, 3.5 and 3.7 do not describe it.
 
@@ -202,6 +206,8 @@ Every skip is logged with its reason.
 
 In Breakout mode the two zone checks (the gap of at least 3 x the spread from 3.4, and the room to an opposing zone) do not apply, and section 3.7 adds two of its own. The stop bounds and the cost check apply as written.
 
+With the Choch entry model (3.9) the gap check and the room check do not apply either; the reward check of 3.9 takes the place of the room check, and the smallest stop is `ChochMinStopPips`.
+
 ### 3.7 Breakout mode (v0.10)
 
 Chosen with `EntryMode` = Breakout, the default. It follows the D1 trend into a break of the previous day's range. The reason for the mode is in the plan pull request of 22 November 2026: published evidence supports trend and momentum continuation better than gap-fill entries. For this bot it is unproven until section 12 says otherwise.
@@ -276,6 +282,40 @@ Chosen with `EntryMode` = SessionRange. It follows the D1 trend into a break of 
 **What stays the same.** One position or pending order per symbol, sizing and the ladder, every account limit and circuit breaker, the session and Friday rules, the news windows, idempotent placement, recovery, Friday close, alerts and the simulation tools.
 
 **What the search measured.** Gold, 6 May 2020 to 22 November 2026, with the rules of this section, gold's smallest stop of 8 USD, an assumed spread of 0.30 USD and no news filter: 202 trades, 55% winners, +0.28R per trade, +56R, largest drawdown 9.4R; +12R in the development years (to October 2024) and +44R in the holdout. With cTrader's own way of filling orders in a backtest the total is +44R. The live bot will differ again: the news filter shortens orders on days with news, and spreads vary.
+
+### 3.9 CHoCH entry model (v0.11, owner's answers of 23 November 2026)
+
+Chosen with `EntryMode` = ZoneFvg and `EntryModel` = Choch. `EntryModel` = Choch with another `EntryMode` is refused at start, because the default `EntryMode` is Breakout and a backtest must not run another rule than the one chosen. The reason for the model: the backtests of the Fvg model showed no edge on EURUSD 2023–2026 (11 trades, +2.2R; with looser values 35 trades, +0.1R), and the owner traded supply and demand by hand with success. He sent 10 annotated TradingView charts and answered the developer's reading of them on 23 November 2026. This section is that method written as rules. For this bot it is unproven until section 12 says otherwise. Long rules are shown; short rules are the mirror image.
+
+**What the owner confirmed.** He trades all pairs (the Dollar Index on one chart was an example, not a filter). Zones are H4 supply and demand; the trade direction comes from the zone: demand gives a buy, supply a sell. The trigger is the change of character ("CHoCH") seen on M15 at the zone; the entry is the retest of the broken level; the stop is beyond the extreme of the move; the target is "before the next supply/demand but at least taking 1:2"; trading all day, with the Friday and news rules kept; no trailing stop.
+
+**Zones.** The zones of 3.2 with the same parameters (a base before an impulse that breaks structure), the same states, supersede rule, invalidation and age (3.3). Only the confirmation window differs: `ChochWindowBars` (32 M15 bars, 8 hours; **proposal**) from the touch bar, which is bar 0. Two more zone types from the owner's charts, a broken swing level that flipped (support becomes resistance and the reverse) and an H4 fair value gap, are **not** part of this version: they need new detection, new ids and their own supersede rules, and are planned as a second work package after the first backtest of this model shows whether the trigger works on the zones of 3.2.
+
+**Bias.** With `ChochUseBias` = false (default; **proposal**, following "the direction comes from the zone") the D1 bias is not read. With true, a zone whose type does not match the bias of 3.1 gives no signal, as in the Fvg model.
+
+**M15 swings.** The swing rule of 3.2 step 2 applied to M15 bars: a swing high is an M15 bar whose high is above the highs of `SwingStrength` (3) bars on each side, confirmed when the third bar to its right has closed, kept while it is among the last 100 M15 bars. Swing lows mirror it.
+
+**Change of character (the trigger).** At each M15 close inside the window of a touched demand zone, take the most recent confirmed M15 swing high: in the owner's charts, the lower high where the last leg down into the zone started. The bar confirms a change of character when it **closes** above that swing high and no bar since the swing high has closed above it. If the most recent swing high was already closed above, the bar confirms nothing (an older swing is not tried). The first such bar of the window is used; a window without one ends the zone (Used). Each zone gives at most one signal.
+
+**Sweep.** In the owner's charts price often first takes out a recent M15 swing low (marked X) before the change of character, but not always. A sweep is a bar, from the touch bar to the confirming bar, whose low goes below the most recent confirmed M15 swing low. With `RequireSweep` = false (default) a sweep is not needed and the journal says whether there was one, so one backtest shows both groups; with true a change of character without a sweep does not count.
+
+**Order levels (buy).**
+
+- **Entry:** buy limit at the broken swing high (the CHoCH level, marked BRK in the owner's charts). The order fills on the retest.
+- **Stop:** the lowest low from the touch bar to the confirming bar (normally the sweep low), minus `StopBufferAtr` (0.1) x ATR(M15). With `ChochStopAtDistal` = true (default false; **proposal**) the lower of that low and the zone's distal line is used, as in the Fvg model. The owner's examples had stops of 7 to 13 pips. For sells the spread is added as in 3.5.
+- **Target:** just before the next opposing level: the nearest of the proximal lines of the active and touched supply zones and the confirmed H4 swing highs (3.2 step 2) that lie above the entry, minus `ChochTargetBufferAtr` (0.1; **proposal**) x ATR(H4). When there is none, entry + `RewardRisk` (2.0) x stop distance (**proposal**).
+- **Order expiry:** `EntryExpiryBars` (8 bars, 2 hours; **proposal**: the same value as the Fvg model), shortened if a news window starts sooner (section 6).
+
+**Skipped when** (besides the checks of 3.6 that apply):
+
+- The reward is under `MinRewardRisk` (2.0, the owner's minimum of 1:2): target distance divided by stop distance, on the signal's own levels.
+- The stop is under `ChochMinStopPips` (5 pips; **proposal**) or over `MaxStopAtr` (2.0) x ATR(H4). The cost check (3.6) still applies and is in practice the stricter floor on small stops: at a spread plus commission of about 0.7 pips on EURUSD, a stop must be at least about 7 pips to pass `CostToRiskMax` (10%). The size cap is not changed either: at the ladder's usual 0.30% risk a EURUSD stop under about 6 pips needs more than `MaxVolumeUnits` (500,000 units) and is skipped with an alert (4.3); at 0.5% the limit is about 10 pips. Both caps are the owner's money decisions and stay as they are.
+- The confirming bar overlaps a news window (section 6.1).
+- Price is already back at the entry when the order is about to be placed.
+
+**What stays the same.** One position or pending order per symbol, sizing and the ladder, every account limit, circuit breaker and sanity cap (including `MaxVolumeUnits`), the Friday rules, the news windows, idempotent placement, recovery, Friday close, alerts and the simulation tools. A trade ends at its stop, its target or the Friday close.
+
+**Trading window.** The owner trades all day. `SessionStartUtc` = 00:00 and `SessionEndUtc` = 24:00 is accepted from v0.11 and is the setting for this model in the parameter files and the backtest guide. The cBot's default stays 07:00 to 17:00, because the default model is Fvg.
 
 ## 4. Risk and position sizing
 
@@ -363,7 +403,7 @@ Protection against code errors rather than market risk.
 
 ### 5.1 Filters checked before placing an order
 
-- Time is inside 07:00 to 17:00 UTC, and before `FridayNoEntryUtc` (12:00) on Fridays.
+- Time is inside `SessionStartUtc` to `SessionEndUtc` (07:00 to 17:00 UTC; 00:00 to 24:00 means all day, v0.11), and before `FridayNoEntryUtc` (12:00) on Fridays.
 - Current spread is at most `MaxSpreadPips` (1.5 for the forex pairs, 40 for gold).
 - The symbol's market is open.
 - No existing bot position or pending order on the symbol.
@@ -372,7 +412,7 @@ Protection against code errors rather than market risk.
 
 ### 5.2 Order format
 
-- A pending order with stop loss, take profit and expiry attached at placement: a limit order in ZoneFvg mode, a stop order in Breakout mode (v0.10). These live on the broker's server and keep working when the bot is offline. An order of the other type is never sent: a breakout signal is only ever placed as a stop order and a zone signal only ever as a limit order (fail closed).
+- A pending order with stop loss, take profit and expiry attached at placement: a limit order in ZoneFvg mode (both entry models), a stop order in Breakout mode (v0.10). These live on the broker's server and keep working when the bot is offline. An order of the other type is never sent: a breakout signal is only ever placed as a stop order and a zone signal only ever as a limit order (fail closed).
 - **Label:** `ZFVG|v1|<symbol>|<zoneId>`. Identifies the bot, its version, and the zone. In Breakout mode the breakout id of 3.7 takes the place of the zone id.
 - **Comment:** planned entry, stop, target, risk amount and a short hash of the parameters. This is the trade's memory; it is stored at the broker and comes back in positions and history.
 
@@ -404,6 +444,7 @@ For each symbol, the relevant currencies are its base and quote (EURUSD: EUR and
 - **No new orders** inside a window.
 - **FVG made by news is not a signal:** if any of the three FVG bars overlaps a window, the signal is skipped.
 - **Breakout made by news is not a signal (v0.10):** in Breakout mode, if the confirming bar overlaps a window, the signal is skipped.
+- **CHoCH made by news is not a signal (v0.11):** with the Choch entry model, if the confirming bar overlaps a window, the signal is skipped (**proposal**, the same rule as for a breakout).
 - **Pending orders never sit through news:** when an order is placed, its expiry is set to the earlier of the normal expiry and the next window's start. If that leaves under 15 minutes, the signal is skipped. Because expiry is enforced by the broker, this works even if the bot is offline.
 - **Open positions** are left alone in the baseline; their stops are at the broker. Closing before news is a variant to test (section 12.4).
 
@@ -488,6 +529,14 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | Parameter | Default | Role | Test range |
 |---|---|---|---|
 | EntryMode (new in 0.10) | Breakout | Entry mode of the instance: Breakout, ZoneFvg or SessionRange (section 3) | Both are backtested |
+| EntryModel (new in 0.11) | Fvg | Trigger in ZoneFvg mode: Fvg or Choch (3.9). Choch with another EntryMode is refused | Both are backtested |
+| RequireSweep (new in 0.11) | false | Choch: a sweep of an M15 swing must come before the change of character | Test false and true |
+| ChochWindowBars (new in 0.11) | 32 (proposal) | Choch: M15 bars after the touch in which the change of character must come | Fixed |
+| ChochUseBias (new in 0.11) | false (proposal) | Choch: also require the D1 bias of 3.1 | Test false and true |
+| ChochStopAtDistal (new in 0.11) | false (proposal) | Choch: stop beyond the zone's distal line too, not only beyond the low since the touch | Test false and true |
+| ChochTargetBufferAtr (new in 0.11) | 0.1 (proposal) | Choch: target this far (x ATR H4) before the next opposing level | Fixed |
+| ChochMinStopPips (new in 0.11) | 5 (proposal); gold 3 (proposal) | Choch: smallest allowed stop, in place of MinStopPips | Per symbol |
+| MinRewardRisk (new in 0.11) | 2.0 | Choch: smallest target distance in R (owner: at least 1:2) | Fixed |
 | BreakoutEntryBufferAtr (new in 0.10) | 0.1 | Breakout entry beyond the confirming bar (x ATR M15) | Fixed |
 | BreakoutStopAtr (new in 0.10) | 1.0 | Breakout stop distance (x ATR H4) | **Optimise** (Breakout mode) 0.75 to 1.5, step 0.25 |
 | BiasTimeFrame | D1 | Trend filter timeframe | Fixed |
@@ -526,7 +575,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | MaxEntriesPerSymbolPerDay (new) | 2 | Circuit breaker | Fixed |
 | MaxEntriesPerDay (new) | 6 | Circuit breaker | Fixed |
 | MaxVolumeUnits (new) | 500,000 (5 lots); gold 200 (ounces) | Size sanity cap | Per symbol |
-| SessionStartUtc / SessionEndUtc | 07:00 / 17:00 | Trading window | Fixed |
+| SessionStartUtc / SessionEndUtc | 07:00 / 17:00; 00:00 / 24:00 for Choch (v0.11: 24:00 accepted as the end, not in Breakout mode) | Trading window | Fixed |
 | FridayNoEntryUtc (new) | 12:00 | Last entry time on Friday | Fixed |
 | FridayCloseUtc | 20:00 | Weekend flat time | Fixed |
 | MaxSpreadPips | 1.5; gold 0.4 (a gold pip is 1 USD; written as 40 before) | Spread filter | Per symbol |
@@ -742,7 +791,7 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 
 **Inactivity warning:** an alert after 21 days without a trade, including while halted, because FTMO is reported to close accounts after 30 days without one. Without any trade the count starts no earlier than `RiskEpochDate`, and a restart does not repeat a recent warning (v0.9).
 
-**Zone counts (v0.9):** once a day, how many zones were created and why each zone ended (signalled, no FVG, bias, invalid, expired, superseded), so that the number of signals can be explained.
+**Zone counts (v0.9):** once a day, how many zones were created and why each zone ended (signalled, no FVG, bias, invalid, expired, superseded; with the Choch entry model of 3.9 "no CHoCH" in place of "no FVG"), so that the number of signals can be explained.
 
 **Repeated lines (v0.9):** a condition that lasts (recovery waiting for data, the same error again and again, risk data unavailable) is written to the Log at most once per hour, or once per day for a waiting recovery, with a count of the repeats. The cTrader Log holds a limited number of lines, and the backtest trade list is read from it.
 
@@ -842,6 +891,8 @@ Candidates, in order:
 7. London-only or New York-only entries.
 8. Time stop after 96 bars.
 
+The CHoCH entry model (3.9) is not a variant of this list: it is a second trigger, backtested beside the Fvg model on the same data and costs. Candidate 3 (liquidity sweep) is built into it as `RequireSweep`.
+
 Breakout mode candidates (v0.10), in order:
 
 1. Trailing stop moved at H4 closes, in place of the fixed target.
@@ -873,6 +924,8 @@ The number of variants tried is recorded, because every extra attempt raises the
 If the holdout fails, the strategy is rejected or redesigned; the holdout is not reused for tuning.
 
 **Two entry modes (v0.10).** The development column is applied to each mode separately. A mode may go live only if it passes by itself. For the ZoneFvg mode the benchmark is the Breakout mode (12.1 step 10). For the Breakout mode the row "Versus benchmark" is not applied until a simpler benchmark exists; every other row applies. If both pass, the mode with the better return-to-drawdown ratio on development data is chosen. The holdout is then run once, for the chosen mode only: running both modes on the holdout and keeping the better one would turn the holdout into a tuning step. If the chosen mode is ZoneFvg, its holdout row "Versus benchmark" needs Breakout trade logs of the holdout period: the Breakout mode is then run once on the holdout, after the choice, with the same data and costs and its accepted settings, as the benchmark input of that row only. Its result changes nothing about the choice and is not used for tuning (added on 23 November 2026).
+
+**Two entry models (v0.11).** In ZoneFvg mode the Fvg and the Choch model are judged like two modes: each by itself on the development data, with the Breakout mode as the benchmark of both; the holdout is run once, for the chosen one only.
 
 **A mode on one symbol (added on 23 November 2026).** SessionRange is meant for gold alone at first. The rows "Profitable symbols" and "Share of profit from one symbol" cannot be applied to one symbol, and the trade counts were written for five. Which marks such a mode must pass is the owner's decision before go / no-go 1 and is open (section 14, question 4). Until it is made, the mode is not accepted.
 
@@ -921,6 +974,8 @@ Every quarter, re-run the backtest including the latest data and compare live re
 2. Will this account be used only by the bot?
 3. Index CFDs (for example US500 and US100) for the Breakout mode (v0.10). They are not part of v0.10: the bot accepts only symbols that start with six letters, and an index needs its own news currency, exposure cap, stop and spread values. To add them, the developer needs the symbol line the cBot prints at start on your FTMO cTrader account for each index (name, digits, tick size, lot size, volume steps, commission, sessions).
 4. Which acceptance marks does a mode pass that runs on one symbol (SessionRange on gold, 13.1)? The search measured it once on the holdout already, so the holdout of 12.1 is no longer unused for this rule: the remaining clean evidence is a forward test on the Free Trial or a demo account.
+
+5. The CHoCH entry model (3.9, v0.11): the values marked **proposal** in 3.9 and 7 (`ChochMinStopPips` 5 and gold 3, the stop buffer 0.1 x ATR(M15), `ChochTargetBufferAtr` 0.1, `ChochWindowBars` 32, `ChochUseBias` false, `ChochStopAtDistal` false, the target when no opposing level exists, the order life of 8 bars, the news rule of the confirming bar), and what counts as "the next supply/demand" for the target (here: active or touched opposing H4 zones of 3.2 and confirmed H4 swing levels of the last 100 H4 bars).
 
 **Resolved:** account (FTMO 2-Step, Swing, cTrader, 100,000 USD, bought and not started), symbols (four majors, plus gold from v0.9), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
 

@@ -15,6 +15,11 @@ ZoneFvg are backtested on all five symbols, each as its own series, and each
 is judged by itself (spec 12.1 and 13.1). So you do Parts 2 and 3 twice, once
 per mode. SessionRange is meant for gold alone; its backtest is Part 5.
 
+Inside ZoneFvg mode there are two entry models (spec 3.9, parameter
+`EntryModel`, from WP37 on): **Fvg** (the default, the gap entry) and
+**Choch** (your manual method: the change of character at the zone and the
+retest). Part 6 says how to backtest both side by side.
+
 Why the Log tab: the cBot runs without file access (`AccessRights.None`), so it
 cannot write files itself. During a backtest it prints one line per closed
 trade into the Log, starting with `tradelog seq=`. cTrader's own backtest
@@ -434,3 +439,66 @@ step 4.
     result does not follow the R result one to one.
 23. Send the developer `xauusd-sessionrange-all-log.txt`,
     `xauusd-sessionrange-all.csv` and the settings of step 17.
+
+## Part 6. The two ZoneFvg entry models side by side: Fvg and Choch
+
+Spec 3.9 (v0.11) writes your manual supply and demand method as rules: at an
+H4 zone an M15 bar closes beyond the most recent M15 swing (the change of
+character, CHoCH), a limit order waits at that broken level for the retest,
+the stop goes just beyond the lowest low (highest high for a sell) since the
+zone was touched, and the target sits just before the next opposing H4 zone
+or swing level, with the trade skipped when that gives less than 1:2. The
+cBot runs it only from WP37c on: check that the parameter group **Entry
+model** exists in your cBot before you start.
+
+Both models are backtested with the same build, the same period, data,
+commission and spread, on the **development** period only (before November
+2024, step 7). The holdout is run once, later, for the model that is chosen
+(spec 13.1, "Two entry models").
+
+24. **Series 1: Fvg.** Do Part 2 with `EntryMode` = `ZoneFvg` and
+    `EntryModel` = `Fvg` (the default). Leave `SessionStartUtc` 07:00 and
+    `SessionEndUtc` 17:00. File names as before, for example
+    `eurusd-zonefvg-dev.csv`. If you already have these files from a build
+    before WP37, run them again with the new build anyway: the parameter
+    hash in the `start` line must be the same as before for the Fvg model;
+    if it is not, tell the developer.
+25. **Series 2: Choch.** Do Part 2 again with exactly these values
+    different from the defaults (besides the gold values of step 6):
+    - **EntryMode:** `ZoneFvg` (with `Breakout`, the default, the bot
+      refuses to start when `EntryModel` is `Choch`, and says why).
+    - **EntryModel:** `Choch`
+    - **SessionStartUtc:** `00:00` and **SessionEndUtc:** `24:00` (you trade
+      all day; the Friday rules and the news filter stay as they are).
+    - Gold only: **ChochMinStopPips** `3` (the gold pip is 1 USD, so 3 USD).
+    Leave the other Choch values at their defaults: `RequireSweep` false,
+    `ChochWindowBars` 32, `ChochUseBias` false, `ChochStopAtDistal` false,
+    `ChochTargetBufferAtr` 0.1, `ChochMinStopPips` 5, `MinRewardRisk` 2.0.
+    Put the model into the file names, for example
+    `eurusd-choch-dev-log.txt` and `eurusd-choch-dev.csv`. The `start` line
+    of the Log ends with `mode=ZoneFvg model=Choch`; check it.
+26. **Warm-up.** As in step 7: start at least 10 months before the period
+    you judge, and check the first `from=Recovering to=Running` line.
+27. **What to look at in the Log.** Every Choch signal line has
+    `kind=choch`, the broken level (`level=`), `sweep=yes` or `sweep=no`,
+    where the target came from (`target=zone:...`, `target=swing:...` or
+    `target=default`) and the planned reward (`rr=`). Skips with
+    `RewardRiskTooLow` are setups whose next opposing level was nearer than
+    2R. Many skips with `CostTooHigh` or `VolumeAboveCap` mean the stops are
+    small: spec 3.9 explains both limits, which stay as they are.
+28. **Compare.** Run `accept` (Part 3) on each series separately, with the
+    Breakout files of the same period as the benchmark, as for ZoneFvg. Put
+    the two results side by side: trades, profit factor after costs,
+    average R, largest drawdown, by symbol. Each model is judged by itself
+    (spec 13.1).
+29. **Optional, one at a time** (spec 7, "Test" column): `RequireSweep`
+    true, `ChochUseBias` true, `ChochStopAtDistal` true. Change one value
+    per run and put it into the file name (for example
+    `eurusd-choch-sweep-dev.csv`). With `RequireSweep` false you can also
+    compare the `sweep=yes` and `sweep=no` trades of one run without a new
+    backtest: send the developer the log. Every extra run is counted as a
+    variant tried (spec 12.4).
+30. Send the developer the logs, the `.csv` files and the settings of step 7
+    for both series. The values marked "proposal" in spec 3.9 are yours to
+    confirm or change (spec 14, question 5); the developer turns your
+    answer into parameter defaults.

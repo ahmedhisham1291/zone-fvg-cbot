@@ -1793,3 +1793,254 @@ requirements:
       only in SessionRange mode, so the hashes of the other modes do not
       change. The start line shows mode SessionRange. Breakout stays the
       default.
+
+  # ---------------------------------------------------------------- CHOCH ENTRY MODEL (spec v0.11, 3.9)
+  - id: SIG-035
+    wp: WP37
+    spec: "3.9, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Entry model (owner's method of 2026-11-23). In ZoneFvg mode the entry
+      trigger at a touched zone is chosen by EntryModel: Fvg (the default,
+      spec 3.4 and 3.5 unchanged) or Choch (spec 3.9). The Choch parameters
+      and their defaults are RequireSweep false, ChochWindowBars 32,
+      ChochUseBias false, ChochStopAtDistal false, ChochTargetBufferAtr 0.1,
+      ChochMinStopPips 5 and MinRewardRisk 2.0. They are checked at start in
+      every mode: ChochWindowBars a whole number from 4 to 96;
+      ChochTargetBufferAtr finite and from 0 to 1; ChochMinStopPips finite
+      and greater than 0; MinRewardRisk finite and from 1 to 10. EntryModel
+      Choch together with EntryMode Breakout or SessionRange is refused at
+      start (fail closed: the default EntryMode is Breakout, and an instance
+      must not run another rule than the one its owner chose). A refusal
+      names the parameter as cTrader shows it, its rule and the rejected
+      value. With EntryModel Fvg every signal, journal line, skip and
+      parameter hash stays bit for bit what it was.
+
+  - id: SIG-036
+    wp: WP37
+    spec: "3.2, 3.3, 3.9"
+    verify: unit
+    status: planned
+    text: >-
+      Zones of the Choch model. Zones are detected, superseded, activated,
+      touched, invalidated and expired exactly as SIG-006 to SIG-015 say,
+      with the same parameters. The confirmation window of a Touched zone is
+      ChochWindowBars M15 bars instead of ConfirmWindowBars: the touch bar is
+      bar 0 and the window ends after bar ChochWindowBars. No fair value gap
+      is searched. A zone produces at most one signal (SIG-018). With
+      ChochUseBias false the zone type alone gives the side (demand: buy,
+      supply: sell) and the bias is not read; with ChochUseBias true a CHoCH
+      at a zone whose type does not match the bias makes the zone Used
+      without a signal, as SIG-018.
+
+  - id: SIG-037
+    wp: WP37
+    spec: "3.9"
+    verify: unit
+    status: planned
+    text: >-
+      Change of character (demand zone, buy). M15 swings are the swings of
+      SIG-006 found on the M15 bars with the same SwingStrength and the same
+      100-bar lookback (SwingDetector). At the close of an M15 bar c1 that
+      lies in the window of a Touched demand zone (bars 0 to
+      ChochWindowBars), let H be the most recent confirmed M15 swing high
+      (latest bar open time) in the swings found on the M15 bars up to and
+      including c1. c1 confirms a change of character when such an H exists,
+      no M15 bar after H's bar and before c1 closed above H's price, and
+      close(c1) is above H's price; above is strict and uses PriceMath with
+      its default tolerance. When the most recent swing high was already
+      closed above, nothing confirms at c1 (no older swing is tried). The
+      first confirming bar of the window is used. When the window ends
+      without a confirmation the zone becomes Used (zone end reason NoChoch).
+      Supply zones (sell) mirror this with swing lows and closes below. With
+      ATR(M15) or ATR(H4) missing, not finite or not greater than zero,
+      nothing confirms at c1 (fail closed) and the window goes on.
+
+  - id: SIG-038
+    wp: WP37
+    spec: "3.9"
+    verify: unit
+    status: planned
+    text: >-
+      Sweep (demand zone, buy). A bar b sweeps when its low is strictly below
+      the price of the most recent confirmed M15 swing low found on the M15
+      bars up to and including b. The setup has a sweep when at least one
+      bar from the touch bar to c1, both included, sweeps. With RequireSweep
+      true a change of character without a sweep confirms nothing at c1 and
+      the window goes on; with RequireSweep false (the default) the sweep is
+      not required and is only reported in the signal (Swept yes or no).
+      Supply zones mirror this with swing highs and highs strictly above.
+
+  - id: SIG-039
+    wp: WP37
+    spec: "3.9"
+    verify: unit
+    status: planned
+    text: >-
+      Choch entry and stop (buy). Entry = H's price, the broken swing level,
+      as a buy limit order. Stop = X - StopBufferAtr x ATR(M15), where X is
+      the lowest low of the M15 bars from the touch bar to c1, both included;
+      with ChochStopAtDistal true X is the lower of that low and the zone's
+      distal line. ATR(M15) and ATR(H4) are the latest values at the close
+      of c1. Sell mirrors this (entry at the swing low's price, X the highest
+      high, the higher of it and the distal line). The signal carries the
+      zone id, side, entry, stop, target (SIG-040), Level (= entry), Swept,
+      the target's source, the close time of c1 and the ATR(H4) used.
+
+  - id: SIG-040
+    wp: WP37
+    spec: "3.9"
+    verify: unit
+    status: planned
+    text: >-
+      Choch target (buy). The opposing levels are the proximal lines of the
+      non-terminal supply zones in the book and the prices of the confirmed
+      H4 swing highs of SIG-006, each only when strictly above the entry
+      (PriceMath). The target is the lowest opposing level minus
+      ChochTargetBufferAtr x ATR(H4); its source is "zone:<id>" or
+      "swing:<yyyyMMdd-HHmm of the swing bar>", and when a zone proximal and
+      a swing price are equal the zone is the source. Without any opposing
+      level the target is entry + RewardRisk x (entry - stop), source
+      "default". The target is computed whatever reward it gives; whether it
+      is enough is the execution layer's check (EXE-028). Sell mirrors this
+      with demand zones, H4 swing lows, the highest level below the entry
+      and the buffer added.
+
+  - id: SIG-041
+    wp: WP37
+    spec: "3.3, 3.9, 9.4"
+    verify: unit
+    status: planned
+    text: >-
+      Choch in the signal engine. With EntryModel Choch the engine runs the
+      zone book of SIG-036 and the rules of SIG-037 to SIG-040 at each M15
+      close, Touched zones in id order, and returns each result as a Signal
+      of Kind Choch with the zone id in ZoneId, no Fvg and the replay flag.
+      SIG-001, SIG-003, SIG-004, SIG-005 and SIG-020 apply unchanged; the
+      warm-up also covers the 100-bar M15 swing lookback plus
+      ChochWindowBars. Determinism (as SIG-002), replay equals live (as
+      SIG-019: the same zones, touch data and signals after T) and mirror
+      symmetry (as SIG-021, Swept and the target source included) hold in
+      this model. A change of character found while the engine is not ready
+      consumes the zone and returns no signal, as in the Fvg model.
+
+  - id: EXE-027
+    wp: WP37
+    spec: "3.9, 5.2"
+    verify: scenario
+    status: planned
+    text: >-
+      Choch order. A signal of Kind Choch is placed as a limit order (buy
+      limit for Buy, sell limit for Sell) with stop loss, take profit and
+      the expiry of EXE-015 attached at placement, label and comment as
+      EXE-008 with the zone id. EXE-007, EXE-009 to EXE-013, EXE-015,
+      EXE-017 and EXE-021 to EXE-023 apply as for a ZoneFvg signal. EXE-022
+      allows a limit order for Kind Choch and still refuses every other
+      combination. Inputs: a Choch signal must have no Fvg and a Level equal
+      to its entry, finite and greater than zero; otherwise it is skipped as
+      InvalidSignal. Entry already reached: directly after EXE-003, a Buy is
+      skipped when the broker's current ask is at or below the order's entry
+      and a Sell when the current bid is at or above it, with the reason
+      EntryAlreadyReached; a bid or ask that is not usable is
+      BrokerDataInvalid, as EXE-019 (d).
+
+  - id: EXE-028
+    wp: WP37
+    spec: "3.6, 3.9"
+    verify: scenario
+    status: planned
+    text: >-
+      Stop and reward checks of a Choch signal. EXE-003 applies with
+      ChochMinStopPips in place of MinStopPips (MaxStopAtr unchanged).
+      EXE-005 and EXE-006 are not applied. Reward check, on the signal's own
+      levels (before EXE-007 and the price grid, as the owner measures 1:2
+      on the chart): with R = abs(entry - stop) and W = abs(target - entry),
+      the signal is skipped when W / R is below
+      MinRewardRisk (PriceMath: a ratio equal to MinRewardRisk passes), with
+      the new reason RewardRiskTooLow, the ratio as the measured value and
+      MinRewardRisk as the limit; the detail names the target's source. The
+      check runs where EXE-006 runs for a ZoneFvg signal. EXE-004, sizing,
+      every account limit and the order of the other checks are unchanged.
+      Signals of the other kinds are not affected.
+
+  - id: EXE-029
+    wp: WP37
+    spec: "5.1, 7"
+    verify: scenario
+    status: planned
+    text: >-
+      All-day session (owner's answer of 2026-11-23). SessionStartUtc may be
+      00:00 and SessionEndUtc may be 24:00 (one whole day), so that 00:00 to
+      24:00 lets EXE-002 pass at every time of day; the end must still be
+      after the start. Every other time stays a time of day from 00:00 up to
+      but not including 24:00. Breakout mode keeps refusing an end of 24:00
+      through its own window check (SIG-024, REC-017); nothing else changes
+      there. The Friday rules (FridayNoEntryUtc, FridayCloseUtc) and the
+      news rules apply as before. In the parameter hash 24:00 is written in
+      the hash's time format ("1.00:00:00"); hashes with other session times
+      do not change.
+
+  - id: NWS-015
+    wp: WP37
+    spec: "3.9, 6.1"
+    verify: unit
+    status: planned
+    text: >-
+      CHoCH bar and news. A Choch signal is skipped when the calendar is
+      unavailable (NWS-008), when server time is inside a news window of its
+      symbol (NWS-009), or when its confirming bar c1, from its close time
+      minus 15 minutes to its close time, overlaps a news window of the
+      symbol; the last case has the new skip reason NewsChochBar. The rules
+      for ZoneFvg and Breakout signals are unchanged.
+
+  - id: OPS-011
+    wp: WP37
+    spec: "11"
+    verify: unit
+    status: planned
+    text: >-
+      Journal for Choch signals. The signal line of OPS-001 for a Choch
+      signal has the same keys in the same order, with zone holding the zone
+      id, zoneProximal and zoneDistal their values, and fvgUpper and
+      fvgLower written as NA, followed by kind=choch, level=<the broken
+      swing level>, sweep=yes or sweep=no, target=<the source of SIG-040>
+      and rr=<W / R of the signal's own levels, invariant format>. The lines
+      of the other kinds are unchanged, byte for byte.
+
+  - id: REC-020
+    wp: WP37
+    spec: "3.9, 8.3"
+    verify: scenario
+    status: planned
+    text: >-
+      Choch across a restart. With EntryModel Choch the bot runs the Choch
+      engine live and in recovery (REC-004); a zone id is known when the
+      replay produced a Choch signal with it, and REC-005 to REC-007 apply
+      unchanged. The parameter hash appends EntryModel=Choch and the seven
+      Choch parameters only in this model, so trades placed under Fvg or
+      other Choch values are strangers, and the hash of the Fvg model stays
+      what it was. A change of character found by the replay is not
+      executable (EXE-001). Fault scenarios 5, 6, 8 and 14 of spec 12.3 also
+      pass in this model, with zero duplicate orders and zero positions
+      without a stop loss. In this model the core's start line ends with
+      mode=ZoneFvg model=Choch.
+
+  - id: PLT-016
+    wp: WP37
+    spec: "3.9, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Choch in the cBot. A new parameter group "Entry model" holds EntryModel
+      "Fvg", RequireSweep false, ChochWindowBars 32, ChochUseBias false,
+      ChochStopAtDistal false, ChochTargetBufferAtr 0.1, ChochMinStopPips 5
+      and MinRewardRisk 2.0; they are checked at start in every mode and a
+      refusal names the parameter as cTrader shows it. SessionStartUtc
+      accepts "00:00" and SessionEndUtc "24:00". What can be tested without
+      cTrader lives in the core and is tested there (parameter texts to the
+      core's parameters, refusal messages, the hash of the Choch model
+      against a hand-computed value, the hashes of the other models and
+      modes unchanged). The parameter files under deploy/params gain the
+      eight lines with their defaults; docs/backtest-howto.md describes the
+      backtest of both models side by side.
