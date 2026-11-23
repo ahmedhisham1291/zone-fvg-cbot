@@ -8,10 +8,11 @@ administrator. Follow the steps in order and do not skip a check.
   [`docs/runbook.md`](../docs/runbook.md).
 - The 14 fault-injection tests you must pass before the Challenge:
   [`docs/test-records/WP11-fault-injection.md`](../docs/test-records/WP11-fault-injection.md).
-- The entry mode (Breakout or ZoneFvg), which mode and values the live
-  files carry, how to change them, and the two records you sign before an
-  instance trades in Breakout mode on the Challenge account: section "Entry
-  mode" below, before Part A.
+- The entry mode (Breakout, ZoneFvg or SessionRange), which mode and values
+  the live files carry, how to change them, the two records you sign before
+  an instance trades in Breakout mode on the Challenge account, and what
+  must happen before SessionRange trades there: section "Entry mode" below,
+  before Part A.
 
 ## How to read this guide
 
@@ -113,17 +114,24 @@ administrator. Follow the steps in order and do not skip a check.
 
 ## Entry mode (spec v0.10)
 
-The bot has two entry modes (spec 3.7 and section 7). Each instance runs
-one of them, chosen with the parameter `EntryMode` at start:
+The bot has three entry modes (spec 3.7, 3.8 and section 7). Each instance
+runs one of them, chosen with the parameter `EntryMode` at start:
 
 - **Breakout** (the default): in the direction of the D1 trend, the bot
   waits for an M15 bar that closes beyond the previous day's high or low
   inside the trading window, then places a stop order beyond that bar.
 - **ZoneFvg**: the zone and fair value gap entry of spec 3.2 to 3.5.
+- **SessionRange** (added on 23 November 2026, spec 3.8): in the direction
+  of the D1 trend, a stop order at the edge of the range that price made
+  from 19:00 to 03:00 New York time. The order ends at 12:00 New York. It is
+  cancelled when price breaks the other edge first (the setup is "void").
+  An open position is closed at 16:30 New York. It is meant for gold only,
+  and it is not accepted yet (see "Before SessionRange trades on the
+  Challenge account" below).
 
 Everything else (sizing, account limits, news, recovery, FTMO guards,
-alerts) is the same in both modes. The five parameters of the group
-"Entry mode" are the first five lines of every file in `deploy/params/`:
+alerts) is the same in all modes. The eleven parameters of the group
+"Entry mode" are the first eleven lines of every file in `deploy/params/`:
 
 | Parameter | Value in the example files | What it does |
 |---|---|---|
@@ -132,18 +140,30 @@ alerts) is the same in both modes. The five parameters of the group
 | `BreakoutStopAtr` | `1.0` | Breakout mode: stop distance from the entry, in ATR(H4) |
 | `TrendSlowEmaPeriod` | `200` | Breakout mode: trend filter. A buy needs the D1 EMA(`BiasEmaPeriod`) above the D1 EMA(`TrendSlowEmaPeriod`), a sell below it (spec 3.1). `0` switches it off. Allowed: 0 or 2 to 10000 |
 | `BreakoutLastConfirmUtc` | `08:00` | Breakout mode: a bar that closes at or after this UTC time confirms nothing and ends the day's breakout (spec 3.7). Equal to `SessionEndUtc` switches it off. Must be after `SessionStartUtc` and not after `SessionEndUtc` |
+| `RangeStartNy` | `19:00` | SessionRange mode: start of the range window, New York time, `HH:mm` |
+| `RangeEndNy` | `03:00` | SessionRange mode: end of the range window, New York time. The window must be at least 16 bars of 15 minutes (4 hours) |
+| `RangeLastEntryNy` | `12:00` | SessionRange mode: the day's order ends at this New York time. Not before `RangeEndNy` |
+| `RangeExitNy` | `16:30` | SessionRange mode: an open position is closed at this New York time. After `RangeLastEntryNy` |
+| `RangeMinWidthAtr` | `0.5` | SessionRange mode: smallest range, in ATR(D1). 0 or more |
+| `RangeStopAtr` | `1.0` | SessionRange mode: stop distance from the entry, in ATR(H4). More than 0 |
 
-The four values after `EntryMode` are checked at start in both modes: an
-invalid value (for example `BreakoutStopAtr` = 0 or `TrendSlowEmaPeriod` = 1)
-makes the bot refuse to start and name the parameter, also with
-`EntryMode=ZoneFvg`. They are used in Breakout mode only; in ZoneFvg mode
-they produce no signal and are not part of the parameter hash. The gold file
-uses the same five values as the forex files.
+The ten values after `EntryMode` are checked at start in every mode: an
+invalid value (for example `BreakoutStopAtr` = 0, `TrendSlowEmaPeriod` = 1,
+`RangeStopAtr` = 0 or `RangeExitNy` = `11:00`) makes the bot refuse to start
+and name the parameter, also in the other modes. The four range times are
+New York wall-clock times, written `HH:mm`, each on a 15-minute boundary,
+and read in the order of the trading day, which starts at 17:00 New York.
+The four breakout values are used in Breakout mode only, the six range
+values in SessionRange mode only; in the other modes they produce no signal
+and are not part of the parameter hash. The gold file uses the same eleven
+values as the forex files.
 
 **Warm-up of the trend filter.** The D1 EMA of period n reads 4 x n closed
 D1 bars, so with `TrendSlowEmaPeriod` 200 the bot needs 801 closed D1 bars
 (about 3.1 years) before it can trade its first breakout; with the filter
-off it needs 201 (`BiasEmaPeriod` 50). The bot loads them from the broker's
+off it needs 201 (`BiasEmaPeriod` 50). ZoneFvg and SessionRange need the
+same 201 D1 bars, and every mode needs 248 H4 and 1968 M15 bars with the
+default values. The bot loads them from the broker's
 history at start. Live this is normally available; if it is not, recovery
 reports the D1 series as a data problem and the bot does not trade (fail
 closed).
@@ -161,7 +181,9 @@ write into the five files:
   values of the backtest run that the acceptance report judged, symbol by
   symbol. In Breakout mode these are `BiasEmaPeriod`, `BreakoutStopAtr` and
   `RewardRisk`; in ZoneFvg mode `BiasEmaPeriod`, `ImpulseAtrMult`,
-  `MinFvgAtr` and `RewardRisk`.
+  `MinFvgAtr` and `RewardRisk`. In SessionRange mode spec 7 fixes the six
+  range values; only `RangeMinWidthAtr` is tested two ways (0 and 0.5). Its
+  file carries the values of the judged run and nothing else differs.
 - Never copy the backtest-only values into a live file. `NewsEnabled`,
   `InitialCapital` and `DrawObjects` stay at their defaults (news on,
   100000, no drawings), and `RiskEpochDate` is the date step 10.3 names,
@@ -178,23 +200,33 @@ characters. It must equal, symbol by symbol, the `hash=` of the accepted
 backtest run of that symbol (the same line in its Log). The hash covers the
 signal and execution values of the files and, in Breakout mode, the breakout
 values with the trading window (`TrendSlowEmaPeriod` and
-`BreakoutLastConfirmUtc` only when they are not switched off); it does not cover the risk and
+`BreakoutLastConfirmUtc` only when they are not switched off); in
+SessionRange mode the six range values. It does not cover the risk and
 news values (`src/ZoneFvg.Core/Execution/ParameterHash.cs`). If a hash
 differs, a value differs from the accepted run: stop that instance and
-compare the files before it trades. For the example files as they are,
-the hashes are `8aa3f28a` (the four forex files) and `4af5c9fc` (gold) in
-Breakout mode, and `f681dff2` and `8793fa69` with `EntryMode=ZoneFvg`. With
-both filters switched off (`TrendSlowEmaPeriod=0`,
-`BreakoutLastConfirmUtc=17:00`) the Breakout hashes are the earlier
-`119a3864` and `66c5a44e`. (Computed with the rule of `ParameterHash`:
+compare the files before it trades. For the example files as they are:
+
+| `EntryMode` | Four forex files | Gold file |
+|---|---|---|
+| `Breakout` | `8aa3f28a` | `fbdef461` |
+| `ZoneFvg` | `f681dff2` | `05ee8872` |
+| `SessionRange` | `3f0f30a3` | `377b6162` |
+| `Breakout` with both filters off (`TrendSlowEmaPeriod=0`, `BreakoutLastConfirmUtc=17:00`) | `119a3864` | `f900f393` |
+
+The gold hashes changed on 23 November 2026 (WP35), because the gold file
+now has `MinStopPips=8.0` and `MaxSpreadPips=0.4` (see "Gold (XAUUSD)").
+With the old values 800 and 40 they were `4af5c9fc`, `8793fa69`,
+`40ff1e5b` and `66c5a44e`. (Computed with the rule of `ParameterHash`:
 SHA-256 of the canonical text, first eight hex characters, with Python's
-hashlib; the forex values are also asserted in
+hashlib. Every value of the table except `f900f393` is also asserted in
+`tests/ZoneFvg.Core.Tests/App/SessionRangeTextTests.cs` and
 `tests/ZoneFvg.Core.Tests/Execution/ParameterHashBreakoutFilterTests.cs`.)
 
 **Check after each start.** The first adapter line ends with the mode, for
 example `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
-In Breakout mode the core `start` line also ends with `mode=Breakout`; in
-ZoneFvg mode it has no `mode=` field.
+In Breakout mode the core `start` line also ends with `mode=Breakout`, in
+SessionRange mode with `mode=SessionRange`; in ZoneFvg mode it has no
+`mode=` field.
 
 **A change of mode is a parameter change.** Change `EntryMode` (or any other
 parameter) only when the bot is flat on that symbol (spec 10.2,
@@ -212,8 +244,15 @@ order of the bot. Why:
   the other mode, because the new mode does not know its zone or breakout.
   In both cases the order is not what the new values would place. So
   before you change a parameter or the mode, wait until no bot order is
-  pending (an entry order lives two hours at most: `EntryExpiryBars` 8 bars
-  of 15 minutes), or cancel it by hand in the cTrader app.
+  pending (a ZoneFvg or Breakout entry order lives two hours at most:
+  `EntryExpiryBars` 8 bars of 15 minutes; a SessionRange order lives until
+  12:00 New York), or cancel it by hand in the cTrader app.
+- The timed exit at `RangeExitNy` (16:30 New York) runs only in an instance
+  in SessionRange mode. A SessionRange position (label with `RH-` or
+  `RL-`) that is open when the instance starts in another mode keeps its
+  stop loss, its take profit and the Friday close, but it is **not** closed
+  at 16:30 New York. So do not change `EntryMode` while the instance has an
+  order or a position.
 
 **Before Breakout mode trades on the Challenge account.** Two records must
 be run and signed by you on a demo or FTMO Free Trial account first
@@ -238,6 +277,29 @@ be run and signed by you on a demo or FTMO Free Trial account first
 
 Until both are signed, no instance trades in Breakout mode on the Challenge
 account.
+
+**Before SessionRange trades on the Challenge account.** SessionRange is not
+accepted (spec 13.1, "A mode on one symbol"). The rows of spec 13.1 were
+written for five symbols, and SessionRange is meant for gold alone. Which
+marks it must pass is your decision, and it is open (spec 14, question 4).
+Until you have decided it and the mode has passed those marks, no instance
+runs with `EntryMode=SessionRange` on the Challenge account. After that,
+these must also be done on a demo or FTMO Free Trial account:
+
+1. The stop-order record
+   [`docs/test-records/WP26-stop-orders.md`](../docs/test-records/WP26-stop-orders.md)
+   (PLT-011), as for Breakout: SessionRange enters with stop orders too.
+2. The gold spread: compare the live XAUUSD spread with `MaxSpreadPips`
+   0.4 (0.40 USD). If the normal spread is above 0.4, every gold entry is
+   blocked (`docs/architecture.md` section 10, row "Gold's stop and spread
+   limits in the platform's pip").
+3. The SessionRange record
+   [`docs/test-records/WP35-session-range.md`](../docs/test-records/WP35-session-range.md).
+
+"What goes live" (spec 13.1) applies to this mode as to the others: the gold
+file carries `EntryMode=SessionRange` only if SessionRange is the accepted
+mode for gold, with the values of the judged run, and the gold instance's
+`hash=` equals that run's (`377b6162` with the example values).
 
 ---
 
@@ -621,7 +683,7 @@ service user.
 | `HeartbeatUrl` | One check per symbol at your heartbeat-monitoring service, so an alert names the symbol that stopped |
 | `ProfitTargetPercent` | 10 in the Challenge, 5 in the Verification |
 
-The five values of the group "Entry mode" and the accepted settings are
+The eleven values of the group "Entry mode" and the accepted settings are
 those of section "Entry mode", "Which mode and which values go live": the
 chosen mode, never simply the default. Leave every other value at the spec
 default. `MaxSpreadPips` is 1.5 for the
@@ -642,8 +704,8 @@ parameter file is a copy of the forex file with exactly these differences:
 
 | Parameter | Forex | Gold | Why |
 |---|---|---|---|
-| `MaxSpreadPips` | 1.5 | 40.0 | Gold's pip is 0.01 USD; a normal gold spread is far above 1.5 such pips |
-| `MinStopPips` | 12.0 | 800.0 | 8.00 USD per ounce |
+| `MaxSpreadPips` | 1.5 | 0.4 | FTMO's cTrader reports a gold pip of 1 USD (spec 7), so 0.4 is a spread of 0.40 USD |
+| `MinStopPips` | 12.0 | 8.0 | 8.00 USD per ounce, in the same 1 USD pip |
 | `MaxVolumeUnits` | 500000.0 | 200.0 | Gold volume is in ounces |
 | `HeartbeatUrl` | one check per symbol | its own check | So an alert names gold |
 
@@ -659,7 +721,8 @@ Before the gold instance trades on the demo account, open the XAUUSD symbol
 information in cTrader and compare it with the adapter's start line
 (`symbol XAUUSD ... pipSize ... digits ... tickSize ... lotSize ...
 commission ... volumeMin ... step ... max ... sessionsAsReported ...`):
-digits, tick size, pip size (0.01 is assumed by the values above), lot size
+digits, tick size, pip size (1, that is 1 USD, is assumed by the values above; if it shows
+0.01, the gold values are 100 times too small: stop and tell the developer), lot size
 (ounces per lot), commission and its type, volume minimum and step, and the
 trading sessions with the daily break. Write them into
 `docs/test-records/WP11-fault-injection.md` with the PLT-010 check.
@@ -700,8 +763,9 @@ Sources: https://docs.docker.com/reference/cli/docker/compose/run/ (the words
 after the service name replace its command); `metadata`:
 https://help.ctrader.com/ctrader-cli/cbots/ ("Read cBot Metadata").
 Expected: the parameter list of ZoneFvgBot (EntryMode, BreakoutEntryBufferAtr,
-BreakoutStopAtr, TrendSlowEmaPeriod, BreakoutLastConfirmUtc, BiasTimeFrame ...
-DrawObjects).
+BreakoutStopAtr, TrendSlowEmaPeriod, BreakoutLastConfirmUtc, RangeStartNy,
+RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr, RangeStopAtr,
+BiasTimeFrame ... DrawObjects).
 If it says the cBot is built for an older .NET: stop here and tell the
 developer.
 
@@ -730,7 +794,7 @@ Sources: https://docs.docker.com/reference/cli/docker/compose/up/ ;
 https://docs.docker.com/reference/cli/docker/compose/logs/
 Press Ctrl+C to stop watching (the bot keeps running). Expected, as in WP08
 record step 1: `ZFVG adapter version ...`, `symbol EURUSD`, `backtest no`,
-`mode Breakout` (or `mode ZoneFvg`): the chosen mode of section "Entry
+`mode Breakout` (or `mode ZoneFvg` or `mode SessionRange`): the chosen mode of section "Entry
 mode"; a core `start` line whose `hash=` equals the accepted run of that
 symbol; a recovery report; state Running (or Blocked with a reason);
 a Telegram "Started" message; no token or address visible in the log.

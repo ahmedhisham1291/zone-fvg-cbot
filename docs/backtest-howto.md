@@ -9,10 +9,11 @@ What happens, in short: you run a backtest in your cTrader app, copy its
 **Log** tab into a text file, and the `sim` tool on your Mac turns that file
 into a trade list and computes the numbers.
 
-The bot has two entry modes (spec v0.10, parameter `EntryMode`): **Breakout**
-(the default) and **ZoneFvg**. Both are backtested, each as its own series,
-and each is judged by itself (spec 12.1 and 13.1). So you do Parts 2 and 3
-twice, once per mode.
+The bot has three entry modes (spec v0.10 and 3.8, parameter `EntryMode`):
+**Breakout** (the default), **ZoneFvg** and **SessionRange**. Breakout and
+ZoneFvg are backtested on all five symbols, each as its own series, and each
+is judged by itself (spec 12.1 and 13.1). So you do Parts 2 and 3 twice, once
+per mode. SessionRange is meant for gold alone; its backtest is Part 5.
 
 Why the Log tab: the cBot runs without file access (`AccessRights.None`), so it
 cannot write files itself. During a backtest it prints one line per closed
@@ -71,6 +72,7 @@ step 1).
    it, with the default parameters, except these (in the instance's parameter
    panel):
    - **EntryMode:** `Breakout` or `ZoneFvg` (exactly so, with this spelling).
+     `SessionRange` is backtested on gold only, as Part 5 describes.
      Run the whole of Part 2 once with `Breakout` and once with `ZoneFvg`,
      with the same period, data, commission and spread in both series. Keep
      the files of the two modes apart: put the mode into every file name,
@@ -108,8 +110,12 @@ step 1).
      chart; it needs Visual mode on (step 7). The drawings exist in ZoneFvg
      mode only: in Breakout mode the bot keeps no zones and no gaps, so
      nothing is drawn.
-   - **Gold (XAUUSD) only:** MaxSpreadPips 40, MinStopPips 800,
-     MaxVolumeUnits 200. Everything else as for the forex pairs.
+   - **Gold (XAUUSD) only:** MaxSpreadPips 0.4, MinStopPips 8,
+     MaxVolumeUnits 200. Everything else as for the forex pairs. FTMO's
+     cTrader reports a gold pip of 1 USD (spec 7), so 0.4 means a spread of
+     0.40 USD and 8 means a stop of 8 USD. (Until 23 November 2026 this
+     guide said 40 and 800, values written for a pip of 0.01 USD. The gold
+     backtests of 22 and 23 November ran with the forex values 12 and 1.5.)
 7. Open the **Backtesting** tab of that instance (to the right of the chart
    tab) and click the cog icon. Settings (spec 12.1):
    - **Data:** tick data from server.
@@ -321,3 +327,93 @@ How to act on it (spec 12.1, 13.1 and 13.4):
 Send the developer the `-dev.csv` files of both modes and the reports,
 together with the settings you used (period, commission, spread, data
 source).
+
+## Part 5. SessionRange on gold
+
+SessionRange (spec 3.8) trades a break of the range that gold made from
+19:00 to 03:00 New York time, on the side of the D1 trend. It comes from the
+strategy search of 23 November 2026 (`research/search/REPORT-2026-11-23.md`).
+This backtest checks that the bot trades the rule as the search did. It is
+**not** the acceptance of the mode: which marks a one-symbol mode must pass
+is your open decision (spec 13.1, "A mode on one symbol", and spec 14,
+question 4). Until you decide it, the mode is not accepted. The period below
+includes the holdout years. The search has already looked at them once, so
+this run uses nothing new (spec 14, question 4).
+
+Write what you see into the record
+[`docs/test-records/WP35-session-range.md`](test-records/WP35-session-range.md),
+step 4.
+
+16. Open an **M15** chart of **XAUUSD** and add an instance of `ZoneFvgBot`
+    with the default parameters, except exactly these three:
+    - **EntryMode:** `SessionRange`
+    - **MinStopPips:** `8`
+    - **MaxSpreadPips:** `0.4`
+
+    Leave the six range values at their defaults: `RangeStartNy` 19:00,
+    `RangeEndNy` 03:00, `RangeLastEntryNy` 12:00, `RangeExitNy` 16:30,
+    `RangeMinWidthAtr` 0.5, `RangeStopAtr` 1.0. Leave `InitialCapital`
+    (100000), `RiskEpochDate` (empty) and `NewsEnabled` (true) as in step 6.
+    The news filter is then off for this run, as in the search (the `start`
+    line shows `news=disabled`). You may also set `MaxVolumeUnits` to 200,
+    as in the gold file. It changes nothing here: with a stop of at least
+    8 USD, a trade reaches 200 ounces only above about 320,000 USD of
+    equity.
+17. Backtest settings (cog icon, as in step 7):
+    - **Data:** tick data from server.
+    - **Starting capital:** 100000.
+    - **Commission:** the commission of your FTMO account for XAUUSD.
+      Write down what you used.
+    - **Spread:** `0.3`. cTrader takes this number in the platform's pip,
+      and the gold pip is 1 USD, so 0.3 means 0.30 USD, the spread the
+      search assumed. **Do not enter more than 0.4.** With a spread above
+      0.4, `MaxSpreadPips` blocks every gold entry and the run has no trade.
+    - **Period:** from **6 May 2020** (the first day of history on your
+      FTMO server) to **22 November 2026**.
+    - **Visual mode:** off.
+18. Click **Play** and wait until the progress bar is full.
+19. **The warm-up.** The bot needs 201 closed D1 bars before it can judge
+    the D1 trend (`BiasEmaPeriod` 50 reads 4 x 50 daily closes, spec 7),
+    and cTrader loads no history before 6 May 2020 on your server. So the
+    bot waits in Recovering until about **mid-February 2021** (201 trading
+    days after 6 May 2020) and trades nothing before that. Find the first
+    line with `from=Recovering to=Running` in the Log and write down its
+    date. **The search's trades of 2020 and of early 2021 are therefore not
+    in this run.**
+20. Save the Log as in step 9, as `xauusd-sessionrange-all-log.txt`, and
+    extract it as in step 10:
+
+    ```
+    dotnet run --project tools/sim -- extract --in xauusd-sessionrange-all-log.txt --out xauusd-sessionrange-all.csv
+    ```
+
+    Check N against "Total trades", as in step 10.
+21. Optional, for the numbers: run
+
+    ```
+    dotnet run --project tools/sim -- accept --dev xauusd-sessionrange-all.csv --seed 1
+    ```
+
+    Read only three rows of the Development column: "Trades, all symbols",
+    "Profit factor after costs" and "Average result per trade". The total
+    in R is the number of trades times the average result per trade. Do
+    **not** read its pass or fail lines: the run covers the holdout years
+    and one symbol, and the marks for such a mode are your open decision.
+22. **What to compare with the search** (spec 3.8, "What the search
+    measured"; by year from the search with the rules of spec 3.8, gold's
+    smallest stop of 8 USD, spread 0.30 USD, no news filter, its own fills):
+
+    | Year | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
+    |---|---|---|---|---|---|---|---|
+    | Result | -8.3R | +6.8R | +9.9R | -2.8R | +5.8R | +25.5R | +19.4R |
+
+    Over the whole period the search had 202 trades, 55% winners and
+    +56R; with cTrader's own way of filling orders about +44R. Because of
+    the warm-up (step 19), this run has no trade in 2020 and none before
+    about mid-February 2021. So expect fewer than 202 trades, and compare
+    the years 2022 to 2026 one by one (the developer does this from your
+    `.csv` file). cTrader's own fills make the total lower than the
+    search's own figures. Your backtest sizes trades with the ladder, so
+    the money result does not follow the R result one to one.
+23. Send the developer `xauusd-sessionrange-all-log.txt`,
+    `xauusd-sessionrange-all.csv` and the settings of step 17.
