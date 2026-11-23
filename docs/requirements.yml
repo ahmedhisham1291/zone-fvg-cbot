@@ -1624,7 +1624,7 @@ requirements:
     wp: WP36
     spec: "3.8, 5.5"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Timed exit and reported trading hours (found in the owner's backtest
       of 2026-11-23). When the timed exit of EXE-025 becomes due at a closed
