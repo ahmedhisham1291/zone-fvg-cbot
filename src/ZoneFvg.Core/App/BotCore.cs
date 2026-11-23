@@ -35,6 +35,10 @@ namespace ZoneFvg.Core.App;
 /// parameters, and the start line ends with <c>mode=Breakout</c>. The engine then keeps no zones and no
 /// gaps, so <see cref="ZoneSnapshot"/> and <see cref="FvgSnapshot"/> are empty. Everything else is the
 /// same in both modes.</para>
+/// <para>With <see cref="BotParameters.Choch"/> set (REC-020) the instance runs the Choch entry model of
+/// ZoneFvg mode: the signal engine, the replay of recovery, the pre-trade filters and the parameter hash
+/// use the Choch parameters, the start line ends with <c>mode=ZoneFvg model=Choch</c>, and the daily zone
+/// counts name the window end <c>no-choch</c>.</para>
 /// </remarks>
 public sealed class BotCore
 {
@@ -99,7 +103,7 @@ public sealed class BotCore
     private readonly RecoveryService _recovery;
     private readonly BotStateMachine _machine = new BotStateMachine();
     private readonly LogRepeatLimits _limits = new LogRepeatLimits();
-    private readonly ZoneOutcomeCounts _zoneCounts = new ZoneOutcomeCounts();
+    private readonly ZoneOutcomeCounts _zoneCounts;
     private readonly Bar?[] _lastBars = new Bar?[3];
     private readonly List<Bar> _recentM15 = new List<Bar>();
     private readonly SortedSet<string> _newsSourcesDown = new SortedSet<string>(StringComparer.Ordinal);
@@ -110,6 +114,9 @@ public sealed class BotCore
 
     // SIG-034, EXE-025: the session range parameters in SessionRange mode, null in the other modes.
     private readonly SessionRangeParameters? _sessionRange;
+
+    // REC-020: true in the Choch model of ZoneFvg mode (BotParameters.Choch set).
+    private readonly bool _choch;
 
     // REC-014: per "event cause", the CE(S)T day of the last would-halt or would-block line.
     private readonly SortedDictionary<string, DateTime> _recordedDays = new SortedDictionary<string, DateTime>(StringComparer.Ordinal);
@@ -173,19 +180,21 @@ public sealed class BotCore
         _risk = parameters.Risk;
         _mode = parameters.Mode;
         _sessionRange = parameters.SessionRange;
-        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout, parameters.SessionRange);
+        _choch = parameters.Choch is not null;
+        _zoneCounts = new ZoneOutcomeCounts(_choch);
+        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout, parameters.SessionRange, parameters.Choch);
         _news = CreateNews(parameters, store, http, isBacktest);
         _requests = new RequestCounter(parameters.Risk);
         _errors = new ErrorCounter(parameters.Risk);
         _events = new CoreEvents(this);
-        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout, parameters.SessionRange);
+        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch);
         _orders = new OrderManager(broker, _requests, _events, _haltsLogOnly);
         _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events);
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
         _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
         var tradeEvents = new CoreTradeEvents(this);
         _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, tradeEvents);
-        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout, parameters.SessionRange);
+        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch);
     }
 
     /// <summary>The current state (REC-001).</summary>
@@ -338,6 +347,12 @@ public sealed class BotCore
         {
             // SIG-034: the same field in SessionRange mode.
             start.Add(("mode", "SessionRange"));
+        }
+        else if (_choch)
+        {
+            // REC-020: two more fields in the Choch model; the line of the Fvg model is unchanged.
+            start.Add(("mode", "ZoneFvg"));
+            start.Add(("model", "Choch"));
         }
 
         Write("start", start.ToArray());

@@ -35,12 +35,24 @@ namespace ZoneFvg.Core.Execution;
 /// when the ask (buy) is at or above, or the bid (sell) at or below, the order's entry, and as
 /// BrokerDataInvalid when the bid or ask is not usable; EXE-005 and EXE-006 are not run; the
 /// planned order is a stop order. A ZoneFvg signal takes exactly the path above.</para>
+/// <para>A signal of kind Choch (EXE-027, EXE-028, NWS-015), accepted only when the filters were
+/// created with Choch parameters: it must have no gap and a level equal to its entry; the news
+/// check is that of the confirming bar (<see cref="NewsService.CheckBreakoutEntry"/>, skip reason
+/// NewsChochBar); EXE-003 uses ChochMinStopPips; directly after EXE-003 the limit order is skipped
+/// as EntryAlreadyReached when the ask (buy) is at or below, or the bid (sell) at or above, the
+/// order's entry; EXE-005 and EXE-006 are not run, and in the place of EXE-006 the reward, target
+/// distance over stop distance on the signal's own levels (signed: a target on the wrong side
+/// gives a ratio of zero or less), must be at least MinRewardRisk (RewardRiskTooLow). The planned
+/// order is a limit order.</para>
 /// <para>Every skip is passed to <see cref="IExecutionEvents.Skipped"/> once, with one reason and
 /// its measured values (EXE-014); a sanity-cap skip (RSK-002) also raises one alert.</para>
 /// </remarks>
 public sealed class PreTradeFilters
 {
     private static readonly TimeSpan BarLength = TimeSpan.FromMinutes(15.0);
+
+    // EXE-028: the target source of a Choch signal that carries none.
+    private const string JournalNotAvailable = "NA";
 
     private readonly ExecutionParameters _parameters;
     private readonly RiskParameters _riskParameters;
@@ -52,6 +64,9 @@ public sealed class PreTradeFilters
     private readonly IExecutionEvents _events;
     private readonly string _parameterHash;
     private readonly bool _dailyBudgetRecordOnly;
+
+    // EXE-027, EXE-028: the Choch parameters in the Choch model, null otherwise (a Choch signal is then invalid).
+    private readonly ChochParameters? _choch;
 
     /// <summary>Creates the filters. All parameter sets are validated here (EXE-002 to EXE-006, EXE-015).</summary>
     /// <param name="parameters">Execution parameters.</param>
@@ -73,9 +88,13 @@ public sealed class PreTradeFilters
     /// Session range parameters in SessionRange mode, or null (the default) in the other modes;
     /// used only for the parameter hash (EXE-008, SIG-034).
     /// </param>
+    /// <param name="choch">
+    /// Choch parameters in the Choch model, or null (the default) otherwise; validated here. They
+    /// give ChochMinStopPips and MinRewardRisk (EXE-028) and are part of the parameter hash (REC-020).
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null)
+    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(signalParameters);
@@ -90,7 +109,9 @@ public sealed class PreTradeFilters
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _news = news ?? throw new ArgumentNullException(nameof(news));
         _events = events ?? throw new ArgumentNullException(nameof(events));
-        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout, sessionRange);
+        choch?.Validate();
+        _choch = choch;
+        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout, sessionRange, choch);
         _dailyBudgetRecordOnly = dailyBudgetRecordOnly;
     }
 
@@ -142,7 +163,7 @@ public sealed class PreTradeFilters
             ?? CheckEntryReached(c)
             ?? CheckFvgVersusSpread(c)
             ?? CheckCost(c)
-            ?? CheckRoom(c)
+            ?? CheckRoomOrReward(c)
             ?? CheckExpiry(c)
             ?? CheckSizing(c)
             ?? CheckAccountRisk(c);
@@ -161,7 +182,7 @@ public sealed class PreTradeFilters
         return PreTradeResult.Allowed(Build(c));
     }
 
-    private static SkipRecord? CheckInputs(Candidate c)
+    private SkipRecord? CheckInputs(Candidate c)
     {
         if (c.Now.Kind != DateTimeKind.Utc)
         {
@@ -176,14 +197,20 @@ public sealed class PreTradeFilters
             && IsPrice(s.Entry) && IsPrice(s.Stop) && IsPrice(s.Target)
             && double.IsFinite(s.AtrH4) && s.AtrH4 >= 0.0
             && s.ConfirmationCloseUtc.Kind == DateTimeKind.Utc
-            && KindIsConsistent(s);
+            && KindIsConsistent(s, _choch != null);
         return valid ? null : c.Skip(SkipReason.InvalidSignal, 0.0, 0.0, "signal has a missing, non-finite or inconsistent value");
     }
 
     // EXE-019 (a): a breakout signal has no gap and a level; a ZoneFvg signal has its gap; any other kind is invalid.
     // EXE-024: a session range signal has no gap, a level and a UTC expiry.
-    private static bool KindIsConsistent(Signal s)
+    // EXE-027: a Choch signal, only in the Choch model, has no gap and a level equal to its entry.
+    private static bool KindIsConsistent(Signal s, bool chochModel)
     {
+        if (s.Kind == SignalKind.Choch)
+        {
+            return chochModel && s.Fvg == null && s.Level.HasValue && IsPrice(s.Level.Value) && PriceMath.AlmostEqual(s.Level.Value, s.Entry, PriceMath.DefaultTolerance);
+        }
+
         if (s.Kind == SignalKind.Breakout)
         {
             return s.Fvg == null && s.Level.HasValue && IsPrice(s.Level.Value);
@@ -208,6 +235,11 @@ public sealed class PreTradeFilters
     private static bool IsRange(Candidate c)
     {
         return c.Signal.Kind == SignalKind.SessionRange;
+    }
+
+    private static bool IsChoch(Candidate c)
+    {
+        return c.Signal.Kind == SignalKind.Choch;
     }
 
     // EXE-018, EXE-024: the kinds placed as a stop order, with the spread on a buy's entry and the entry-reached check.
@@ -307,7 +339,8 @@ public sealed class PreTradeFilters
         }
         else
         {
-            decision = IsBreakout(c)
+            // NWS-015: a Choch signal has the confirming-bar check of a breakout.
+            decision = IsBreakout(c) || IsChoch(c)
                 ? _news.CheckBreakoutEntry(c.Context.Symbol, c.Now, c.Signal.ConfirmationCloseUtc)
                 : _news.CheckEntry(c.Context.Symbol, c.Now, c.Signal.Fvg!);
         }
@@ -320,6 +353,8 @@ public sealed class PreTradeFilters
                 return c.Skip(SkipReason.NewsCalendarUnavailable, 0.0, 0.0, "news calendar unavailable");
             case NewsBlockReason.InsideWindow:
                 return c.Skip(SkipReason.NewsWindow, 0.0, 0.0, "inside a news window at " + Second(c.Now));
+            case NewsBlockReason.BreakoutBarInWindow when IsChoch(c):
+                return c.Skip(SkipReason.NewsChochBar, 0.0, 0.0, "CHoCH bar opening " + BarText(decision.BarOpenUtc) + " overlaps a news window");
             case NewsBlockReason.BreakoutBarInWindow:
                 return c.Skip(SkipReason.NewsBreakoutBar, 0.0, 0.0, "breakout bar opening " + BarText(decision.BarOpenUtc) + " overlaps a news window");
             default:
@@ -368,9 +403,12 @@ public sealed class PreTradeFilters
 
         c.StopDistance = Math.Abs(c.Entry - c.Stop);
         c.StopPips = PriceMath.ToPips(c.StopDistance, info.PipSize);
-        if (PriceMath.LessThan(c.StopPips, _parameters.MinStopPips, PriceMath.DefaultTolerance))
+
+        // EXE-028: ChochMinStopPips in place of MinStopPips for a Choch signal; CheckInputs has made sure the model is Choch.
+        double minStopPips = IsChoch(c) ? _choch!.ChochMinStopPips : _parameters.MinStopPips;
+        if (PriceMath.LessThan(c.StopPips, minStopPips, PriceMath.DefaultTolerance))
         {
-            return c.Skip(SkipReason.StopTooSmall, c.StopPips, _parameters.MinStopPips, "stop " + Text(c.StopPips) + " pips below " + Text(_parameters.MinStopPips));
+            return c.Skip(SkipReason.StopTooSmall, c.StopPips, minStopPips, "stop " + Text(c.StopPips) + " pips below " + Text(minStopPips));
         }
 
         double maxPips = PriceMath.ToPips(_parameters.MaxStopAtr * s.AtrH4, info.PipSize);
@@ -383,9 +421,10 @@ public sealed class PreTradeFilters
     }
 
     // EXE-019 (d): directly after EXE-003, a breakout order whose entry the market has already reached is not placed.
+    // EXE-027: the same for the limit order of a Choch signal, whose entry is reached from the other side.
     private static SkipRecord? CheckEntryReached(Candidate c)
     {
-        if (!IsStopEntry(c))
+        if (!IsStopEntry(c) && !IsChoch(c))
         {
             return null;
         }
@@ -394,6 +433,11 @@ public sealed class PreTradeFilters
         if (!IsPrice(info.Bid) || !IsPrice(info.Ask) || PriceMath.LessThan(info.Ask, info.Bid, PriceMath.DefaultTolerance))
         {
             return c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, "bid " + Text(info.Bid) + " ask " + Text(info.Ask) + " of " + c.Context.Symbol + " are not usable");
+        }
+
+        if (IsChoch(c))
+        {
+            return LimitEntryReached(c, info);
         }
 
         if (c.Signal.Side == Side.Buy && !PriceMath.LessThan(info.Ask, c.Entry, PriceMath.DefaultTolerance))
@@ -409,10 +453,27 @@ public sealed class PreTradeFilters
         return null;
     }
 
+    // EXE-027: a buy limit at or above the ask, or a sell limit at or below the bid, would fill at once.
+    private static SkipRecord? LimitEntryReached(Candidate c, SymbolInfo info)
+    {
+        if (c.Signal.Side == Side.Buy && !PriceMath.GreaterThan(info.Ask, c.Entry, PriceMath.DefaultTolerance))
+        {
+            return c.Skip(SkipReason.EntryAlreadyReached, info.Ask, c.Entry, "ask " + Text(info.Ask) + " at or below the entry " + Text(c.Entry));
+        }
+
+        if (c.Signal.Side == Side.Sell && !PriceMath.LessThan(info.Bid, c.Entry, PriceMath.DefaultTolerance))
+        {
+            return c.Skip(SkipReason.EntryAlreadyReached, info.Bid, c.Entry, "bid " + Text(info.Bid) + " at or above the entry " + Text(c.Entry));
+        }
+
+        return null;
+    }
+
     private SkipRecord? CheckFvgVersusSpread(Candidate c)
     {
-        // EXE-019 (b): not applied to a breakout signal, which has no gap; nor to a session range signal (EXE-024).
-        if (IsStopEntry(c))
+        // EXE-019 (b): not applied to a breakout signal, which has no gap; nor to a session range signal (EXE-024);
+        // nor to a Choch signal (EXE-028).
+        if (IsStopEntry(c) || IsChoch(c))
         {
             return null;
         }
@@ -438,6 +499,30 @@ public sealed class PreTradeFilters
         if (PriceMath.GreaterThan(cost, limit, PriceMath.DefaultTolerance))
         {
             return c.Skip(SkipReason.CostTooHigh, cost, limit, "spread " + Text(c.SpreadPips) + " + commission " + Text(commissionPips) + " pips above " + Text(limit));
+        }
+
+        return null;
+    }
+
+    // EXE-028: for a Choch signal the reward check takes the place of the room check.
+    private SkipRecord? CheckRoomOrReward(Candidate c)
+    {
+        return IsChoch(c) ? CheckReward(c) : CheckRoom(c);
+    }
+
+    // EXE-028: target distance over stop distance on the signal's own levels, before the spread and the price grid.
+    // Signed (answer of 2026-11-23): a target on the wrong side of the entry gives a ratio of zero or less.
+    private SkipRecord? CheckReward(Candidate c)
+    {
+        Signal s = c.Signal;
+        double risk = Math.Abs(s.Entry - s.Stop);
+        double reward = s.Side == Side.Buy ? s.Target - s.Entry : s.Entry - s.Target;
+        double ratio = reward / risk;
+        double minimum = _choch!.MinRewardRisk;
+        if (!double.IsFinite(ratio) || PriceMath.LessThan(ratio, minimum, PriceMath.DefaultTolerance))
+        {
+            string source = s.TargetSource ?? JournalNotAvailable;
+            return c.Skip(SkipReason.RewardRiskTooLow, ratio, minimum, "reward " + Text(ratio) + "R below " + Text(minimum) + "R, target " + source);
         }
 
         return null;

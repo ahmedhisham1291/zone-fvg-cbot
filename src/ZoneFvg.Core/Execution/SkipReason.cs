@@ -125,6 +125,16 @@ public enum SkipReason
     /// <summary>The confirming bar of a breakout signal overlaps a news window of the symbol (NWS-014).</summary>
     NewsBreakoutBar,
 
-    /// <summary>The broker's ask (buy) is at or above, or its bid (sell) at or below, the entry of a stop order (EXE-019).</summary>
+    /// <summary>
+    /// The broker's ask (buy) is at or above, or its bid (sell) at or below, the entry of a stop
+    /// order (EXE-019); for the limit order of a Choch signal the ask (buy) is at or below, or the
+    /// bid (sell) at or above, its entry (EXE-027).
+    /// </summary>
     EntryAlreadyReached,
+
+    /// <summary>The reward of a Choch signal, target distance over stop distance on its own levels, is below MinRewardRisk (EXE-028).</summary>
+    RewardRiskTooLow,
+
+    /// <summary>The confirming bar of a Choch signal overlaps a news window of the symbol (NWS-015).</summary>
+    NewsChochBar,
 }

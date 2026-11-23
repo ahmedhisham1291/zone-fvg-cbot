@@ -254,7 +254,8 @@ public sealed class NewsService
     /// calendar must be available (NewsFailMode Block); the current time must not be inside a
     /// window of the symbol; the confirming bar, from <paramref name="confirmationCloseUtc"/> minus
     /// 15 minutes to <paramref name="confirmationCloseUtc"/>, may not overlap a window, with the
-    /// overlap rule of <see cref="CheckEntry"/>.
+    /// overlap rule of <see cref="CheckEntry"/>. A Choch signal has the same three checks (NWS-015);
+    /// the execution layer then names the last one NewsChochBar.
     /// </summary>
     /// <param name="symbol">Symbol name.</param>
     /// <param name="nowUtc">Server time, kind UTC.</param>

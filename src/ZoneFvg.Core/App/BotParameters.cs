@@ -84,8 +84,9 @@ public sealed record BotParameters
     /// SIG-035 (spec 3.9): the parameters of the Choch entry model of ZoneFvg mode. Null (the
     /// default) is the Fvg model; a value is the Choch model (the cBot's EntryModel Choch).
     /// <see cref="Validate"/> refuses it together with <see cref="Breakout"/> or
-    /// <see cref="SessionRange"/> and checks it. Until the execution layer can place a Choch signal
-    /// (WP37b) it refuses every value: the model is not wired yet (fail closed).
+    /// <see cref="SessionRange"/> and checks it. The signal engine, the replay of recovery, the
+    /// pre-trade filters and the parameter hash use it (REC-020); the start line then ends with
+    /// <c>mode=ZoneFvg model=Choch</c>.
     /// </summary>
     public ChochParameters? Choch { get; init; }
 
@@ -104,11 +105,11 @@ public sealed record BotParameters
     /// equal the session times of the execution parameters (REC-017). When <see cref="SessionRange"/>
     /// is set it must be valid and <see cref="Breakout"/> must be null (SIG-034). When
     /// <see cref="Choch"/> is set, <see cref="Breakout"/> and <see cref="SessionRange"/> must be
-    /// null and it must be valid (SIG-035); until WP37b it is then refused as not wired yet.
+    /// null and it must be valid (SIG-035).
     /// </summary>
     /// <param name="isBacktest">True in a backtest.</param>
     /// <exception cref="ArgumentNullException">A parameter group is null.</exception>
-    /// <exception cref="ArgumentException">A value is invalid; for the breakout window the parameter name is <c>Breakout</c>, for breakout and session range parameters set together <c>SessionRange</c>; for Choch parameters with another mode, and until WP37b for any Choch parameters, <c>Choch</c>.</exception>
+    /// <exception cref="ArgumentException">A value is invalid; for the breakout window the parameter name is <c>Breakout</c>, for breakout and session range parameters set together <c>SessionRange</c>; for Choch parameters with another mode <c>Choch</c>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter group, the breakout and session range parameters included, has a value out of range.</exception>
     public void Validate(bool isBacktest)
     {
@@ -178,7 +179,7 @@ public sealed record BotParameters
         SessionRange.Validate();
     }
 
-    // SIG-035: the Choch model belongs to ZoneFvg mode; its values validate themselves. WP37a: not wired yet.
+    // SIG-035: the Choch model belongs to ZoneFvg mode; its values validate themselves.
     private void ValidateChoch()
     {
         if (Choch is null)
@@ -193,6 +194,5 @@ public sealed record BotParameters
         }
 
         Choch.Validate();
-        throw new ArgumentException("EntryModel Choch is not wired to the execution layer yet (WP37b); use EntryModel Fvg (SIG-035).", nameof(Choch));
     }
 }

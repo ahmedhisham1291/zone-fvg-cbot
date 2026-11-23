@@ -112,7 +112,7 @@ public sealed class OrderManager
     /// Places the order idempotently (EXE-009). The checks run in this order. First, when an
     /// earlier placement of the label is unresolved, nothing is sent or queried and the result is
     /// AwaitingResolution. Then, before anything is sent or queried, an order whose entry type does
-    /// not fit its signal (EXE-022: Stop only for Kind Breakout or SessionRange (EXE-024), Limit only for Kind ZoneFvg; an
+    /// not fit its signal (EXE-022: Stop only for Kind Breakout or SessionRange (EXE-024), Limit only for Kind ZoneFvg or Choch (EXE-027); an
     /// undefined kind or entry type fits nothing) is recorded as skipped with InvalidSignal and
     /// "entry type &lt;EntryType&gt; does not fit signal kind &lt;Kind&gt;", and abandoned; this also
     /// holds for a resend. Then, if an order or position with its label exists at the broker,
@@ -342,13 +342,15 @@ public sealed class OrderManager
         return new PlaceResult(PlaceOutcome.Unclear, order.Label, null, result.ErrorCode ?? "unclear");
     }
 
-    // EXE-022: a stop order only for Kind Breakout or (EXE-024) SessionRange, a limit order only for Kind ZoneFvg; null when the order fits.
+    // EXE-022: a stop order only for Kind Breakout or (EXE-024) SessionRange, a limit order only for Kind ZoneFvg or (EXE-027)
+    // Choch; null when the order fits.
     private static string? EntryTypeMisfit(PlannedOrder order)
     {
         SignalKind kind = order.Signal.Kind;
         EntryOrderType type = order.EntryType;
         bool stopKind = kind == SignalKind.Breakout || kind == SignalKind.SessionRange;
-        bool fits = (stopKind && type == EntryOrderType.Stop) || (kind == SignalKind.ZoneFvg && type == EntryOrderType.Limit);
+        bool limitKind = kind == SignalKind.ZoneFvg || kind == SignalKind.Choch;
+        bool fits = (stopKind && type == EntryOrderType.Stop) || (limitKind && type == EntryOrderType.Limit);
         if (fits)
         {
             return null;

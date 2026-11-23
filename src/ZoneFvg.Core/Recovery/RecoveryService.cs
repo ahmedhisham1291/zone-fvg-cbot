@@ -51,6 +51,7 @@ public sealed class RecoveryService
     private readonly SignalParameters _signalParameters;
     private readonly BreakoutParameters? _breakout;
     private readonly SessionRangeParameters? _sessionRange;
+    private readonly ChochParameters? _choch;
     private readonly ExecutionParameters _executionParameters;
     private readonly bool _newsEnabled;
     private readonly IBroker _broker;
@@ -96,8 +97,14 @@ public sealed class RecoveryService
     /// <see cref="ExecutionParameters.FridayNoEntryUtc"/>) and its warm-up, and are part of the
     /// parameter hash. A pending order whose setup the replay found void is cancelled (EXE-024).
     /// </param>
+    /// <param name="choch">
+    /// REC-020: the Choch parameters in the Choch model of ZoneFvg mode, or null (the default);
+    /// validated here and refused together with breakout or session range parameters. They select
+    /// the engine of the replay (<see cref="SignalEngine.WithChoch"/>) and its warm-up, and are part
+    /// of the parameter hash.
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    /// <exception cref="ArgumentException">The symbol is empty, or breakout and session range parameters are both set (SIG-034).</exception>
+    /// <exception cref="ArgumentException">The symbol is empty, or more than one of breakout, session range and Choch parameters is set (SIG-034, SIG-035).</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public RecoveryService(
         string symbol,
@@ -114,7 +121,8 @@ public sealed class RecoveryService
         IReadOnlyCollection<MonthDay>? marketHolidays = null,
         bool haltsRecordOnly = false,
         BreakoutParameters? breakout = null,
-        SessionRangeParameters? sessionRange = null)
+        SessionRangeParameters? sessionRange = null,
+        ChochParameters? choch = null)
     {
         ArgumentNullException.ThrowIfNull(signalParameters);
         ArgumentNullException.ThrowIfNull(executionParameters);
@@ -129,10 +137,17 @@ public sealed class RecoveryService
             throw new ArgumentException("Breakout and session range parameters must not both be set: one entry mode per instance (SIG-034).", nameof(sessionRange));
         }
 
+        choch?.Validate();
+        if (choch != null && (breakout != null || sessionRange != null))
+        {
+            throw new ArgumentException("Choch parameters belong to ZoneFvg mode and must not be set together with breakout or session range parameters (SIG-035).", nameof(choch));
+        }
+
         _symbol = symbol;
         _signalParameters = signalParameters;
         _breakout = breakout;
         _sessionRange = sessionRange;
+        _choch = choch;
         _executionParameters = executionParameters;
         _newsEnabled = newsEnabled;
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
@@ -142,8 +157,8 @@ public sealed class RecoveryService
         _enterState = enterState ?? throw new ArgumentNullException(nameof(enterState));
         _marketHolidays = marketHolidays ?? Array.Empty<MonthDay>();
         _haltsRecordOnly = haltsRecordOnly;
-        _warmup = WarmupCalculator.For(signalParameters, breakout, sessionRange);
-        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout, sessionRange);
+        _warmup = WarmupCalculator.For(signalParameters, breakout, sessionRange, choch);
+        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout, sessionRange, choch);
         _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
         _guard = new AccountGuard(symbol, riskParameters, broker);
         _safety = new SafetyActions(symbol, executionParameters, broker, counter, events);
@@ -310,9 +325,12 @@ public sealed class RecoveryService
 
         // REC-017: the same engine as the live one; a breakout id is known because the replay returned a signal with it.
         // SIG-034: the same for a session range id; a setup the replay found void is remembered for step 5.
-        SignalEngine engine = _sessionRange is null
-            ? new SignalEngine(_signalParameters, _breakout)
-            : new SignalEngine(_signalParameters, _sessionRange, _executionParameters.FridayNoEntryUtc);
+        // REC-020: the Choch engine in the Choch model; a zone id is known because the replay returned a signal with it.
+        SignalEngine engine = _choch is not null
+            ? SignalEngine.WithChoch(_signalParameters, _choch)
+            : _sessionRange is null
+                ? new SignalEngine(_signalParameters, _breakout)
+                : new SignalEngine(_signalParameters, _sessionRange, _executionParameters.FridayNoEntryUtc);
         var known = new SortedSet<string>(StringComparer.Ordinal);
         var voided = new SortedSet<string>(StringComparer.Ordinal);
         SessionRangeSetup? lastVoid = null;

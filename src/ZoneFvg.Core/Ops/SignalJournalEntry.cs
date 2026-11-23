@@ -52,8 +52,20 @@ public sealed record SignalJournalEntry(
     /// <summary>The entry mode of the signal (OPS-010). Default ZoneFvg.</summary>
     public SignalKind Kind { get; init; }
 
-    /// <summary>The broken level of a breakout signal (OPS-010), the traded range edge of a session range signal (SIG-034); null for a ZoneFvg signal.</summary>
+    /// <summary>The broken level of a breakout signal (OPS-010), the traded range edge of a session range signal (SIG-034), the broken swing level of a Choch signal (OPS-011); null for a ZoneFvg signal.</summary>
     public double? Level { get; init; }
+
+    /// <summary>Choch signal (OPS-011): whether a bar swept the most recent M15 swing before the change of character; null for the other kinds.</summary>
+    public bool? Swept { get; init; }
+
+    /// <summary>Choch signal (OPS-011): the source of the target, <c>zone:&lt;id&gt;</c>, <c>swing:&lt;time&gt;</c> or <c>default</c>; null for the other kinds.</summary>
+    public string? TargetSource { get; init; }
+
+    /// <summary>
+    /// Choch signal (OPS-011, EXE-028): the reward, target distance over stop distance on the
+    /// signal's own levels (signed); null for the other kinds and when the stop distance is zero.
+    /// </summary>
+    public double? RewardRisk { get; init; }
 
     /// <summary>
     /// The entry of a signal that became an order (OPS-001). Levels, stop pips, volume and time
@@ -92,6 +104,9 @@ public sealed record SignalJournalEntry(
         {
             Kind = order.Signal.Kind,
             Level = order.Signal.Level,
+            Swept = order.Signal.Swept,
+            TargetSource = order.Signal.TargetSource,
+            RewardRisk = RewardRiskOf(order.Signal),
         };
     }
 
@@ -142,6 +157,9 @@ public sealed record SignalJournalEntry(
         {
             Kind = signal.Kind,
             Level = signal.Level,
+            Swept = signal.Swept,
+            TargetSource = signal.TargetSource,
+            RewardRisk = RewardRiskOf(signal),
         };
     }
 
@@ -149,6 +167,19 @@ public sealed record SignalJournalEntry(
     private static Zone? ZoneOf(Signal signal, Zone? zone)
     {
         return signal.Kind == SignalKind.Breakout || signal.Kind == SignalKind.SessionRange ? null : zone;
+    }
+
+    // OPS-011: the reward of EXE-028 on the signal's own levels, for a Choch signal only.
+    private static double? RewardRiskOf(Signal signal)
+    {
+        double risk = Math.Abs(signal.Entry - signal.Stop);
+        if (signal.Kind != SignalKind.Choch || !(risk > 0.0))
+        {
+            return null;
+        }
+
+        double reward = signal.Side == Side.Buy ? signal.Target - signal.Entry : signal.Entry - signal.Target;
+        return reward / risk;
     }
 
     private static double? SpreadPipsOf(SymbolInfo? symbol)
