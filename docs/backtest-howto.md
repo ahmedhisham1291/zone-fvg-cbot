@@ -478,7 +478,16 @@ commission and spread, on the **development** period only (before November
     `eurusd-choch-dev-log.txt` and `eurusd-choch-dev.csv`. The `start` line
     of the Log ends with `mode=ZoneFvg model=Choch`; check it.
 26. **Warm-up.** As in step 7: start at least 10 months before the period
-    you judge, and check the first `from=Recovering to=Running` line.
+    you judge, and check the first `from=Recovering to=Running` line. The
+    Choch model needs 2087 closed M15 bars (about 22 trading days) besides
+    201 D1 and 248 H4 bars. At start the Log has one line `closed bars
+    loaded at start against the warm-up: D1 ... of 201, H4 ... of 248, M15
+    ... of 2087`. In a backtest cTrader cannot load history from before the
+    backtest's start (spec 12.1): if a loaded number is below its warm-up,
+    the bot stays Recovering until the run itself has produced enough bars,
+    and it trades only after the `from=Recovering to=Running` line. That is
+    why the backtest must start at least 10 months before the period you
+    judge.
 27. **What to look at in the Log.** Every Choch signal line has
     `kind=choch`, the broken level (`level=`), `sweep=yes` or `sweep=no`,
     where the target came from (`target=zone:...`, `target=swing:...` or
@@ -499,6 +508,6 @@ commission and spread, on the **development** period only (before November
     backtest: send the developer the log. Every extra run is counted as a
     variant tried (spec 12.4).
 30. Send the developer the logs, the `.csv` files and the settings of step 7
-    for both series. The values marked "proposal" in spec 3.9 are yours to
-    confirm or change (spec 14, question 5); the developer turns your
-    answer into parameter defaults.
+    for both series. You accepted the values marked "proposal" in spec 3.9
+    on 23 November 2026; if the backtest makes you want other values, say
+    which, and the developer turns them into parameter defaults.

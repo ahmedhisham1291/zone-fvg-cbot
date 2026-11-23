@@ -2031,7 +2031,7 @@ requirements:
     wp: WP37
     spec: "3.9, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Choch in the cBot. A new parameter group "Entry model" holds EntryModel
       "Fvg", RequireSweep false, ChochWindowBars 32, ChochUseBias false,
