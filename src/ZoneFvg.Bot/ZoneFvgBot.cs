@@ -358,6 +358,13 @@ namespace cAlgo.Robots
                 return;
             }
 
+            // PLT-014: one start line when the news filter is off for this backtest although NewsEnabled is true.
+            string? newsOff = BacktestDefaults.NewsFilterOffReason(NewsEnabled, parameters.News.NewsEnabled);
+            if (newsOff != null)
+            {
+                _log!.Info(newsOff);
+            }
+
             Subscribe();
             _core.OnStart(_bars!);
             _bars!.SkipToLatest();
@@ -533,6 +540,7 @@ namespace cAlgo.Robots
             // The signal texts are parsed before the time texts, as before PLT-012, so the order of the refusals is unchanged.
             SignalParameters signal = BuildSignal();
             ExecutionParameters execution = BuildExecution();
+            string newsHistory = isBacktest ? ReadNewsHistory() : string.Empty;
             return new BotParameters
             {
                 Symbol = SymbolName,
@@ -547,14 +555,14 @@ namespace cAlgo.Robots
                     CoreEntryMode.ZoneFvg => null,
                     _ => throw new ArgumentException(nameof(EntryMode) + " must be one of: ZoneFvg, Breakout.", nameof(EntryMode)),
                 },
-                Risk = BuildRisk(),
-                News = BuildNews(),
+                Risk = BuildRisk(isBacktest),
+                News = BuildNews(isBacktest, newsHistory),
 
                 // In backtests no alert or heartbeat is sent (BotParameters.Ops: empty secrets in backtests).
                 Ops = isBacktest ? new OpsParameters { ProfitTargetPercent = ProfitTargetPercent } : BuildOps(),
                 NewsFeedUrl = ParameterText.Text(NewsFeedUrl),
                 MarketHolidays = ParameterText.Text(MarketHolidays),
-                EmbeddedNewsHistory = isBacktest ? ReadNewsHistory() : string.Empty,
+                EmbeddedNewsHistory = newsHistory,
 
                 // One machine-readable line per closed trade for the backtest trade log (SIM-001,
                 // docs/backtest-howto.md). Journal only.
@@ -621,7 +629,7 @@ namespace cAlgo.Robots
             };
         }
 
-        private RiskParameters BuildRisk()
+        private RiskParameters BuildRisk(bool isBacktest)
         {
             return new RiskParameters
             {
@@ -634,7 +642,9 @@ namespace cAlgo.Robots
                 FtmoDailyLossPercent = FtmoDailyLossPercent,
                 FtmoMaxLossPercent = FtmoMaxLossPercent,
                 FtmoGuardBufferPercent = FtmoGuardBufferPercent,
-                RiskEpochDate = ParameterText.Date(nameof(RiskEpochDate), RiskEpochDate),
+                // PLT-014: an empty text is "not configured"; in a backtest the core's default is the CE(S)T date of
+                // the server time at start, live it is refused as before. Any other text is parsed as before.
+                RiskEpochDate = BacktestDefaults.RiskEpoch(ParameterText.OptionalDate(nameof(RiskEpochDate), RiskEpochDate), isBacktest, ServerTimeUtc()),
                 MaxEntriesPerSymbolPerDay = MaxEntriesPerSymbolPerDay,
                 MaxEntriesPerDay = MaxEntriesPerDay,
                 MaxRequestsPerHour = MaxRequestsPerHour,
@@ -649,11 +659,12 @@ namespace cAlgo.Robots
             };
         }
 
-        private NewsParameters BuildNews()
+        private NewsParameters BuildNews(bool isBacktest, string newsHistory)
         {
             return new NewsParameters
             {
-                NewsEnabled = NewsEnabled,
+                // PLT-014: in a backtest whose embedded history has no events the filter is off; otherwise NewsEnabled.
+                NewsEnabled = BacktestDefaults.NewsFilterOn(NewsEnabled, isBacktest, EmbeddedHistoryProvider.CountEvents(newsHistory)),
                 NewsBeforeMin = NewsBeforeMin,
                 NewsAfterMin = NewsAfterMin,
                 NewsFailMode = ParameterText.EnumName<CoreNewsFailMode>(nameof(NewsFailMode), NewsFailMode),
@@ -673,6 +684,12 @@ namespace cAlgo.Robots
                 TelegramChatId = ParameterText.Text(TelegramChatId),
                 ProfitTargetPercent = ProfitTargetPercent,
             };
+        }
+
+        private DateTime ServerTimeUtc()
+        {
+            // IServer.TimeInUtc, as CTraderBroker.ServerTimeUtc reads it: https://help.ctrader.com/ctrader-algo/references/Application/IServer/
+            return DateTime.SpecifyKind(Server.TimeInUtc, DateTimeKind.Utc);
         }
 
         private static string ReadNewsHistory()

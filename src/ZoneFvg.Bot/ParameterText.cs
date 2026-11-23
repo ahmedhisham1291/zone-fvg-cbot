@@ -45,6 +45,25 @@ namespace ZoneFvg.Bot
         }
 
         /// <summary>
+        /// Parses an optional calendar date (PLT-014): an empty or whitespace text means "not
+        /// configured" and gives null; any other text is parsed by <see cref="Date"/>, so an invalid
+        /// text is still refused.
+        /// </summary>
+        /// <param name="name">Parameter name, for the error message.</param>
+        /// <param name="text">The text.</param>
+        /// <returns>Null for an empty text, otherwise the date with kind UTC.</returns>
+        /// <exception cref="ArgumentException">The text is not empty and not a date in the form <c>yyyy-MM-dd</c>.</exception>
+        public static DateTime? OptionalDate(string name, string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            return Date(name, text);
+        }
+
+        /// <summary>
         /// Parses the exact name of an enum value, case-sensitive. Numbers are not accepted, so a
         /// typing error cannot select an unintended value (PLT-006).
         /// </summary>
