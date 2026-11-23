@@ -79,6 +79,13 @@ step 1).
      their defaults for the baseline; in ZoneFvg mode they are not used.
      (`BreakoutStopAtr` is one of the values searched later in Breakout
      mode, spec 7 and 12.1 step 3.)
+   - **TrendSlowEmaPeriod** (default 200) and **BreakoutLastConfirmUtc**
+     (default 08:00): the two Breakout filters of 23 November 2026 (spec
+     3.1 and 3.7). Spec 7 asks to test each both ways: `TrendSlowEmaPeriod`
+     200 and 0 (0 = off), `BreakoutLastConfirmUtc` 08:00 and 17:00 (17:00,
+     equal to SessionEndUtc, = off). Put the values into the file names, for
+     example `eurusd-breakout-t200-c0800-dev.csv`. In ZoneFvg mode they are
+     not used.
    - **InitialCapital:** 100000, the same number as the Starting capital in
      step 7. With a different starting capital the FTMO emergency guard
      fires at once (10,000 against 100,000 is already 90% below), and from
@@ -126,6 +133,21 @@ step 1).
      judge 2020 to October 2024, start on 1 March 2019. In the Log, the
      first `state ... from=Recovering to=Running` line shows when trading
      could start; it must be before the period you judge.
+   - **With the trend filter on (`TrendSlowEmaPeriod` 200) start about 3.1
+     years earlier instead.** The D1 EMA(200) reads 800 daily closes, so the
+     bot needs 801 closed D1 bars before its first breakout (with the filter
+     off: 201). Since cTrader does not load older history during a backtest
+     (see above), the warm-up happens inside the run: set the backtest start
+     about 3 years before the period you want judged. Example: to judge
+     22 October 2023 onward, start in about August 2020. Check in the Log
+     that the first `state ... from=Recovering to=Running` line is before
+     the period you judge; until then recovery reports the D1 series as too
+     short. Not verified: one cTrader forum thread
+     ([forum 35644](https://communityuat.ctrader.com/forum/suggestions/35644))
+     says loading more history in backtests was announced for v5.0 and then
+     for v5.2; a user on v5.0 reported that it did not change the bar count.
+     If your cTrader does load it, trading starts earlier; the Log line shows
+     it either way.
    - **Visual mode:** off (faster). Turn it **on** only to look at the
      drawings (DrawObjects true in step 6). Drawings can disappear when a
      visual backtest ends, so pause the backtest while it runs and look at
