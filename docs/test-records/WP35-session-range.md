@@ -44,8 +44,8 @@ the mode has passed them. Until then no instance runs with
    category.
 
 Steps 1 to 3 need only a short start: a backtest of a few days (settings as
-in `docs/backtest-howto.md`, step 17, but any short period after
-mid-February 2021) is enough, because the start lines come first.
+in `docs/backtest-howto.md`, step 17, but any short period) is enough,
+because the start lines come first.
 
 ## Steps
 
@@ -125,41 +125,51 @@ Pass / fail: (fill in)
 ### 4. Backtest on gold from 6 May 2020, compared with the search
 
 Run `docs/backtest-howto.md`, Part 5, steps 16 to 23: XAUUSD M15, from
-6 May 2020 to 22 November 2026, the three values of step 2 above
-(`EntryMode` SessionRange, `MinStopPips` 8, `MaxSpreadPips` 0.4), spread
-`0.3` in cTrader's backtest settings (the platform's pip is 1 USD on gold,
-so 0.3 is 0.30 USD; above 0.4 every entry is blocked).
+6 May 2020 to 22 November 2026, data "m1 bars from server", the three values
+of step 2 above (`EntryMode` SessionRange, `MinStopPips` 8, `MaxSpreadPips`
+0.4), spread `0.3` in cTrader's backtest settings (the platform's pip is
+1 USD on gold, so 0.3 is 0.30 USD; above 0.4 every entry is blocked).
 
 Write down:
 
 1. The date of the first `from=Recovering to=Running` line. Expected: about
-   mid-February 2021. The bot needs 201 closed D1 bars first, and your
-   server has no history before 6 May 2020.
-2. The date of the first trade. Expected: after the date of item 1, so not
-   in 2020.
+   3 July 2020 (a few days later is fine). The 201 D1 bars exist before
+   6 May 2020 on your server; the H4 warm-up of 248 bars (about 6 a
+   trading day, from 6 May 2020) ends on 2 July 2020 at 21:00 UTC at the
+   earliest, and the M15 warm-up of 1968 bars (about 92 a trading day)
+   already on about 5 June 2020. **If the line comes much later, for
+   example in February 2021, the D1 history did not load: write down the
+   date and report it to the developer.**
+2. The date of the first trade. Expected: in 2020, after the date of
+   item 1 (the search had its next trades in the second half of July).
 3. The number of trades ("Total trades") and N of the `extract` command.
 4. The net profit in USD and the largest drawdown, from cTrader's report.
 5. Optional: trades, profit factor and average result per trade from the
    `accept` command (step 21 of the guide).
 
-What to compare (the search, with the rules of spec 3.8, gold's smallest
-stop of 8 USD, spread 0.30 USD, no news filter): 202 trades, 55% winners,
-+56R over the whole period; with cTrader's way of filling orders about
-+44R. By year, with the search's own fills: 2020 -8.3R, 2021 +6.8R, 2022
-+9.9R, 2023 -2.8R, 2024 +5.8R, 2025 +25.5R, 2026 +19.4R
-(`research/search/REPORT-2026-11-23.md` has the same rule with a 3 USD stop;
-spec 3.8 has the totals with 8 USD). Because of the warm-up this run has
-no trade in 2020 and none before about mid-February 2021, so expect fewer
-than 202 trades. Compare 2022 to 2026 year by year; the developer does this
-from your `.csv` file. cTrader's own fills make the total lower than the
-search's own figures. Your backtest sizes trades with the ladder, so the
-money result does not follow R one to one.
+What to compare (XAUUSD, rules of spec 3.8, smallest stop 8 USD, spread
+0.30 USD, no news filter), by year of entry, as trades / result in R:
 
-Pass if: the run has trades from 2021 on; every `signal` line has
-`kind=range`, and its `zone=` field holds the signal id, `RH-yyyyMMdd` (buy)
-or `RL-yyyyMMdd` (sell); and the
-developer finds the years 2022 to 2026 close to the search (the developer
-writes the comparison into this record).
+| Year | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | Total |
+|---|---|---|---|---|---|---|---|---|
+| Search's own fills | 17 / -8.3 | 18 / +6.8 | 17 / +9.9 | 16 / -2.8 | 28 / +5.8 | 61 / +25.5 | 45 / +19.4 | 202 / +56.3 |
+| cTrader's fills, "m1 bars from server" | 17 / -10.1 | 18 / +6.5 | 17 / +9.1 | 16 / -4.5 | 28 / +3.9 | 61 / +22.4 | 45 / +17.0 | 202 / +44.2 |
+
+From 15 July 2020, which is what this run can trade after its warm-up:
+200 trades; +57.0R with 55% winners (search's fills), +44.9R with 54%
+winners (cTrader's fills); 2020 then has 15 trades (-7.6R and -9.4R). The
+search's 2020 trades by month: May 1, June 1, July 3, August 5,
+September 5, November 1, December 1. With "m1 bars from server" expect
+results near the cTrader line; tick data comes nearer the search line.
+Compare trade counts and R; the developer does this from your `.csv` file.
+Your backtest sizes trades with the ladder, so the money result does not
+follow R one to one.
+
+Pass if: the first Running line is in early July 2020 (item 1); the run has
+trades from 2020 on; every `signal` line has `kind=range`, and its `zone=`
+field holds the signal id, `RH-yyyyMMdd` (buy) or `RL-yyyyMMdd` (sell); and
+the developer finds the trade counts and R by year close to the cTrader line
+(the developer writes the comparison into this record).
 
 Observed (items 1 to 5): (fill in)
 

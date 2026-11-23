@@ -360,7 +360,10 @@ step 4.
     8 USD, a trade reaches 200 ounces only above about 320,000 USD of
     equity.
 17. Backtest settings (cog icon, as in step 7):
-    - **Data:** tick data from server.
+    - **Data:** **m1 bars from server**, as in your earlier gold backtests.
+      This setting should give results near the second line of figures in
+      step 22 ("cTrader's fills"). Tick data from server comes nearer the
+      first line (the search's own fills).
     - **Starting capital:** 100000.
     - **Commission:** the commission of your FTMO account for XAUUSD.
       Write down what you used.
@@ -368,18 +371,28 @@ step 4.
       and the gold pip is 1 USD, so 0.3 means 0.30 USD, the spread the
       search assumed. **Do not enter more than 0.4.** With a spread above
       0.4, `MaxSpreadPips` blocks every gold entry and the run has no trade.
-    - **Period:** from **6 May 2020** (the first day of history on your
-      FTMO server) to **22 November 2026**.
+    - **Period:** from **6 May 2020** (the first day of intraday history on
+      your FTMO server) to **22 November 2026**.
     - **Visual mode:** off.
 18. Click **Play** and wait until the progress bar is full.
-19. **The warm-up.** The bot needs 201 closed D1 bars before it can judge
-    the D1 trend (`BiasEmaPeriod` 50 reads 4 x 50 daily closes, spec 7),
-    and cTrader loads no history before 6 May 2020 on your server. So the
-    bot waits in Recovering until about **mid-February 2021** (201 trading
-    days after 6 May 2020) and trades nothing before that. Find the first
-    line with `from=Recovering to=Running` in the Log and write down its
-    date. **The search's trades of 2020 and of early 2021 are therefore not
-    in this run.**
+19. **The warm-up.** Before it trades, the bot needs closed bars of each
+    timeframe (with the default values): 201 D1 bars (`BiasEmaPeriod` 50
+    reads 4 x 50 daily closes, spec 7), 248 H4 bars and 1968 M15 bars.
+    - **D1:** on your FTMO server the daily history of XAUUSD is older than
+      6 May 2020. Your ExportBars run of 23 November 2026, started on
+      6 May 2020, got daily bars from 28 March 2019, about 290 before the
+      start. So the 201 D1 bars are there on the first day.
+    - **H4 and M15:** the intraday history starts on 6 May 2020 (H4 at
+      13:00 UTC, M15 at 15:15 UTC), and cTrader loads no older intraday
+      history in a backtest. Gold has about 6 H4 bars and about 92 M15
+      bars per trading day. 1968 M15 bars take about 21 trading days (to
+      about 5 June 2020). 248 H4 bars take about 41 trading days: the
+      248th H4 bar closes on **2 July 2020** at 21:00 UTC at the earliest.
+    So the first line with `from=Recovering to=Running` in the Log should
+    come on **about 3 July 2020**. Holidays with missing bars can make it
+    a few days later. Write down its date. If it comes much later (for
+    example in February 2021), the D1 history did not load: write down the
+    date and tell the developer.
 20. Save the Log as in step 9, as `xauusd-sessionrange-all-log.txt`, and
     extract it as in step 10:
 
@@ -399,21 +412,25 @@ step 4.
     in R is the number of trades times the average result per trade. Do
     **not** read its pass or fail lines: the run covers the holdout years
     and one symbol, and the marks for such a mode are your open decision.
-22. **What to compare with the search** (spec 3.8, "What the search
-    measured"; by year from the search with the rules of spec 3.8, gold's
-    smallest stop of 8 USD, spread 0.30 USD, no news filter, its own fills):
+22. **What to compare.** The figures below are for XAUUSD with the rules of
+    spec 3.8, the smallest stop 8 USD, spread 0.30 USD and no news filter,
+    by year of entry, as trades / result in R:
 
-    | Year | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |
-    |---|---|---|---|---|---|---|---|
-    | Result | -8.3R | +6.8R | +9.9R | -2.8R | +5.8R | +25.5R | +19.4R |
+    | Year | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | Total |
+    |---|---|---|---|---|---|---|---|---|
+    | Search's own fills | 17 / -8.3 | 18 / +6.8 | 17 / +9.9 | 16 / -2.8 | 28 / +5.8 | 61 / +25.5 | 45 / +19.4 | 202 / +56.3 |
+    | cTrader's fills, "m1 bars from server" | 17 / -10.1 | 18 / +6.5 | 17 / +9.1 | 16 / -4.5 | 28 / +3.9 | 61 / +22.4 | 45 / +17.0 | 202 / +44.2 |
 
-    Over the whole period the search had 202 trades, 55% winners and
-    +56R; with cTrader's own way of filling orders about +44R. Because of
-    the warm-up (step 19), this run has no trade in 2020 and none before
-    about mid-February 2021. So expect fewer than 202 trades, and compare
-    the years 2022 to 2026 one by one (the developer does this from your
-    `.csv` file). cTrader's own fills make the total lower than the
-    search's own figures. Your backtest sizes trades with the ladder, so
-    the money result does not follow the R result one to one.
+    Your run starts trading only after the warm-up (step 19, about 3 July
+    2020). The search's 2020 trades by month were: May 1, June 1, July 3,
+    August 5, September 5, November 1, December 1. So compare with the
+    figures **from 15 July 2020**: 200 trades; search's own fills +57.0R
+    with 55% winners; cTrader's fills +44.9R with 54% winners. 2020 then
+    has 15 trades (-7.6R with the search's fills, -9.4R with cTrader's).
+    With "m1 bars from server" (step 17) expect results near the cTrader
+    line; with tick data nearer the search line. Compare the trade counts
+    and the R results year by year; the developer does this from your
+    `.csv` file. Your backtest sizes trades with the ladder, so the money
+    result does not follow the R result one to one.
 23. Send the developer `xauusd-sessionrange-all-log.txt`,
     `xauusd-sessionrange-all.csv` and the settings of step 17.

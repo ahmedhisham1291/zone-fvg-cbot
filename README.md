@@ -12,12 +12,11 @@ per instance with the parameter `EntryMode` (spec v0.10 and 3.8):
 19:00 to 03:00 New York range on the side of the D1 trend, added on
 23 November 2026 for gold after the strategy search
 `research/search/REPORT-2026-11-23.md`; not accepted until the owner decides
-spec 14, question 4). `docs/requirements.yml` holds 137 requirements; 126
+spec 14, question 4). `docs/requirements.yml` holds 137 requirements; 127
 are implemented (count of `python3 tools/check_traceability.py`). Of the
-other eleven, nine are checked by hand on cTrader and wait for the owner's
-signed test records (`docs/test-records/`), one (REC-016, symbol trading
-sessions) is still planned, and one (PLT-015, SessionRange in the cBot) is
-built in WP35 and waits for an answer to its open question. No accepted
+other ten, nine are checked by hand on cTrader and wait for the owner's
+signed test records (`docs/test-records/`), and one (REC-016, symbol trading
+sessions) is still planned. No accepted
 backtest result is recorded yet, so nothing here says whether a mode is
 profitable. How to run the backtests:
 `docs/backtest-howto.md`. How to deploy: `deploy/README.md`.
