@@ -1,0 +1,62 @@
+name: research-tools
+
+# Builds the research helpers in research/ (owner's go of 2026-11-23). They are not part of the
+# trading bot: build-test, repo-checks and protected-paths are untouched and stay the merge gates.
+
+on:
+  pull_request:
+    paths:
+      - 'research/**'
+      - '.github/workflows/research.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'research/**'
+      - '.github/workflows/research.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export-bars:
+    name: export-bars
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build ExportBars (.algo, warnings are errors)
+        run: dotnet build research/ExportBars/ExportBars -c Release
+
+      # The .algo is also printed as base64 between two marker lines, so that it can be read from
+      # the job log where the artifact storage cannot be reached. The checksum line lets the
+      # reader check the copy.
+      - name: Collect the .algo
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          found="$(find research/ExportBars -path '*/bin/Release/*' -name '*.algo' | head -n 1)"
+          test -n "$found"
+          echo "built: $found"
+          cp "$found" out/ExportBars.algo
+          sha256sum out/ExportBars.algo
+          echo "-----BEGIN ALGO BASE64-----"
+          base64 -w 76 out/ExportBars.algo
+          echo "-----END ALGO BASE64-----"
+
+      - name: Upload .algo
+        uses: actions/upload-artifact@v7
+        with:
+          name: ExportBars-algo
+          path: out/ExportBars.algo
+          if-no-files-found: error

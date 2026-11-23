@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Research helper (owner's go of 2026-11-23). A cBot that only writes bar history to files.
+       It is not part of the trading bot: it places no orders and has no reference to ZoneFvg.Core.
+       The folder is nested on purpose: the cTrader build names the .algo after the folder above
+       the project folder, so this builds ExportBars.algo. -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>ZoneFvg.Research</RootNamespace>
+    <AssemblyName>ExportBars</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same package and version as src/ZoneFvg.Bot. -->
+    <PackageReference Include="cTrader.Automate" Version="1.0.21" />
+  </ItemGroup>
+
+</Project>
