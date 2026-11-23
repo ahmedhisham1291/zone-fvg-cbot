@@ -1415,7 +1415,7 @@ requirements:
     wp: WP33
     spec: "3.8"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       New York time and trading day (owner request of 2026-11-23). The core
       computes New York wall-clock time from UTC without a time zone database:
@@ -1429,7 +1429,7 @@ requirements:
     wp: WP33
     spec: "3.8"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Session range. The range bars of a trading day are the closed M15 bars
       whose open time is at or after RangeStartNy and before RangeEndNy of
@@ -1447,7 +1447,7 @@ requirements:
     wp: WP33
     spec: "3.8"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Session range setup. With a long bias the setup is a buy stop at the
       range high; with a short bias a sell stop at the range low. Stop: entry
@@ -1468,7 +1468,7 @@ requirements:
     wp: WP33
     spec: "3.8"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Void. After a setup and until the caller reports that its order is no
       longer pending (filled, expired or cancelled), a closed M15 bar that
