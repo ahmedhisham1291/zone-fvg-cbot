@@ -41,7 +41,7 @@ public static class EmbeddedHistoryProvider
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i].TrimEnd('\r');
-            if (line.Trim().Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+            if (IsSkipped(line))
             {
                 continue;
             }
@@ -72,6 +72,38 @@ public static class EmbeddedHistoryProvider
 
         string summary = events.Count.ToString(CultureInfo.InvariantCulture) + " events";
         return NewsParseResult.Accepted(events, NewsWeek.StartUtc(first), NewsWeek.EndUtc(last), summary);
+    }
+
+    /// <summary>
+    /// Counts the event lines of the embedded history (PLT-014): every line that
+    /// <see cref="Parse"/> does not ignore as empty or as a comment. Parsing is not changed by this
+    /// count. A malformed line is counted, so a malformed history is not a history without events:
+    /// it is still rejected by <see cref="Parse"/> and the calendar stays unavailable (NWS-010).
+    /// </summary>
+    /// <param name="text">The text of the history file. Null or empty counts 0.</param>
+    /// <returns>The number of event lines, 0 or more.</returns>
+    public static int CountEvents(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        int count = 0;
+        foreach (string raw in text.Split('\n'))
+        {
+            if (!IsSkipped(raw.TrimEnd('\r')))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static bool IsSkipped(string line)
+    {
+        return line.Trim().Length == 0 || line.StartsWith("#", StringComparison.Ordinal);
     }
 
     private static NewsEvent? ParseLine(string line)

@@ -1617,7 +1617,7 @@ requirements:
     wp: WP31
     spec: "7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       A backtest runs with the default parameters (owner request of
       2026-11-23). In a backtest, an empty RiskEpochDate means the CE(S)T
