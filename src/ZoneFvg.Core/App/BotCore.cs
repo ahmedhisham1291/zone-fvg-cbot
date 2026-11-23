@@ -412,7 +412,7 @@ public sealed class BotCore
 
         WeekendDuty();
         RangeVoidDuty(voided);
-        RangeExitDuty(now);
+        RangeExitDuty(now, close);
         UpdateCalendar(now);
         ApplyState("M15 bar closed at " + Minute(close), now);
         ResolvePending(guard, now);
@@ -480,7 +480,7 @@ public sealed class BotCore
         // decision of 2026-11-16). Friday close against a closed market is deferred to the reopen (EXE-016).
         CheckEmergencyGuard(now);
         FridayCloseDuty(now);
-        RangeExitDuty(now);
+        RangeExitDuty(now, null);
         WeekendDuty();
 
         UpdateCalendar(now);
@@ -1073,14 +1073,18 @@ public sealed class BotCore
 
     // EXE-025: in SessionRange mode only; against a closed market no request is sent and the exit, which stays
     // due, is made at the first call after the reopen (as EXE-016). Positions are read from the broker each time.
-    private void RangeExitDuty(DateTime now)
+    // EXE-026: at a closed M15 bar whose close time is at or after the exit the close is sent without reading the
+    // reported market state, since the bar is proof that the market trades; the timer (barClose null) and a bar
+    // that closed before the exit keep the market check. One call per bar, so one close request per bar.
+    private void RangeExitDuty(DateTime now, DateTime? barClose)
     {
         if (_sessionRange == null || !_trades.RangeExitDue(now, _sessionRange.ExitNy))
         {
             return;
         }
 
-        if (_safety.MarketOpen())
+        bool barAtExit = barClose.HasValue && _trades.RangeExitDue(barClose.Value, _sessionRange.ExitNy);
+        if (barAtExit || _safety.MarketOpen())
         {
             JournalActions("range-exit", _trades.RangeExit(now, _sessionRange.ExitNy));
             return;
