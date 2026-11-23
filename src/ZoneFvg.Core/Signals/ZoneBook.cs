@@ -39,11 +39,29 @@ public sealed class ZoneBook
     /// <param name="parameters">Signal parameters; MaxZoneAgeBars and ConfirmWindowBars are used. They are validated first.</param>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public ZoneBook(SignalParameters parameters)
+        : this(parameters, parameters?.ConfirmWindowBars ?? 0)
+    {
+    }
+
+    /// <summary>
+    /// Creates an empty book whose confirmation window is <paramref name="confirmWindowBars"/> M15
+    /// bars instead of ConfirmWindowBars (SIG-036: ChochWindowBars in the Choch model). Everything
+    /// else is as <see cref="ZoneBook(SignalParameters)"/>.
+    /// </summary>
+    /// <param name="parameters">Signal parameters; MaxZoneAgeBars is used. They are validated first.</param>
+    /// <param name="confirmWindowBars">The confirmation window in M15 bars after the touch bar. Must be from 1 to <see cref="SignalParameters.MaxBarCount"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter or the window is out of range.</exception>
+    public ZoneBook(SignalParameters parameters, int confirmWindowBars)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
+        if (confirmWindowBars < 1 || confirmWindowBars > SignalParameters.MaxBarCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(confirmWindowBars), "The confirmation window must be between 1 and " + Invariant.Text(SignalParameters.MaxBarCount) + " bars.");
+        }
+
         _maxZoneAgeBars = parameters.MaxZoneAgeBars;
-        _confirmWindowBars = parameters.ConfirmWindowBars;
+        _confirmWindowBars = confirmWindowBars;
     }
 
     /// <summary>The non-terminal zones (Active or Touched), ordered by id with ordinal comparison (SIG-014).</summary>

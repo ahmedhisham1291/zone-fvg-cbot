@@ -40,7 +40,8 @@ public sealed record Signal(
     /// <summary>
     /// For a breakout signal the reference high (buy) or low (sell) that was broken (SIG-024,
     /// SIG-026); for a session range signal the range edge that is traded, which is its entry
-    /// (SIG-034); null for a ZoneFvg signal.
+    /// (SIG-034); for a Choch signal the broken swing level, which is its entry (SIG-039); null
+    /// for a ZoneFvg signal.
     /// </summary>
     public double? Level { get; init; }
 
@@ -50,4 +51,16 @@ public sealed record Signal(
     /// (EXE-024). Null for the other kinds, whose expiry the execution layer sets (EXE-015).
     /// </summary>
     public DateTime? ExpiryUtc { get; init; }
+
+    /// <summary>
+    /// For a Choch signal whether a bar from the touch bar to the confirming bar swept the most
+    /// recent M15 swing low (buy) or high (sell) (SIG-038, SIG-039); null for the other kinds.
+    /// </summary>
+    public bool? Swept { get; init; }
+
+    /// <summary>
+    /// For a Choch signal where its target comes from (SIG-040): <c>zone:&lt;id&gt;</c>,
+    /// <c>swing:&lt;yyyyMMdd-HHmm&gt;</c> or <c>default</c>; null for the other kinds.
+    /// </summary>
+    public string? TargetSource { get; init; }
 }

@@ -1799,7 +1799,7 @@ requirements:
     wp: WP37
     spec: "3.9, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Entry model (owner's method of 2026-11-23). In ZoneFvg mode the entry
       trigger at a touched zone is chosen by EntryModel: Fvg (the default,
@@ -1821,7 +1821,7 @@ requirements:
     wp: WP37
     spec: "3.2, 3.3, 3.9"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Zones of the Choch model. Zones are detected, superseded, activated,
       touched, invalidated and expired exactly as SIG-006 to SIG-015 say,
@@ -1838,7 +1838,7 @@ requirements:
     wp: WP37
     spec: "3.9"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Change of character (demand zone, buy). M15 swings are the swings of
       SIG-006 found on the M15 bars with the same SwingStrength and the same
@@ -1861,7 +1861,7 @@ requirements:
     wp: WP37
     spec: "3.9"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Sweep (demand zone, buy). A bar b sweeps when its low is strictly below
       the price of the most recent confirmed M15 swing low found on the M15
@@ -1876,7 +1876,7 @@ requirements:
     wp: WP37
     spec: "3.9"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Choch entry and stop (buy). Entry = H's price, the broken swing level,
       as a buy limit order. Stop = X - StopBufferAtr x ATR(M15), where X is
@@ -1892,7 +1892,7 @@ requirements:
     wp: WP37
     spec: "3.9"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Choch target (buy). The opposing levels are the proximal lines of the
       non-terminal supply zones in the book and the prices of the confirmed
@@ -1912,7 +1912,7 @@ requirements:
     wp: WP37
     spec: "3.3, 3.9, 9.4"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Choch in the signal engine. With EntryModel Choch the engine runs the
       zone book of SIG-036 and the rules of SIG-037 to SIG-040 at each M15

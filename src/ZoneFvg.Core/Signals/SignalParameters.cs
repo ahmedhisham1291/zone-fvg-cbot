@@ -213,13 +213,41 @@ public static class WarmupCalculator
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange)
     {
+        return For(parameters, breakout, sessionRange, null);
+    }
+
+    /// <summary>
+    /// Bars needed per timeframe (SIG-020, SIG-028, SIG-034, SIG-041) as
+    /// <see cref="For(SignalParameters, BreakoutParameters, SessionRangeParameters)"/>, except that
+    /// with Choch parameters (the Choch entry model of ZoneFvg mode) the M15 requirement has
+    /// ChochWindowBars in place of ConfirmWindowBars and also covers the 100-bar M15 swing lookback
+    /// and the swing strength before the first bar of a zone's life: M15 = (MaxZoneAgeBars + 1) x 16
+    /// + ChochWindowBars + 100 + SwingStrength + AtrPeriod + 2. With the default parameters this is
+    /// 201 D1, 248 H4 and 2087 M15 bars.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="breakout">The breakout parameters, or null outside Breakout mode. They are validated next.</param>
+    /// <param name="sessionRange">The session range parameters, or null outside SessionRange mode. They are validated next.</param>
+    /// <param name="choch">The Choch parameters, or null outside the Choch model. They are validated next.</param>
+    /// <returns>The requirement for D1, H4 and M15 as a read-only dictionary that enumerates D1, H4, M15.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
+    /// <exception cref="ArgumentException">More than one of breakout, session range and Choch parameters is set.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, ChochParameters? choch)
+    {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         breakout?.Validate();
         sessionRange?.Validate();
+        choch?.Validate();
         if (breakout is not null && sessionRange is not null)
         {
             throw new ArgumentException("Breakout and session range parameters must not both be set: one entry mode per instance (SIG-034).", nameof(sessionRange));
+        }
+
+        if (choch is not null && (breakout is not null || sessionRange is not null))
+        {
+            throw new ArgumentException("Choch parameters belong to ZoneFvg mode and must not be set together with breakout or session range parameters (SIG-035).", nameof(choch));
         }
 
         int emaPeriod = Math.Max(parameters.BiasEmaPeriod, breakout?.TrendSlowEmaPeriod ?? 0);
@@ -232,6 +260,14 @@ public static class WarmupCalculator
             d1 = Math.Max(d1, parameters.AtrPeriod + 1);
             h4 = Math.Max(h4, parameters.AtrPeriod + 1);
             m15 = Math.Max(m15, M15BarsPerTradingDay);
+        }
+
+        if (choch is not null)
+        {
+            // SIG-041: the Choch window replaces the gap window, and every decision from the first bar of a
+            // zone's life on reads the M15 swings of the 100 + SwingStrength bars that end at its bar, so the
+            // swing lookback comes on top of the zone's life, as the ATR window does in the Fvg model.
+            m15 = ((parameters.MaxZoneAgeBars + 1) * M15BarsPerH4Bar) + choch.ChochWindowBars + SwingDetector.LookbackBars + parameters.SwingStrength + parameters.AtrPeriod + 2;
         }
 
         // Sorted by descending enum value, which is D1, H4, M15: a defined enumeration order.

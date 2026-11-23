@@ -40,6 +40,12 @@ namespace ZoneFvg.Core.Signals;
 /// with the bias and the latest ATR(D1) and ATR(H4). A setup becomes a
 /// <see cref="SignalKind.SessionRange"/> signal when the engine is ready; a void notice is shown in
 /// <see cref="LastRangeVoid"/>.</para>
+/// <para>Choch entry model of ZoneFvg mode (SIG-035 to SIG-041, spec 3.9), chosen by creating the
+/// engine with Choch parameters: D1 and H4 bars as in ZoneFvg mode; the zone book's confirmation
+/// window is ChochWindowBars. At each M15 close, after the book has applied the bar, each Touched
+/// zone in id order is checked for a change of character (<see cref="ChochDetector"/>); a zone
+/// with one is consumed as by a gap, and the window end is reported as
+/// <see cref="ZoneEndReason.NoChoch"/>.</para>
 /// </remarks>
 public sealed class SignalEngine
 {
@@ -55,6 +61,7 @@ public sealed class SignalEngine
     private readonly ZoneBook _book;
     private readonly BreakoutTracker? _tracker;
     private readonly SessionRangeTracker? _range;
+    private readonly ChochParameters? _choch;
 
     // SIG-028: period of the slow D1 EMA of the breakout trend filter; 0 when the filter is off or in ZoneFvg mode.
     private readonly int _trendSlowEmaPeriod;
@@ -88,7 +95,7 @@ public sealed class SignalEngine
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public SignalEngine(SignalParameters parameters, BreakoutParameters? breakout)
-        : this(parameters, breakout, null, TimeSpan.Zero)
+        : this(parameters, breakout, null, TimeSpan.Zero, null)
     {
     }
 
@@ -103,21 +110,42 @@ public sealed class SignalEngine
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> or <paramref name="sessionRange"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public SignalEngine(SignalParameters parameters, SessionRangeParameters sessionRange, TimeSpan fridayNoEntryUtc)
-        : this(parameters, null, sessionRange ?? throw new ArgumentNullException(nameof(sessionRange)), fridayNoEntryUtc)
+        : this(parameters, null, sessionRange ?? throw new ArgumentNullException(nameof(sessionRange)), fridayNoEntryUtc, null)
     {
     }
 
-    private SignalEngine(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, TimeSpan fridayNoEntryUtc)
+
+    private SignalEngine(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, TimeSpan fridayNoEntryUtc, ChochParameters? choch)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         _parameters = parameters;
-        _bars = new BarStore(parameters, breakout, sessionRange);
-        _book = new ZoneBook(parameters);
+        _bars = new BarStore(parameters, breakout, sessionRange, choch);
+        _book = choch is null ? new ZoneBook(parameters) : new ZoneBook(parameters, choch.ChochWindowBars);
+        _choch = choch;
         _tracker = breakout is null ? null : new BreakoutTracker(breakout, parameters.RewardRisk);
         _range = sessionRange is null ? null : new SessionRangeTracker(sessionRange, parameters.RewardRisk, fridayNoEntryUtc);
         _trendSlowEmaPeriod = breakout?.TrendSlowEmaPeriod ?? 0;
         Bias = Bias.Neutral;
+    }
+
+    /// <summary>
+    /// Creates an engine in ZoneFvg mode with the Choch entry model and no bars (SIG-020, SIG-041):
+    /// not ready, Neutral bias, no zones. The zone book's confirmation window is ChochWindowBars
+    /// (SIG-036) and the warm-up is that of
+    /// <see cref="WarmupCalculator.For(SignalParameters, BreakoutParameters, SessionRangeParameters, ChochParameters)"/>.
+    /// A factory rather than a constructor, so that the existing calls <c>new SignalEngine(parameters, null)</c>
+    /// keep meaning ZoneFvg mode with the Fvg model.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="choch">The Choch parameters. They are validated next.</param>
+    /// <returns>The engine.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> or <paramref name="choch"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public static SignalEngine WithChoch(SignalParameters parameters, ChochParameters choch)
+    {
+        ArgumentNullException.ThrowIfNull(choch);
+        return new SignalEngine(parameters, null, null, TimeSpan.Zero, choch);
     }
 
     /// <summary>
@@ -236,6 +264,11 @@ public sealed class SignalEngine
                 if (_range is not null)
                 {
                     return OnRangeM15Closed(_range, bar, replay);
+                }
+
+                if (_choch is not null)
+                {
+                    return OnChochM15Closed(_choch, bar, replay);
                 }
 
                 return _tracker is null ? OnM15Closed(bar, replay) : OnBreakoutM15Closed(_tracker, bar, replay);
@@ -452,6 +485,99 @@ public sealed class SignalEngine
         return FvgDetector.BuildSignal(zone, fvg, atrM15, atrH4, _parameters, replay);
     }
 
+    // SIG-041: the Choch model's M15 step. The book applies the bar first (touch, extreme, invalidation); then each
+    // Touched zone, in id order, is checked against the breaks of this bar, found once per bar; last the windows end.
+    private IReadOnlyList<Signal> OnChochM15Closed(ChochParameters choch, Bar bar, bool replay)
+    {
+        Ended(_book.OnM15Closed(bar), ZoneEndReason.Invalid);
+        List<Signal>? signals = null;
+        IReadOnlyList<TouchedZone> touched = _book.TouchedZones;
+        if (touched.Count > 0)
+        {
+            IReadOnlyList<Bar> m15 = _bars.Bars(TimeFrame.M15);
+            IReadOnlyList<Bar> h4 = _bars.Bars(TimeFrame.H4);
+            double? atrM15 = Atr.Value(m15, m15.Count - 1, _parameters.AtrPeriod);
+            double? atrH4 = h4.Count == 0 ? null : Atr.Value(h4, h4.Count - 1, _parameters.AtrPeriod);
+
+            // SIG-037: without both ATR values nothing confirms and the windows go on (fail closed).
+            if (Usable(atrM15) && Usable(atrH4))
+            {
+                // SIG-040 (answer of 2026-11-23): the opposing zones as the bar left them, before any is consumed.
+                var atClose = new ChochBar(m15, h4, _book.Zones, atrM15!.Value, atrH4!.Value, BarIntakeOrder.CloseTimeUtc(TimeFrame.M15, bar), replay);
+                atClose.Up = ChochDetector.BrokenSwing(m15, ZoneType.Demand, _parameters.SwingStrength);
+                atClose.Down = ChochDetector.BrokenSwing(m15, ZoneType.Supply, _parameters.SwingStrength);
+                foreach (TouchedZone candidate in touched)
+                {
+                    Signal? signal = ConfirmChoch(choch, atClose, candidate.Zone);
+                    if (signal is not null && IsReady)
+                    {
+                        signals ??= new List<Signal>();
+                        signals.Add(signal);
+                    }
+                }
+            }
+        }
+
+        Ended(_book.EndConfirmationWindows(), ZoneEndReason.NoChoch);
+        return signals is null ? NoSignals : signals.AsReadOnly();
+    }
+
+    /// <summary>
+    /// Checks one Touched zone for a change of character at this bar (SIG-037 to SIG-040). A zone
+    /// with one that counts (with the sweep when RequireSweep is set, and a stop strictly beyond
+    /// the entry) is consumed whatever the bias; with ChochUseBias and a mismatch it becomes Used
+    /// without a signal (SIG-036).
+    /// </summary>
+    private Signal? ConfirmChoch(ChochParameters choch, ChochBar c1, Zone zone)
+    {
+        bool buy = zone.Type == ZoneType.Demand;
+        Swing? level = buy ? c1.Up : c1.Down;
+        if (level is null || zone.TouchBarOpenUtc is null)
+        {
+            return null;
+        }
+
+        bool swept = ChochDetector.Swept(c1.M15, zone.Type, zone.TouchBarOpenUtc.Value, _parameters.SwingStrength);
+        if (choch.RequireSweep && !swept)
+        {
+            return null;
+        }
+
+        double entry = level.Price;
+        double stop = ChochDetector.Stop(zone, c1.AtrM15, _parameters, choch);
+
+        // Answer of 2026-11-23: a stop that is not strictly beyond the entry confirms nothing (fail closed).
+        bool stopBeyond = buy ? PriceMath.LessThan(stop, entry, PriceMath.DefaultTolerance) : PriceMath.GreaterThan(stop, entry, PriceMath.DefaultTolerance);
+        if (!stopBeyond)
+        {
+            return null;
+        }
+
+        if (choch.ChochUseBias && !BiasAllows(zone.Type))
+        {
+            _book.MarkUsed(zone.Id);
+            _ended.Add(new ZoneEnd(zone.Id, ZoneEndReason.BiasMismatch));
+            return null;
+        }
+
+        _book.MarkSignalled(zone.Id);
+        _ended.Add(new ZoneEnd(zone.Id, ZoneEndReason.Signalled));
+        Side side = buy ? Side.Buy : Side.Sell;
+        ChochTarget target = ChochDetector.Target(side, entry, stop, c1.Zones, c1.H4, c1.AtrH4, _parameters, choch);
+        return new Signal(zone.Id, side, entry, stop, target.Price, null, c1.CloseUtc, c1.Replay, c1.AtrH4)
+        {
+            Kind = SignalKind.Choch,
+            Level = entry,
+            Swept = swept,
+            TargetSource = target.Source,
+        };
+    }
+
+    private static bool Usable(double? atr)
+    {
+        return atr is not null && double.IsFinite(atr.Value) && atr.Value > 0.0;
+    }
+
     private void ForgetOldFvgs()
     {
         DateTime lastClose = _lastCloseUtc;
@@ -461,5 +587,38 @@ public sealed class SignalEngine
     private bool BiasAllows(ZoneType type)
     {
         return (type == ZoneType.Demand && Bias == Bias.Long) || (type == ZoneType.Supply && Bias == Bias.Short);
+    }
+
+    /// <summary>What one M15 close gives every zone of the Choch model (SIG-037 to SIG-041): read once per bar.</summary>
+    private sealed class ChochBar
+    {
+        public ChochBar(IReadOnlyList<Bar> m15, IReadOnlyList<Bar> h4, IReadOnlyList<Zone> zones, double atrM15, double atrH4, DateTime closeUtc, bool replay)
+        {
+            M15 = m15;
+            H4 = h4;
+            Zones = zones;
+            AtrM15 = atrM15;
+            AtrH4 = atrH4;
+            CloseUtc = closeUtc;
+            Replay = replay;
+        }
+
+        public IReadOnlyList<Bar> M15 { get; }
+
+        public IReadOnlyList<Bar> H4 { get; }
+
+        public IReadOnlyList<Zone> Zones { get; }
+
+        public double AtrM15 { get; }
+
+        public double AtrH4 { get; }
+
+        public DateTime CloseUtc { get; }
+
+        public bool Replay { get; }
+
+        public Swing? Up { get; set; }
+
+        public Swing? Down { get; set; }
     }
 }

@@ -6,13 +6,13 @@ namespace ZoneFvg.Core.Signals;
 /// <summary>Why a zone left the signal engine (OPS-009, journal only).</summary>
 public enum ZoneEndReason
 {
-    /// <summary>A gap confirmed the zone and a signal was emitted (SIG-017), whatever then happened to it.</summary>
+    /// <summary>A gap (in the Choch model: a change of character) confirmed the zone and a signal was emitted (SIG-017, SIG-039), whatever then happened to it.</summary>
     Signalled,
 
     /// <summary>No valid gap within ConfirmWindowBars after the touch (SIG-014).</summary>
     NoFvg,
 
-    /// <summary>A valid gap appeared, but the bias did not allow the zone's side (SIG-018).</summary>
+    /// <summary>A valid gap appeared (in the Choch model: a change of character), but the bias did not allow the zone's side (SIG-018, SIG-036).</summary>
     BiasMismatch,
 
     /// <summary>An M15 close beyond the distal line (SIG-014).</summary>
@@ -23,6 +23,9 @@ public enum ZoneEndReason
 
     /// <summary>Replaced by a newer overlapping zone of the same type while still Active (SIG-012).</summary>
     Superseded,
+
+    /// <summary>Choch model: no change of character within ChochWindowBars after the touch (SIG-036, SIG-037).</summary>
+    NoChoch,
 }
 
 /// <summary>One zone that left the engine and why (OPS-009).</summary>
