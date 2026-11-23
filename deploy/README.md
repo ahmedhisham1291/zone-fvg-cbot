@@ -158,12 +158,40 @@ values in SessionRange mode only; in the other modes they produce no signal
 and are not part of the parameter hash. The gold file uses the same eleven
 values as the forex files.
 
+**Entry model of ZoneFvg mode (spec 3.9, v0.11).** In ZoneFvg mode the
+parameter `EntryModel` chooses the trigger at a touched zone: `Fvg` (the fair
+value gap of spec 3.4, the default) or `Choch` (the change of character of
+your manual method, spec 3.9). The eight parameters of the group "Entry
+model" are the next eight lines of every file in `deploy/params/`:
+
+| Parameter | Value in the example files | What it does |
+|---|---|---|
+| `EntryModel` | `Fvg` | `Fvg` or `Choch`, exactly so. `Choch` with an `EntryMode` other than `ZoneFvg` makes the bot refuse to start and name both parameters |
+| `RequireSweep` | `false` | Choch: a change of character counts only after a sweep of a recent M15 swing |
+| `ChochWindowBars` | `32` | Choch: M15 bars after the touch in which the change of character must come. 4 to 96 |
+| `ChochUseBias` | `false` | Choch: `true` trades a zone only when the D1 trend matches it |
+| `ChochStopAtDistal` | `false` | Choch: `true` puts the stop beyond the zone's far edge as well |
+| `ChochTargetBufferAtr` | `0.1` | Choch: the target sits this far (in ATR(H4)) before the next opposing level. 0 to 1 |
+| `ChochMinStopPips` | `5` (gold `3`) | Choch: smallest stop in pips, in place of `MinStopPips`. More than 0 |
+| `MinRewardRisk` | `2.0` | Choch: a setup whose target gives less than this reward to risk is skipped. 1 to 10 |
+
+The eight values are checked at start in every mode, like the values of
+"Entry mode". The files keep `EntryModel=Fvg` and the window 07:00 to 17:00,
+the cBot's defaults. For the Choch model set, together, `EntryMode=ZoneFvg`,
+`EntryModel=Choch`, `SessionStartUtc=00:00` and `SessionEndUtc=24:00` (you
+trade all day; `24:00` is accepted for `SessionEndUtc` only, and in Breakout
+mode the bot still refuses it). The Choch values are part of the parameter
+hash only with `EntryModel=Choch`, so the Fvg model keeps its hash.
+
 **Warm-up of the trend filter.** The D1 EMA of period n reads 4 x n closed
 D1 bars, so with `TrendSlowEmaPeriod` 200 the bot needs 801 closed D1 bars
 (about 3.1 years) before it can trade its first breakout; with the filter
 off it needs 201 (`BiasEmaPeriod` 50). ZoneFvg and SessionRange need the
 same 201 D1 bars, and every mode needs 248 H4 and 1968 M15 bars with the
-default values. The bot loads them from the broker's
+default values; the Choch model needs 2087 M15 bars (its 32-bar window and
+the 100-bar M15 swing lookback). The bot writes one Log line at start,
+`closed bars loaded at start against the warm-up: D1 ... of 201, H4 ... of
+248, M15 ... of 2087`, so you can see whether the history was enough. The bot loads them from the broker's
 history at start. Live this is normally available; if it is not, recovery
 reports the D1 series as a data problem and the bot does not trade (fail
 closed).

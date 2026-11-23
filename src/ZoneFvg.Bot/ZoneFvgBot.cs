@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using cAlgo.API;
 using ZoneFvg.Bot;
@@ -81,6 +82,38 @@ namespace cAlgo.Robots
         /// <summary>SessionRange: stop distance in ATR(H4) (PLT-015, SIG-032, spec 3.8).</summary>
         [Parameter("RangeStopAtr", DefaultValue = 1.0, Group = "Entry mode")]
         public double RangeStopAtr { get; set; }
+
+        /// <summary>Entry model of ZoneFvg mode, Fvg or Choch (PLT-016, spec 3.9 and 7). Choch needs EntryMode ZoneFvg.</summary>
+        [Parameter("EntryModel", DefaultValue = "Fvg", Group = "Entry model")]
+        public string EntryModel { get; set; } = "Fvg";
+
+        /// <summary>Choch: a change of character counts only after a sweep (PLT-016, SIG-038).</summary>
+        [Parameter("RequireSweep", DefaultValue = false, Group = "Entry model")]
+        public bool RequireSweep { get; set; }
+
+        /// <summary>Choch: confirmation window in M15 bars after the touch, 4 to 96 (PLT-016, SIG-036).</summary>
+        [Parameter("ChochWindowBars", DefaultValue = 32, Group = "Entry model")]
+        public int ChochWindowBars { get; set; }
+
+        /// <summary>Choch: the D1 bias must match the zone (PLT-016, SIG-036).</summary>
+        [Parameter("ChochUseBias", DefaultValue = false, Group = "Entry model")]
+        public bool ChochUseBias { get; set; }
+
+        /// <summary>Choch: the stop also beyond the zone's distal line (PLT-016, SIG-039).</summary>
+        [Parameter("ChochStopAtDistal", DefaultValue = false, Group = "Entry model")]
+        public bool ChochStopAtDistal { get; set; }
+
+        /// <summary>Choch: target before the opposing level, in ATR(H4), 0 to 1 (PLT-016, SIG-040).</summary>
+        [Parameter("ChochTargetBufferAtr", DefaultValue = 0.1, Group = "Entry model")]
+        public double ChochTargetBufferAtr { get; set; }
+
+        /// <summary>Choch: smallest stop in pips, more than 0 (PLT-016, EXE-028). Gold: 3.</summary>
+        [Parameter("ChochMinStopPips", DefaultValue = 5.0, Group = "Entry model")]
+        public double ChochMinStopPips { get; set; }
+
+        /// <summary>Choch: smallest reward to risk on the signal's levels, 1 to 10 (PLT-016, EXE-028).</summary>
+        [Parameter("MinRewardRisk", DefaultValue = 2.0, Group = "Entry model")]
+        public double MinRewardRisk { get; set; }
 
         /// <summary>Trend filter timeframe (SIG-005). Fixed: D1.</summary>
         [Parameter("BiasTimeFrame", DefaultValue = "D1", Group = "Signal")]
@@ -174,11 +207,11 @@ namespace cAlgo.Robots
         [Parameter("CostToRiskMax", DefaultValue = 0.10, Group = "Execution")]
         public double CostToRiskMax { get; set; }
 
-        /// <summary>Start of the trading window, UTC, HH:mm (EXE-002).</summary>
+        /// <summary>Start of the trading window, UTC, HH:mm (EXE-002); 00:00 to 23:59.</summary>
         [Parameter("SessionStartUtc", DefaultValue = "07:00", Group = "Execution")]
         public string SessionStartUtc { get; set; } = "07:00";
 
-        /// <summary>End of the trading window, UTC, HH:mm (EXE-002).</summary>
+        /// <summary>End of the trading window, UTC, HH:mm, or 24:00 for the end of the day (EXE-002, EXE-029, PLT-016).</summary>
         [Parameter("SessionEndUtc", DefaultValue = "17:00", Group = "Execution")]
         public string SessionEndUtc { get; set; } = "17:00";
 
@@ -371,8 +404,9 @@ namespace cAlgo.Robots
                 parameters.Validate(isBacktest);
 
                 // PLT-012: the breakout values are checked in every mode by the core's own method; they are
-                // passed to the core in Breakout mode only.
-                BuildBreakout(parameters.Execution).Validate();
+                // passed to the core in Breakout mode only. PLT-016 (answer of 2026-11-23): outside Breakout mode an
+                // all-day session (SessionEndUtc 24:00) is checked with the last instant before 24:00 as window end.
+                ChochText.ForEveryModeCheck(BuildBreakout(parameters.Execution), parameters.Mode).Validate();
                 _core = Create(parameters, isBacktest);
             }
             catch (ArgumentException exception)
@@ -399,7 +433,27 @@ namespace cAlgo.Robots
 
             Subscribe();
             _core.OnStart(_bars!);
+            LogWarmup(parameters);
             _bars!.SkipToLatest();
+        }
+
+        // PLT-016: whether the history loaded at start holds the warm-up the core needs (Choch: 2087 M15 bars
+        // with the defaults). Diagnostics only: recovery reads the bars itself and stays Recovering without them.
+        private void LogWarmup(BotParameters parameters)
+        {
+            try
+            {
+                var warmup = WarmupCalculator.For(parameters.Signal, parameters.Breakout, parameters.SessionRange, parameters.Choch);
+                CTraderBars bars = _bars!;
+                string Part(CoreTimeFrame timeFrame) =>
+                    timeFrame + " " + bars.ClosedBars(timeFrame, int.MaxValue).Count.ToString(CultureInfo.InvariantCulture)
+                    + " of " + warmup[timeFrame].ToString(CultureInfo.InvariantCulture);
+                _log!.Info("closed bars loaded at start against the warm-up: " + Part(CoreTimeFrame.D1) + ", " + Part(CoreTimeFrame.H4) + ", " + Part(CoreTimeFrame.M15));
+            }
+            catch (Exception exception)
+            {
+                _log!.Error("warm-up description", exception);
+            }
         }
 
         /// <summary>Timer, once a minute (spec 9.3): passes newly closed bars, then the timer event.</summary>
@@ -516,7 +570,7 @@ namespace cAlgo.Robots
             var http = new HttpTransport(Http, log);
             _painter = CreatePainter(broker, isBacktest, log);
 
-            log.Info("version " + BuildInfo.Version + ", symbol " + SymbolName + ", backtest " + (isBacktest ? "yes" : "no") + ", mode " + parameters.Mode);
+            log.Info("version " + BuildInfo.Version + ", symbol " + SymbolName + ", backtest " + (isBacktest ? "yes" : "no") + ", mode " + parameters.Mode + ", model " + (parameters.Choch is null ? ChochText.Fvg : ChochText.Choch));
             LogCosts(broker, log);
             return new BotCore(parameters, broker, store, http, log, isBacktest);
         }
@@ -576,6 +630,10 @@ namespace cAlgo.Robots
             // PLT-015: the six range values are parsed and checked in every mode, with the names cTrader
             // shows; they are passed to the core in SessionRange mode only.
             SessionRangeParameters sessionRange = SessionRangeText.Build(RangeStartNy, RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr, RangeStopAtr);
+
+            // PLT-016: EntryModel and the seven Choch values are checked in every mode, with the names cTrader shows;
+            // Choch with another EntryMode is refused. The values are passed to the core with EntryModel Choch only.
+            ChochParameters? choch = ChochText.Build(EntryModel, mode, RequireSweep, ChochWindowBars, ChochUseBias, ChochStopAtDistal, ChochTargetBufferAtr, ChochMinStopPips, MinRewardRisk);
             string newsHistory = isBacktest ? ReadNewsHistory() : string.Empty;
             return new BotParameters
             {
@@ -594,6 +652,7 @@ namespace cAlgo.Robots
                     _ => throw new ArgumentException(nameof(EntryMode) + " must be one of: ZoneFvg, Breakout, SessionRange.", nameof(EntryMode)),
                 },
                 SessionRange = mode == CoreEntryMode.SessionRange ? sessionRange : null,
+                Choch = choch,
                 Risk = BuildRisk(isBacktest),
                 News = BuildNews(isBacktest, newsHistory),
 
@@ -656,8 +715,9 @@ namespace cAlgo.Robots
         {
             return new ExecutionParameters
             {
-                SessionStartUtc = ParameterText.TimeOfDay(nameof(SessionStartUtc), SessionStartUtc),
-                SessionEndUtc = ParameterText.TimeOfDay(nameof(SessionEndUtc), SessionEndUtc),
+                // PLT-016, EXE-029: SessionEndUtc also accepts 24:00; SessionStartUtc does not.
+                SessionStartUtc = ChochText.SessionStartUtc(SessionStartUtc),
+                SessionEndUtc = ChochText.SessionEndUtc(SessionEndUtc),
                 FridayNoEntryUtc = ParameterText.TimeOfDay(nameof(FridayNoEntryUtc), FridayNoEntryUtc),
                 FridayCloseUtc = ParameterText.TimeOfDay(nameof(FridayCloseUtc), FridayCloseUtc),
                 MaxSpreadPips = MaxSpreadPips,
