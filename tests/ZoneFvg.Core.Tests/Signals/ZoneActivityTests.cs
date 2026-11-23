@@ -169,7 +169,8 @@ public class ZoneActivityTests
     {
         var counts = new ZoneOutcomeCounts();
         DateTime close = new(2026, 7, 1, 10, 0, 0, DateTimeKind.Utc);
-        foreach (ZoneEndReason reason in Enum.GetValues<ZoneEndReason>())
+        // WP37a: NoChoch (the Choch model's window end) shares the slot of NoFvg; ZoneOutcomeCountsChochTests covers it.
+        foreach (ZoneEndReason reason in Enum.GetValues<ZoneEndReason>().Where(reason => reason != ZoneEndReason.NoChoch))
         {
             counts.Add(close, Ending(reason));
         }
