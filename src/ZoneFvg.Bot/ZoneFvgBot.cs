@@ -50,6 +50,14 @@ namespace cAlgo.Robots
         [Parameter("BreakoutStopAtr", DefaultValue = 1.0, Group = "Entry mode")]
         public double BreakoutStopAtr { get; set; }
 
+        /// <summary>Slow D1 EMA period of the breakout trend filter; 0 switches it off (SIG-028, spec 3.1).</summary>
+        [Parameter("TrendSlowEmaPeriod", DefaultValue = 200, Group = "Entry mode")]
+        public int TrendSlowEmaPeriod { get; set; }
+
+        /// <summary>Latest close time of a confirming bar, UTC, HH:mm; equal to SessionEndUtc switches it off (SIG-029, spec 3.7).</summary>
+        [Parameter("BreakoutLastConfirmUtc", DefaultValue = "08:00", Group = "Entry mode")]
+        public string BreakoutLastConfirmUtc { get; set; } = "08:00";
+
         /// <summary>Trend filter timeframe (SIG-005). Fixed: D1.</summary>
         [Parameter("BiasTimeFrame", DefaultValue = "D1", Group = "Signal")]
         public string BiasTimeFrame { get; set; } = "D1";
@@ -608,6 +616,8 @@ namespace cAlgo.Robots
                 StopAtrMult = BreakoutStopAtr,
                 WindowStartUtc = execution.SessionStartUtc,
                 WindowEndUtc = execution.SessionEndUtc,
+                TrendSlowEmaPeriod = TrendSlowEmaPeriod,
+                LastConfirmUtc = ParameterText.TimeOfDay(nameof(BreakoutLastConfirmUtc), BreakoutLastConfirmUtc),
             };
         }
 
@@ -717,6 +727,8 @@ namespace cAlgo.Robots
                 nameof(BreakoutParameters.StopAtrMult) => nameof(BreakoutStopAtr),
                 nameof(BreakoutParameters.WindowStartUtc) => nameof(SessionStartUtc),
                 nameof(BreakoutParameters.WindowEndUtc) => nameof(SessionEndUtc),
+                nameof(BreakoutParameters.TrendSlowEmaPeriod) => nameof(TrendSlowEmaPeriod),
+                nameof(BreakoutParameters.LastConfirmUtc) => nameof(BreakoutLastConfirmUtc),
                 _ => null,
             };
             return name == null ? exception.Message : name + ": " + exception.Message;

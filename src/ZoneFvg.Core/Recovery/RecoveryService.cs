@@ -124,7 +124,7 @@ public sealed class RecoveryService
         _enterState = enterState ?? throw new ArgumentNullException(nameof(enterState));
         _marketHolidays = marketHolidays ?? Array.Empty<MonthDay>();
         _haltsRecordOnly = haltsRecordOnly;
-        _warmup = WarmupCalculator.For(signalParameters);
+        _warmup = WarmupCalculator.For(signalParameters, breakout);
         _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout);
         _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
         _guard = new AccountGuard(symbol, riskParameters, broker);

@@ -31,8 +31,21 @@ public sealed class BarStore
     /// <param name="parameters">The signal parameters. They are validated first.</param>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public BarStore(SignalParameters parameters)
+        : this(parameters, null)
     {
-        _warmupBars = WarmupCalculator.For(parameters);
+    }
+
+    /// <summary>
+    /// Creates an empty store sized for the given parameters (SIG-020, SIG-028): the warm-up of
+    /// <see cref="WarmupCalculator.For(SignalParameters, BreakoutParameters)"/>, so that with the
+    /// breakout trend filter on the D1 buffer holds the window of the slow EMA.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="breakout">The breakout parameters, or null in ZoneFvg mode.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public BarStore(SignalParameters parameters, BreakoutParameters? breakout)
+    {
+        _warmupBars = WarmupCalculator.For(parameters, breakout);
         _d1 = new RingBuffer(_warmupBars[TimeFrame.D1] + CapacityMargin);
         _h4 = new RingBuffer(_warmupBars[TimeFrame.H4] + CapacityMargin);
         _m15 = new RingBuffer(_warmupBars[TimeFrame.M15] + CapacityMargin);

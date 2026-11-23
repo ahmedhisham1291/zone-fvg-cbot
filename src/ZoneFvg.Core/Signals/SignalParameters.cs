@@ -168,10 +168,30 @@ public static class WarmupCalculator
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters)
     {
+        return For(parameters, null);
+    }
+
+    /// <summary>
+    /// Bars needed per timeframe (SIG-020, SIG-028) as <see cref="For(SignalParameters)"/>, except
+    /// that in Breakout mode with the trend filter on (TrendSlowEmaPeriod greater than zero) the D1
+    /// requirement covers the slow EMA: D1 = 4 x the larger of BiasEmaPeriod and
+    /// TrendSlowEmaPeriod + 1. With null breakout parameters (ZoneFvg mode) or the filter off the
+    /// result equals <see cref="For(SignalParameters)"/>. With BiasEmaPeriod 50 and
+    /// TrendSlowEmaPeriod 200 the D1 requirement is 801 bars.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="breakout">The breakout parameters, or null in ZoneFvg mode. They are validated next.</param>
+    /// <returns>The requirement for D1, H4 and M15 as a read-only dictionary that enumerates D1, H4, M15.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters, BreakoutParameters? breakout)
+    {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
+        breakout?.Validate();
 
-        int d1 = (Ema.WindowMultiple * parameters.BiasEmaPeriod) + 1;
+        int emaPeriod = Math.Max(parameters.BiasEmaPeriod, breakout?.TrendSlowEmaPeriod ?? 0);
+        int d1 = (Ema.WindowMultiple * emaPeriod) + 1;
         int h4 = parameters.MaxZoneAgeBars + SwingDetector.LookbackBars + (2 * parameters.SwingStrength) + parameters.MaxImpulseBars + parameters.MaxBaseBars + parameters.AtrPeriod + 2;
         int m15 = ((parameters.MaxZoneAgeBars + 1) * M15BarsPerH4Bar) + parameters.ConfirmWindowBars + parameters.AtrPeriod + 2;
 
