@@ -60,3 +60,10 @@ parameter "Print bars to the log instead of files" forces this mode.
 | `XE` | Something could not be done; the text says what |
 | `XS` | Summary per series at the end: rows, first and last bar |
 | `XDONE` | The run is complete |
+
+## search
+
+`search/` is the test harness for entry rules and its reports: a loader for the exported files, a trade
+simulator on one-minute bars (checked trade for trade against a cTrader backtest of the bot), the rule
+families, the screening runs and the report script. Python 3 with numpy and pandas; nothing is built or
+run by CI. The first report is `search/REPORT-2026-11-23.md`.
