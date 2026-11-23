@@ -529,15 +529,24 @@ namespace cAlgo.Robots
         {
             ParameterText.Fixed(nameof(DayResetZone), DayResetZone, "Europe/Prague");
             CoreEntryMode mode = ParameterText.EnumName<CoreEntryMode>(nameof(EntryMode), EntryMode);
+
+            // The signal texts are parsed before the time texts, as before PLT-012, so the order of the refusals is unchanged.
+            SignalParameters signal = BuildSignal();
             ExecutionParameters execution = BuildExecution();
             return new BotParameters
             {
                 Symbol = SymbolName,
-                Signal = BuildSignal(),
+                Signal = signal,
                 Execution = execution,
 
                 // PLT-012: the mode selects whether the breakout parameters are passed; the core checks their values.
-                Breakout = mode == CoreEntryMode.Breakout ? BuildBreakout(execution) : null,
+                // A mode the adapter does not know is refused, never run as ZoneFvg.
+                Breakout = mode switch
+                {
+                    CoreEntryMode.Breakout => BuildBreakout(execution),
+                    CoreEntryMode.ZoneFvg => null,
+                    _ => throw new ArgumentException(nameof(EntryMode) + " must be one of: ZoneFvg, Breakout.", nameof(EntryMode)),
+                },
                 Risk = BuildRisk(),
                 News = BuildNews(),
 
