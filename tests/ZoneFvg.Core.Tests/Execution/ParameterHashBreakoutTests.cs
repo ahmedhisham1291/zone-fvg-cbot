@@ -31,7 +31,9 @@ public class ParameterHashBreakoutTests
     private static readonly IReadOnlyDictionary<string, string> CanonicalNames = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["EntryBufferAtr"] = "BreakoutEntryBufferAtr",
+        ["LastConfirmUtc"] = "BreakoutLastConfirmUtc",
         ["StopAtrMult"] = "BreakoutStopAtr",
+        ["TrendSlowEmaPeriod"] = "TrendSlowEmaPeriod",
         ["WindowStartUtc"] = "BreakoutWindowStartUtc",
         ["WindowEndUtc"] = "BreakoutWindowEndUtc",
     };
@@ -50,6 +52,7 @@ public class ParameterHashBreakoutTests
     {
         return value switch
         {
+            int i => i + 2,
             double d => d + 0.125,
             TimeSpan t => t + TimeSpan.FromMinutes(1.0),
             _ => throw new XunitException("No change rule for " + property.Name + " of type " + property.PropertyType.Name + ": add one to this test."),
@@ -118,8 +121,18 @@ public class ParameterHashBreakoutTests
         property.SetValue(breakout, Changed(property, property.GetValue(breakout)!));
 
         Assert.True(CanonicalNames.ContainsKey(name), "no canonical name for " + name + ": add one to this test");
-        Assert.Contains(CanonicalNames[name] + "=", before, StringComparison.Ordinal);
-        Assert.NotEqual(before, ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), breakout));
+        string after = ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), breakout);
+        if (name is "LastConfirmUtc" or "TrendSlowEmaPeriod")
+        {
+            // SIG-028, SIG-029: these two are written only when they differ from their off values.
+            Assert.Contains(CanonicalNames[name] + "=", after, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Contains(CanonicalNames[name] + "=", before, StringComparison.Ordinal);
+        }
+
+        Assert.NotEqual(before, after);
         Assert.NotEqual(hashBefore, ParameterHash.Compute(new SignalParameters(), new ExecutionParameters(), breakout));
     }
 
@@ -128,7 +141,8 @@ public class ParameterHashBreakoutTests
     public void Canonical_AppendedPartHasOneEntryPerBreakoutParameterPlusEntryMode()
     {
         string without = ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), null);
-        string with = ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), new BreakoutParameters());
+        var filtersOn = new BreakoutParameters { TrendSlowEmaPeriod = 200, LastConfirmUtc = TimeSpan.FromHours(8.0) };
+        string with = ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), filtersOn);
 
         Assert.StartsWith(without, with, StringComparison.Ordinal);
         string[] entries = with.Substring(without.Length)
@@ -142,6 +156,23 @@ public class ParameterHashBreakoutTests
             .ToArray();
 
         Assert.Equal(expected, entries);
+    }
+
+    [Fact]
+    [Trait("Req", "EXE-018")]
+    public void Canonical_DefaultBreakoutParameters_AppendsTheFourBreakoutEntriesPlusEntryMode()
+    {
+        string without = ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), null);
+        string with = ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), new BreakoutParameters());
+
+        Assert.StartsWith(without, with, StringComparison.Ordinal);
+        string[] entries = with.Substring(without.Length)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(entry => entry.Substring(0, entry.IndexOf('=')))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "BreakoutEntryBufferAtr", "BreakoutStopAtr", "BreakoutWindowEndUtc", "BreakoutWindowStartUtc", "EntryMode" }, entries);
     }
 
     [Fact]
