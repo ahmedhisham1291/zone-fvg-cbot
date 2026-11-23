@@ -55,6 +55,7 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | J. A reference serves one day (added on 22 November 2026, after the review of the guards) | An M15 bar that opens 24 hours or more after the first M15 bar following the reference bar's close is not checked. So a daily series that is one bar behind cannot make the bot trade the range of the day before. A history list with a missing entry counts as no history | 3.7, 5.3, 8.3 |
 | K. What goes live (added on 23 November 2026, after the review of the cBot parameters and guides) | The live parameter files carry the chosen mode and the accepted settings, and the hash at start must equal the hash of the accepted run. When ZoneFvg is the chosen mode, Breakout is run once on the holdout as the benchmark input only | 13.1 |
 | L. A backtest runs with the defaults (added on 23 November 2026, owner request) | In a backtest an empty `RiskEpochDate` means the backtest's first day, and `NewsEnabled` has no effect while the embedded news history has no events. Live, both stay as before: `RiskEpochDate` must be set and the news filter blocks without a calendar | 7 |
+| M. Breakout filters (added on 23 November 2026, owner request after the first backtests) | Breakout trades only when the D1 EMA(50) is on the trade's side of the D1 EMA(200), and only on a breakout confirmed by a bar that closes before 08:00 UTC. Both are cBot settings; 0 and 17:00 switch them off | 3.1, 3.7, 7 |
 | Proposed, marked in the plan pull request | Breakout values: entry buffer 0.1 x ATR(M15), stop 1.0 x ATR(H4), target 2R, order life 8 bars. No trailing stop in the baseline (it is the first variant to test). Symbols unchanged; index CFDs are an open question | 3.7, 7, 12.4, 14 |
 | FTMO wording | The gap-trading rule is restated as FTMO's page reads on 22 November 2026: two separate situations joined by "or" | 15.2 |
 
@@ -124,6 +125,7 @@ All rules are evaluated on **closed bars only**. Long rules are shown; short rul
 - Only demand zones are traded in a long bias, only supply zones in a short bias.
 - Both zone types are always detected and stored, because opposing zones are needed for the room check in section 3.6.
 - In Breakout mode (3.7) a long bias allows only buys and a short bias only sells.
+- Breakout trend filter (added on 23 November 2026, owner request): with `TrendSlowEmaPeriod` greater than zero, Breakout mode also needs the D1 EMA(`BiasEmaPeriod`) above the D1 EMA(`TrendSlowEmaPeriod`) for a buy and below it for a sell, both on the last closed D1 bar; otherwise no breakout signal is made that day. `TrendSlowEmaPeriod` 0 switches the filter off (the rule before 23 November). ZoneFvg mode does not use it.
 
 ### 3.2 Demand zone detection (H4)
 
@@ -207,6 +209,7 @@ Chosen with `EntryMode` = Breakout, the default. It follows the D1 trend into a 
 
 - it opened at or after the reference bar closed (so the M15 bar that closes together with the D1 bar is not checked), and
 - it closes inside the trading window: the time of day of its close is at or after `SessionStartUtc` (07:00) and before `SessionEndUtc` (17:00), and
+- its close is before `BreakoutLastConfirmUtc` (08:00 by default; a value equal to `SessionEndUtc` switches this off). A bar that closes later is checked for nothing and makes the reference finished for the day, so a later breakout is not traded (added on 23 November 2026, owner request: in the backtests of 2023–2026 breakouts confirmed in the first hour did better than later ones in both halves of the period), and
 - it opened less than 24 hours after the first M15 bar that opened at or after the reference bar closed. A reference serves one day of M15 bars: when the D1 series is one bar behind, the bars of the following day are not checked against the range of the day before (added on 22 November 2026).
 
 **Confirmation.** With a long bias (3.1), the first checked bar that closes above the reference high confirms a buy. With a short bias, the first checked bar that closes below the reference low confirms a sell. With a neutral bias nothing confirms. A close beyond the level on the side the bias does not trade changes nothing. A reference gives at most one signal; after its confirmation, or when the next D1 bar closes, it is finished. If price is already beyond the level when the window opens, the first checked bar that closes beyond it is the confirmation.
@@ -484,6 +487,8 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | FridayCloseUtc | 20:00 | Weekend flat time | Fixed |
 | MaxSpreadPips | 1.5; gold 40 | Spread filter | Per symbol |
 | NewsEnabled (new) | true; in a backtest whose embedded news history has no events the filter is off for that run and the start log says so (added 23 November 2026) | News filter on or off | Test on and off |
+| TrendSlowEmaPeriod (new in v0.10) | 200 (0 = off) | Breakout trend filter (3.1) | Test 0 and 200 |
+| BreakoutLastConfirmUtc (new in v0.10) | 08:00 (17:00 = off) | Latest close time of a confirming bar (3.7) | Test 08:00 and 17:00 |
 | NewsBeforeMin / NewsAfterMin (new) | 30 / 30 | Window around events | Fixed |
 | NewsFailMode (new) | Block | Behaviour without calendar | Fixed |
 | NewsSources (new in 0.3) | ForexFactory | ForexFactory only until a second feed is added (owner decision 2026-11-14) | n/a |
