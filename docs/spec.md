@@ -54,6 +54,7 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | I. Recovery in Breakout mode (added on 22 November 2026, after the review of the wiring) | A D1 series that lacks the bar that closed last does not pass recovery in Breakout mode, because that bar is the reference. The automated fault scenarios 5, 6, 8 and 14 also run in Breakout mode. "Flat" for a deployment or a parameter change means no open position and no pending order of the bot | 8.3, 10.2, 12.3 |
 | J. A reference serves one day (added on 22 November 2026, after the review of the guards) | An M15 bar that opens 24 hours or more after the first M15 bar following the reference bar's close is not checked. So a daily series that is one bar behind cannot make the bot trade the range of the day before. A history list with a missing entry counts as no history | 3.7, 5.3, 8.3 |
 | K. What goes live (added on 23 November 2026, after the review of the cBot parameters and guides) | The live parameter files carry the chosen mode and the accepted settings, and the hash at start must equal the hash of the accepted run. When ZoneFvg is the chosen mode, Breakout is run once on the holdout as the benchmark input only | 13.1 |
+| L. A backtest runs with the defaults (added on 23 November 2026, owner request) | In a backtest an empty `RiskEpochDate` means the backtest's first day, and `NewsEnabled` has no effect while the embedded news history has no events. Live, both stay as before: `RiskEpochDate` must be set and the news filter blocks without a calendar | 7 |
 | Proposed, marked in the plan pull request | Breakout values: entry buffer 0.1 x ATR(M15), stop 1.0 x ATR(H4), target 2R, order life 8 bars. No trailing stop in the baseline (it is the first variant to test). Symbols unchanged; index CFDs are an open question | 3.7, 7, 12.4, 14 |
 | FTMO wording | The gap-trading rule is restated as FTMO's page reads on 22 November 2026: two separate situations joined by "or" | 15.2 |
 
@@ -474,7 +475,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | FtmoDailyLossPercent / FtmoMaxLossPercent (new in 0.6) | 5 / 10 | FTMO's own limits for the 2-Step | Per product |
 | FtmoGuardBufferPercent (new in 0.6) | 1 | Distance from an FTMO floor at which the emergency guard acts | Fixed |
 | MaxRequestsPerDay (new in 0.6) | 100 | Order requests per instance per day | Fixed |
-| RiskEpochDate (new) | First live day | Start date for drawdown measurement | Set manually |
+| RiskEpochDate (new) | First live day; empty in a backtest means the backtest's first day (added 23 November 2026) | Start date for drawdown measurement | Set manually live |
 | MaxEntriesPerSymbolPerDay (new) | 2 | Circuit breaker | Fixed |
 | MaxEntriesPerDay (new) | 6 | Circuit breaker | Fixed |
 | MaxVolumeUnits (new) | 500,000 (5 lots); gold 200 (ounces) | Size sanity cap | Per symbol |
@@ -482,7 +483,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | FridayNoEntryUtc (new) | 12:00 | Last entry time on Friday | Fixed |
 | FridayCloseUtc | 20:00 | Weekend flat time | Fixed |
 | MaxSpreadPips | 1.5; gold 40 | Spread filter | Per symbol |
-| NewsEnabled (new) | true | News filter on or off | Test on and off |
+| NewsEnabled (new) | true; in a backtest whose embedded news history has no events the filter is off for that run and the start log says so (added 23 November 2026) | News filter on or off | Test on and off |
 | NewsBeforeMin / NewsAfterMin (new) | 30 / 30 | Window around events | Fixed |
 | NewsFailMode (new) | Block | Behaviour without calendar | Fixed |
 | NewsSources (new in 0.3) | ForexFactory | ForexFactory only until a second feed is added (owner decision 2026-11-14) | n/a |

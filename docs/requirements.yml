@@ -1611,3 +1611,20 @@ requirements:
       and costs, the Breakout trade logs as the benchmark input of the
       ZoneFvg acceptance report, and that the benchmark row is not applied
       to the Breakout mode (spec 12.1 and 13.1).
+
+
+  - id: PLT-014
+    wp: WP31
+    spec: "7"
+    verify: unit
+    status: planned
+    text: >-
+      A backtest runs with the default parameters (owner request of
+      2026-11-23). In a backtest, an empty RiskEpochDate means the CE(S)T
+      date of the server time at start, and the start line shows that date.
+      In a backtest whose embedded news history has no events, the news
+      filter is off for that run even when NewsEnabled is true: the start
+      line shows news=disabled and one start log line says why. When the
+      embedded history has events, NewsEnabled works as before. Live,
+      nothing changes: an empty RiskEpochDate refuses the start, and the
+      news filter blocks entries without a trusted calendar.
