@@ -204,7 +204,7 @@ public class Exe024SessionRangeOrderScenarios
 
     [Fact]
     [Trait("Req", "EXE-024")]
-    public void UnclearPlacement_ThenVoid_NotResentAndAnOrderThatAppearsIsCancelled()
+    public void UnclearPlacementApplied_ThenVoid_NotResentAndTheOrderAlreadyAtTheBrokerIsCancelled()
     {
         BotHarness h = Data.Started(Start, Data.Bars(false, Data.Utc(2026, 3, 4, 8, 0), Data.Winter));
         h.Broker.Script(BrokerCall.Place, BrokerFault.UnclearApplied);
@@ -222,6 +222,78 @@ public class Exe024SessionRangeOrderScenarios
         h.FeedTo(Data.Utc(2026, 3, 4, 10, 0));
         Assert.Equal(1, h.Count(BrokerCall.Place));
         Assert.Equal(1, h.Count(BrokerCall.Cancel));
+    }
+
+    // The placement at 08:00 has an unclear outcome and nothing at the broker; the bar opening 08:00 is the void bar.
+    private static BotHarness UnclearThenVoid()
+    {
+        BotHarness h = Data.Started(Start, Data.Bars(false, Data.Utc(2026, 3, 4, 8, 0), Data.Winter));
+        h.Broker.Script(BrokerCall.Place, BrokerFault.UnclearNotApplied);
+        h.FeedTo(Placement);
+        Assert.Empty(h.Broker.GetPendingOrders());
+        h.FeedTo(Data.Utc(2026, 3, 4, 8, 15));
+        Assert.Equal(1, h.Journal.Count("range", "range event=void id=RH-20260304"));
+        Assert.Equal(1, h.Journal.Count("order", "outcome=Abandoned "));
+        Assert.Equal(0, h.Count(BrokerCall.Cancel));
+        return h;
+    }
+
+    // The order of the unclear placement appears at the broker late, with its label.
+    private static long AppearsLate(BotHarness h, DateTime atUtc, string id)
+    {
+        h.Broker.AdvanceTo(atUtc);
+        return h.Broker.AddOrder(Data.Symbol, Side.Buy, 1000.0, Data.OrderEntry, Data.Stop, Data.Target, Data.Utc(2026, 3, 5, 17, 0), Data.Label(id), "late");
+    }
+
+    [Fact]
+    [Trait("Req", "EXE-024")]
+    public void UnclearPlacementNotApplied_ThenVoid_TheOrderFirstAppearsLaterAndIsCancelledAtTheNextBar()
+    {
+        BotHarness h = UnclearThenVoid();
+        long late = AppearsLate(h, Data.Utc(2026, 3, 4, 8, 20), Data.BuyId(Data.Winter));
+
+        h.FeedTo(Data.Utc(2026, 3, 4, 8, 30));
+
+        BrokerRequest cancel = Assert.Single(h.Broker.Requests, request => request.Call == BrokerCall.Cancel);
+        Assert.Equal(late, cancel.TargetId);
+        Assert.Equal(Data.Utc(2026, 3, 4, 8, 30), cancel.AtUtc);
+        Assert.Empty(h.Broker.GetPendingOrders());
+        Assert.Equal(1, h.Count(BrokerCall.Place));
+    }
+
+    [Fact]
+    [Trait("Req", "EXE-024")]
+    public void UnclearPlacementNotApplied_ThenVoid_ThenRestart_TheOrderAppearsAfterwardsAndIsCancelled()
+    {
+        BotHarness h = UnclearThenVoid();
+        BotCore restarted = h.Start(Data.Utc(2026, 3, 4, 8, 20), Data.Parameters());
+        Assert.Empty(restarted.LastReport!.OrdersCancelled);
+        long late = AppearsLate(h, Data.Utc(2026, 3, 4, 8, 25), Data.BuyId(Data.Winter));
+
+        h.FeedTo(Data.Utc(2026, 3, 4, 8, 30));
+
+        BrokerRequest cancel = Assert.Single(h.Broker.Requests, request => request.Call == BrokerCall.Cancel);
+        Assert.Equal(late, cancel.TargetId);
+        Assert.Equal(Data.Utc(2026, 3, 4, 8, 30), cancel.AtUtc);
+        Assert.Empty(h.Broker.GetPendingOrders());
+        h.FeedTo(Data.Utc(2026, 3, 4, 10, 0));
+        Assert.Equal(1, h.Count(BrokerCall.Cancel));
+    }
+
+    [Theory]
+    [Trait("Req", "EXE-024")]
+    [InlineData(6)]
+    [InlineData(9)]
+    public void Restart_OnTheNextTradingDay_TheVoidOfTheDayBeforeIsNotCarriedOver(int hour)
+    {
+        // The void of 2026-03-04 is in the replay; at 06:00 on 2026-03-05 that day has no setup yet, at 09:00 it has its own.
+        BotHarness h = Data.Started(Data.Utc(2026, 3, 5, hour, 0), Data.Bars(false, VoidOpen, Data.Winter, new DateTime(2026, 3, 5)));
+        long late = AppearsLate(h, Data.Utc(2026, 3, 5, hour, 5), Data.BuyId(Data.Winter));
+
+        h.FeedTo(Data.Utc(2026, 3, 5, hour, 30));
+
+        Assert.Equal(0, h.Count(BrokerCall.Cancel));
+        Assert.Equal(late, Assert.Single(h.Broker.GetPendingOrders()).Id);
     }
 
     [Fact]
