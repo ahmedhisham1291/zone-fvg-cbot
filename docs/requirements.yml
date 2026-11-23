@@ -1388,7 +1388,7 @@ requirements:
     wp: WP32
     spec: "3.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Breakout trend filter (owner request of 2026-11-23). With
       TrendSlowEmaPeriod greater than zero, a breakout buy is confirmed only
@@ -1403,7 +1403,7 @@ requirements:
     wp: WP32
     spec: "3.7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Latest confirmation time (owner request of 2026-11-23). A checked M15
       bar whose close time of day is at or after BreakoutLastConfirmUtc
