@@ -1383,6 +1383,34 @@ requirements:
       range of the day before. The rule needs no calendar and is the same in
       the replay and live.
 
+
+  - id: SIG-028
+    wp: WP32
+    spec: "3.1"
+    verify: unit
+    status: planned
+    text: >-
+      Breakout trend filter (owner request of 2026-11-23). With
+      TrendSlowEmaPeriod greater than zero, a breakout buy is confirmed only
+      when, on the last closed D1 bar, EMA(BiasEmaPeriod) is strictly above
+      EMA(TrendSlowEmaPeriod), and a sell only when it is strictly below
+      (PriceMath with its default tolerance); otherwise the bar confirms
+      nothing and the reference stays Armed. With TrendSlowEmaPeriod 0 the
+      rule is the one before (SIG-023 alone). The D1 warm-up covers the slow
+      EMA (the larger of the two periods). ZoneFvg mode is unchanged.
+
+  - id: SIG-029
+    wp: WP32
+    spec: "3.7"
+    verify: unit
+    status: planned
+    text: >-
+      Latest confirmation time (owner request of 2026-11-23). A checked M15
+      bar whose close time of day is at or after BreakoutLastConfirmUtc
+      confirms nothing and finishes the reference for that day. With
+      BreakoutLastConfirmUtc equal to the window end the rule has no effect.
+      It must lie after the window start and not after the window end;
+      other values are refused at start.
   - id: EXE-018
     wp: WP26
     spec: "3.7, 5.2"
