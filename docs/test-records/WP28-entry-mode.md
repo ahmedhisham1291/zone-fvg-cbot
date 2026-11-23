@@ -141,8 +141,9 @@ Pass / fail: (fill in)
 ### 6. The parameter files load (PLT-013)
 
 For each of the five files in `deploy/params/`, make a copy without
-`.example` and replace the `CHANGE_ME...` values as in `deploy/README.md`
-step 10.3 (on a trial account). Load it the way the deployment guide does
+`.example` and replace only the `CHANGE_ME...` values, as `deploy/README.md`
+step 10.3 describes them (on a trial account); leave every other line as
+it is, so that the expected hashes below hold. Load it the way the deployment guide does
 (`deploy/README.md`, fact 4: the CLI reads it as the second argument of
 `run`, or `CBOT_SET`; on the laptop, the parameters of an instance) and start
 the instance once with it.
