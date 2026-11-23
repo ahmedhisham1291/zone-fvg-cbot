@@ -27,7 +27,7 @@ public class BreakoutParametersTests
 
     [Fact]
     [Trait("Req", "SIG-024")]
-    public void Properties_AreTheFourBreakoutParameters()
+    public void Properties_AreTheSixBreakoutParameters()
     {
         string[] actual = typeof(BreakoutParameters)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -35,7 +35,7 @@ public class BreakoutParametersTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "EntryBufferAtr", "StopAtrMult", "WindowEndUtc", "WindowStartUtc" }, actual);
+        Assert.Equal(new[] { "EntryBufferAtr", "LastConfirmUtc", "StopAtrMult", "TrendSlowEmaPeriod", "WindowEndUtc", "WindowStartUtc" }, actual);
     }
 
     [Fact]

@@ -122,21 +122,31 @@ one of them, chosen with the parameter `EntryMode` at start:
 - **ZoneFvg**: the zone and fair value gap entry of spec 3.2 to 3.5.
 
 Everything else (sizing, account limits, news, recovery, FTMO guards,
-alerts) is the same in both modes. The three parameters of the group
-"Entry mode" are the first three lines of every file in `deploy/params/`:
+alerts) is the same in both modes. The five parameters of the group
+"Entry mode" are the first five lines of every file in `deploy/params/`:
 
 | Parameter | Value in the example files | What it does |
 |---|---|---|
 | `EntryMode` | `Breakout` | `Breakout` or `ZoneFvg`. Any other text makes the bot refuse to start and name the parameter |
 | `BreakoutEntryBufferAtr` | `0.1` | Breakout mode: how far beyond the confirming bar the stop order is placed, in ATR(M15) |
 | `BreakoutStopAtr` | `1.0` | Breakout mode: stop distance from the entry, in ATR(H4) |
+| `TrendSlowEmaPeriod` | `200` | Breakout mode: trend filter. A buy needs the D1 EMA(`BiasEmaPeriod`) above the D1 EMA(`TrendSlowEmaPeriod`), a sell below it (spec 3.1). `0` switches it off. Allowed: 0 or 2 to 10000 |
+| `BreakoutLastConfirmUtc` | `08:00` | Breakout mode: a bar that closes at or after this UTC time confirms nothing and ends the day's breakout (spec 3.7). Equal to `SessionEndUtc` switches it off. Must be after `SessionStartUtc` and not after `SessionEndUtc` |
 
-The two `Breakout...` values are checked at start in both modes: an invalid
-value (for example `BreakoutStopAtr` = 0) makes the bot refuse to start and
-name the parameter, also with `EntryMode=ZoneFvg`. They are used in Breakout
-mode only; in ZoneFvg mode they produce no signal and are not part of the
-parameter hash. The gold file
-uses the same three values as the forex files.
+The four values after `EntryMode` are checked at start in both modes: an
+invalid value (for example `BreakoutStopAtr` = 0 or `TrendSlowEmaPeriod` = 1)
+makes the bot refuse to start and name the parameter, also with
+`EntryMode=ZoneFvg`. They are used in Breakout mode only; in ZoneFvg mode
+they produce no signal and are not part of the parameter hash. The gold file
+uses the same five values as the forex files.
+
+**Warm-up of the trend filter.** The D1 EMA of period n reads 4 x n closed
+D1 bars, so with `TrendSlowEmaPeriod` 200 the bot needs 801 closed D1 bars
+(about 3.1 years) before it can trade its first breakout; with the filter
+off it needs 201 (`BiasEmaPeriod` 50). The bot loads them from the broker's
+history at start. Live this is normally available; if it is not, recovery
+reports the D1 series as a data problem and the bot does not trade (fail
+closed).
 
 **Which mode and which values go live (spec 13.1, "What goes live").** The
 example files carry `EntryMode=Breakout` only because Breakout is the
@@ -166,13 +176,20 @@ The laptop stage, the fault tests and the soak test run with these files
 **Check the hash.** The core `start` line shows `hash=` followed by eight
 characters. It must equal, symbol by symbol, the `hash=` of the accepted
 backtest run of that symbol (the same line in its Log). The hash covers the
-signal and execution values of the files and, in Breakout mode, the three
-breakout values with the trading window; it does not cover the risk and
+signal and execution values of the files and, in Breakout mode, the breakout
+values with the trading window (`TrendSlowEmaPeriod` and
+`BreakoutLastConfirmUtc` only when they are not switched off); it does not cover the risk and
 news values (`src/ZoneFvg.Core/Execution/ParameterHash.cs`). If a hash
 differs, a value differs from the accepted run: stop that instance and
 compare the files before it trades. For the example files as they are,
-the hashes are `119a3864` (the four forex files) and `66c5a44e` (gold) in
-Breakout mode, and `f681dff2` and `8793fa69` with `EntryMode=ZoneFvg`.
+the hashes are `8aa3f28a` (the four forex files) and `4af5c9fc` (gold) in
+Breakout mode, and `f681dff2` and `8793fa69` with `EntryMode=ZoneFvg`. With
+both filters switched off (`TrendSlowEmaPeriod=0`,
+`BreakoutLastConfirmUtc=17:00`) the Breakout hashes are the earlier
+`119a3864` and `66c5a44e`. (Computed with the rule of `ParameterHash`:
+SHA-256 of the canonical text, first eight hex characters, with Python's
+hashlib; the forex values are also asserted in
+`tests/ZoneFvg.Core.Tests/Execution/ParameterHashBreakoutFilterTests.cs`.)
 
 **Check after each start.** The first adapter line ends with the mode, for
 example `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
@@ -604,7 +621,7 @@ service user.
 | `HeartbeatUrl` | One check per symbol at your heartbeat-monitoring service, so an alert names the symbol that stopped |
 | `ProfitTargetPercent` | 10 in the Challenge, 5 in the Verification |
 
-The three values of the group "Entry mode" and the accepted settings are
+The five values of the group "Entry mode" and the accepted settings are
 those of section "Entry mode", "Which mode and which values go live": the
 chosen mode, never simply the default. Leave every other value at the spec
 default. `MaxSpreadPips` is 1.5 for the
@@ -683,7 +700,8 @@ Sources: https://docs.docker.com/reference/cli/docker/compose/run/ (the words
 after the service name replace its command); `metadata`:
 https://help.ctrader.com/ctrader-cli/cbots/ ("Read cBot Metadata").
 Expected: the parameter list of ZoneFvgBot (EntryMode, BreakoutEntryBufferAtr,
-BreakoutStopAtr, BiasTimeFrame ... DrawObjects).
+BreakoutStopAtr, TrendSlowEmaPeriod, BreakoutLastConfirmUtc, BiasTimeFrame ...
+DrawObjects).
 If it says the cBot is built for an older .NET: stop here and tell the
 developer.
 

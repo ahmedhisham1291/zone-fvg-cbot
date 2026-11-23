@@ -31,7 +31,9 @@ namespace ZoneFvg.Core.Signals;
 /// parameters: the intake order, the bias and the warm-up gate are the same; D1 bars also go to a
 /// <see cref="BreakoutTracker"/>; H4 bars are only stored, so no zone is detected; M15 bars are
 /// stored and go to the tracker with the bias and the latest ATR(M15) and ATR(H4), and a setup
-/// becomes a <see cref="SignalKind.Breakout"/> signal when the engine is ready.</para>
+/// becomes a <see cref="SignalKind.Breakout"/> signal when the engine is ready. With the trend
+/// filter on (SIG-028) each D1 bar also brings the fast and slow D1 EMA to the tracker, and the D1
+/// warm-up covers the slow EMA; the bias and ZoneFvg mode are unchanged.</para>
 /// </remarks>
 public sealed class SignalEngine
 {
@@ -46,6 +48,9 @@ public sealed class SignalEngine
     private readonly BarStore _bars;
     private readonly ZoneBook _book;
     private readonly BreakoutTracker? _tracker;
+
+    // SIG-028: period of the slow D1 EMA of the breakout trend filter; 0 when the filter is off or in ZoneFvg mode.
+    private readonly int _trendSlowEmaPeriod;
 
     // Display only (PLT-005): written when a gap confirms a zone, never read by any decision.
     private readonly List<Fvg> _recentFvgs = new List<Fvg>();
@@ -80,15 +85,17 @@ public sealed class SignalEngine
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         _parameters = parameters;
-        _bars = new BarStore(parameters);
+        _bars = new BarStore(parameters, breakout);
         _book = new ZoneBook(parameters);
         _tracker = breakout is null ? null : new BreakoutTracker(breakout, parameters.RewardRisk);
+        _trendSlowEmaPeriod = breakout?.TrendSlowEmaPeriod ?? 0;
         Bias = Bias.Neutral;
     }
 
     /// <summary>
     /// Bars needed per timeframe before the engine is ready (SIG-020): the value of
-    /// <see cref="WarmupCalculator.For"/> for the parameters. It enumerates D1, H4, M15.
+    /// <see cref="WarmupCalculator.For(SignalParameters, BreakoutParameters)"/> for the parameters
+    /// (SIG-028: with the breakout trend filter on, D1 covers the slow EMA). It enumerates D1, H4, M15.
     /// </summary>
     public IReadOnlyDictionary<TimeFrame, int> WarmupBars => _bars.WarmupBars;
 
@@ -168,7 +175,11 @@ public sealed class SignalEngine
         {
             case TimeFrame.D1:
                 Bias = BiasCalculator.Compute(_bars.Bars(TimeFrame.D1), _parameters.BiasEmaPeriod);
-                _tracker?.OnD1Closed(bar);
+                if (_tracker is not null)
+                {
+                    OnBreakoutD1Closed(_tracker, bar);
+                }
+
                 return NoSignals;
             case TimeFrame.H4:
                 if (_tracker is null)
@@ -180,6 +191,22 @@ public sealed class SignalEngine
             default:
                 return _tracker is null ? OnM15Closed(bar, replay) : OnBreakoutM15Closed(_tracker, bar, replay);
         }
+    }
+
+    // SIG-022, SIG-028: the D1 bar becomes the reference; with the trend filter on, the tracker also gets the
+    // fast and slow D1 EMA of this bar, each null while its window is not full (the tracker then fails closed).
+    private void OnBreakoutD1Closed(BreakoutTracker tracker, Bar bar)
+    {
+        if (_trendSlowEmaPeriod == 0)
+        {
+            tracker.OnD1Closed(bar);
+            return;
+        }
+
+        IReadOnlyList<Bar> d1 = _bars.Bars(TimeFrame.D1);
+        double? fast = Ema.Value(d1, d1.Count - 1, _parameters.BiasEmaPeriod);
+        double? slow = Ema.Value(d1, d1.Count - 1, _trendSlowEmaPeriod);
+        tracker.OnD1Closed(bar, fast, slow);
     }
 
     // SIG-026: the ATR values are computed as in OnM15Closed; a setup becomes a signal only when ready.

@@ -47,8 +47,10 @@ also checks: the first adapter line now ends with `, mode Breakout` or
 
 Open the instance's parameter panel.
 
-Expected: a group **Entry mode** with three parameters and these defaults:
-`EntryMode` Breakout, `BreakoutEntryBufferAtr` 0.1, `BreakoutStopAtr` 1.0.
+Expected: a group **Entry mode** with five parameters and these defaults:
+`EntryMode` Breakout, `BreakoutEntryBufferAtr` 0.1, `BreakoutStopAtr` 1.0,
+`TrendSlowEmaPeriod` 200, `BreakoutLastConfirmUtc` 08:00 (the last two added
+by WP32).
 The groups Signal, Execution, Risk, News and Operations are unchanged.
 
 Observed: (fill in)
@@ -62,7 +64,8 @@ Start the instance with the defaults of step 1.
 Expected:
 - `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
 - The core `start` journal line ends with `mode=Breakout`.
-- Its `hash=` is `119a3864`. That is the hash of the default values of the
+- Its `hash=` is `8aa3f28a` (before WP32: `119a3864`, the value it still has
+  with `TrendSlowEmaPeriod` 0 and `BreakoutLastConfirmUtc` 17:00). That is the hash of the default values of the
   groups Signal, Execution and Entry mode in Breakout mode, the value the
   core's own tests assert. It differs from the hash of step 3. A different
   hash means a value of those groups is not at its default.
@@ -151,11 +154,11 @@ the instance once with it.
 Expected: no "Invalid .cbotset file format" message; the bot does not refuse
 to start (a refusal would name the parameter); the first adapter line names
 the symbol of the file and ends with `mode Breakout`; the `hash=` of the
-core `start` line is `119a3864` for the four forex files and `66c5a44e` for
-gold. Because the bot refuses to start while `RiskEpochDate` is empty or
+core `start` line is `8aa3f28a` for the four forex files and `4af5c9fc` for
+gold. A file without the two filter lines gives the same hashes, because the cBot defaults are 200 and 08:00; only `TrendSlowEmaPeriod=0` and `BreakoutLastConfirmUtc=17:00` give the hashes from before WP32, `119a3864` and `66c5a44e`. Because the bot refuses to start while `RiskEpochDate` is empty or
 invalid, a start proves that the file was read (`deploy/README.md`, fact 4).
 
-The three new lines carry the default values, so a start with the files as
+The five lines of the group Entry mode carry the default values, so a start with the files as
 they are cannot show that their names are read. Therefore, once more: make
 a copy of the EURUSD file with `EntryMode=ZoneFvg` and start the instance
 with it. Expected: the first adapter line ends with `mode ZoneFvg`, the core
@@ -164,7 +167,11 @@ same with the gold file: `mode ZoneFvg` and `hash=8793fa69`.
 
 How the hashes were found: the core's own rule
 (`src/ZoneFvg.Core/Execution/ParameterHash.cs`), applied to the values of
-each file. `119a3864` and `f681dff2` are also asserted by the core's tests.
+each file. `8aa3f28a`, `119a3864` and `f681dff2` are also asserted by the core's tests.
+The values with the filters were computed with Python's hashlib from the
+canonical text of `ParameterHash.Canonical` (SHA-256, UTF-8, first eight hex
+characters), with `TrendSlowEmaPeriod=200;BreakoutLastConfirmUtc=08:00:00;`
+appended after the breakout part.
 
 Observed (one line per file: eurusd, gbpusd, usdjpy, audusd, xauusd, and the
 two ZoneFvg copies, with the hashes): (fill in)

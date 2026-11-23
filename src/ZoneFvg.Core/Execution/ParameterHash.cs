@@ -27,7 +27,10 @@ public static class ParameterHash
     /// (for example 07:00:00), booleans "true" or "false", timeframes their names.
     /// With breakout parameters (Breakout mode, spec v0.10) the text is followed by EntryMode=Breakout,
     /// BreakoutEntryBufferAtr, BreakoutStopAtr, BreakoutWindowStartUtc and BreakoutWindowEndUtc in
-    /// the same formats (EXE-018); without them it is exactly the text of v0.9.
+    /// the same formats (EXE-018); without them it is exactly the text of v0.9. After the breakout
+    /// part come TrendSlowEmaPeriod (SIG-028) when it is not 0 and BreakoutLastConfirmUtc (SIG-029)
+    /// when it differs from the window end, so that parameters with both filters off keep the hash
+    /// they had before 23 November 2026.
     /// </summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
@@ -74,6 +77,15 @@ public static class ParameterHash
             Add(text, "BreakoutStopAtr", breakout.StopAtrMult);
             Add(text, "BreakoutWindowStartUtc", breakout.WindowStartUtc);
             Add(text, "BreakoutWindowEndUtc", breakout.WindowEndUtc);
+            if (breakout.TrendSlowEmaPeriod != 0)
+            {
+                Add(text, "TrendSlowEmaPeriod", breakout.TrendSlowEmaPeriod);
+            }
+
+            if (breakout.LastConfirmUtc != breakout.WindowEndUtc)
+            {
+                Add(text, "BreakoutLastConfirmUtc", breakout.LastConfirmUtc);
+            }
         }
 
         return text.ToString();
