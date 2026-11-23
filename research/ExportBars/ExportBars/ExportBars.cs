@@ -220,7 +220,8 @@ namespace ZoneFvg.Research
             try
             {
                 _folder = Path.GetFullPath(".");
-                File.WriteAllText(FilePrefix + SymbolName + "_info.txt", info + Environment.NewLine);
+                // System.IO.File by its full name: cAlgo.API has a File type too.
+                System.IO.File.WriteAllText(FilePrefix + SymbolName + "_info.txt", info + Environment.NewLine);
                 foreach (var s in _series)
                 {
                     s.FileName = FilePrefix + s.Name + (compress ? ".csv.gz" : ".csv");
