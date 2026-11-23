@@ -17,23 +17,24 @@ are marked `implemented` only after the owner has signed this record
 | Bot version | `ZoneFvgBot 0.1.0`, commit (fill in) |
 | `.algo` | artifact `ZoneFvgBot-algo` of the CI run of that commit |
 
-Two lines of the WP08 record changed with this package: the first adapter
-line now ends with `, mode Breakout` or `, mode ZoneFvg` (WP08 step 1), and
-the parameter panel has a sixth group, "Entry mode" (WP08 step 5). Steps 1
-and 2 below check both.
+With this package the bot prints and shows two things that the WP08 record
+also checks: the first adapter line now ends with `, mode Breakout` or
+`, mode ZoneFvg` (WP08 step 1), and the parameter panel has a sixth group,
+"Entry mode" (WP08 step 5). Steps 1 and 2 below check both.
 
 ## Automatic evidence (no owner action)
 
 | Item | Requirement | Evidence |
 |---|---|---|
-| The cBot with the three parameters builds and the `.algo` is uploaded as artifact `ZoneFvgBot-algo` | PLT-012 | `build-test` job, step "Build the cBot", of the pull request |
+| The cBot with the three parameters builds and the `.algo` is uploaded as artifact `ZoneFvgBot-algo` | PLT-012 | `build-test` job, step "Build cBot (.algo)", of the pull request |
 | In the core, a set `BotParameters.Breakout` is Breakout mode: the start line ends with `mode=Breakout`, the parameter hash includes the breakout values, and `Validate` refuses a breakout window that differs from the session times | REC-017 | `build-test` job, tests tagged REC-017 |
 
 ## Preparation
 
-1. Download the artifact `ZoneFvgBot-algo` from the CI run, unzip it, and
-   double-click `ZoneFvgBot.algo` (or drag it into cTrader). It appears under
-   Algo > cBots.
+1. Download the artifact `ZoneFvgBot-algo` from the CI run and unzip it. It
+   holds `src.algo`: rename it to `ZoneFvgBot.algo` (as in
+   `deploy/README.md`, Part A), then double-click it (or drag it into
+   cTrader). It appears under Algo > cBots.
 2. Open an EURUSD chart on **M15**. Add an instance of ZoneFvgBot to it.
 3. Parameters as in the WP08 record, "Preparation", step 3. Leave everything
    else at its default unless a step says otherwise.
@@ -61,8 +62,10 @@ Start the instance with the defaults of step 1.
 Expected:
 - `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
 - The core `start` journal line ends with `mode=Breakout`.
-- Write down the value of `hash=` in that line. It differs from the hash of
-  step 3.
+- Its `hash=` is `119a3864`. That is the hash of the default values of the
+  groups Signal, Execution and Entry mode in Breakout mode, the value the
+  core's own tests assert. It differs from the hash of step 3. A different
+  hash means a value of those groups is not at its default.
 
 Observed (hash): (fill in)
 
@@ -76,13 +79,11 @@ start it.
 Expected:
 - `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode ZoneFvg`.
 - The core `start` journal line has no `mode=` field.
-- Its `hash=` equals the hash that the bot printed before this change with
-  the same parameters. To get that hash, start the `.algo` of commit
-  `c5b59ff` (the last commit of `main` before this package; artifact
-  `ZoneFvgBot-algo` of its CI run on `main`, kept by GitHub until
-  20 February 2027) once with the same parameters, or use the
-  hash written in the WP08 record, step 1, if it was run with the same
-  parameters.
+- Its `hash=` is `f681dff2`: the hash that the bot printed before this
+  change with the same parameters (the default values of the groups Signal
+  and Execution; the core's own tests assert it since before this change).
+  If the WP08 record, step 1, was run before this change with the same
+  parameters, its hash is the same.
 
 Observed (both hashes): (fill in)
 
@@ -119,8 +120,10 @@ Pass / fail: (fill in)
 ### 5. A short backtest in each mode (PLT-012)
 
 Backtest tab, EURUSD M15, settings as in `docs/backtest-howto.md` step 7
-(start at least 10 months before the period you look at), `NewsEnabled` =
-false. Run it once with `EntryMode` = Breakout and once with `EntryMode` =
+(start at least 10 months before the period you look at), and the
+parameters of its step 6: `RiskEpochDate` = the start date of the backtest
+and `InitialCapital` = the starting capital (with today's date from the
+preparation the bot refuses to start a backtest), `NewsEnabled` = false. Run it once with `EntryMode` = Breakout and once with `EntryMode` =
 ZoneFvg, over the same period.
 
 Expected:
@@ -146,11 +149,24 @@ the instance once with it.
 
 Expected: no "Invalid .cbotset file format" message; the bot does not refuse
 to start (a refusal would name the parameter); the first adapter line names
-the symbol of the file and ends with `mode Breakout`. Because the bot refuses
-to start while `RiskEpochDate` is empty or invalid, a start proves that the
-file was read (`deploy/README.md`, fact 4).
+the symbol of the file and ends with `mode Breakout`; the `hash=` of the
+core `start` line is `119a3864` for the four forex files and `66c5a44e` for
+gold. Because the bot refuses to start while `RiskEpochDate` is empty or
+invalid, a start proves that the file was read (`deploy/README.md`, fact 4).
 
-Observed (one line per file: eurusd, gbpusd, usdjpy, audusd, xauusd): (fill in)
+The three new lines carry the default values, so a start with the files as
+they are cannot show that their names are read. Therefore, once more: make
+a copy of the EURUSD file with `EntryMode=ZoneFvg` and start the instance
+with it. Expected: the first adapter line ends with `mode ZoneFvg`, the core
+`start` line has no `mode=` field, and its `hash=` is `f681dff2`. Do the
+same with the gold file: `mode ZoneFvg` and `hash=8793fa69`.
+
+How the hashes were found: the core's own rule
+(`src/ZoneFvg.Core/Execution/ParameterHash.cs`), applied to the values of
+each file. `119a3864` and `f681dff2` are also asserted by the core's tests.
+
+Observed (one line per file: eurusd, gbpusd, usdjpy, audusd, xauusd, and the
+two ZoneFvg copies, with the hashes): (fill in)
 
 Pass / fail: (fill in)
 

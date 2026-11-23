@@ -76,7 +76,9 @@ step 1).
      the files of the two modes apart: put the mode into every file name,
      for example `eurusd-breakout-dev.csv` and `eurusd-zonefvg-dev.csv`.
      Leave `BreakoutEntryBufferAtr` (0.1) and `BreakoutStopAtr` (1.0) at
-     their defaults; in ZoneFvg mode they are not used.
+     their defaults for the baseline; in ZoneFvg mode they are not used.
+     (`BreakoutStopAtr` is one of the values searched later in Breakout
+     mode, spec 7 and 12.1 step 3.)
    - **InitialCapital:** 100000, the same number as the Starting capital in
      step 7. With a different starting capital the FTMO emergency guard
      fires at once (10,000 against 100,000 is already 90% below), and from
