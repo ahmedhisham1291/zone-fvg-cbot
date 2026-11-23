@@ -7,8 +7,8 @@ namespace ZoneFvg.Core.Tests;
 /// <summary>
 /// SIG-035: <see cref="BotParameters.Choch"/> selects the Choch entry model of ZoneFvg mode. It is
 /// refused together with Breakout or SessionRange (fail closed: the cBot's default EntryMode is
-/// Breakout), its values are checked, and until WP37b wires the execution layer every Choch value
-/// is refused as not wired yet. Null keeps every mode as it was.
+/// Breakout) and its values are checked; a valid value in ZoneFvg mode is accepted (WP37b). Null
+/// keeps every mode as it was.
 /// </summary>
 public class BotParametersChochTests
 {
@@ -63,15 +63,16 @@ public class BotParametersChochTests
 
     [Fact]
     [Trait("Req", "SIG-035")]
-    public void Validate_ValidChochInZoneFvgMode_RefusedUntilTheExecutionLayerIsWired()
+    [Trait("Req", "REC-020")]
+    public void Validate_ValidChochInZoneFvgMode_AcceptedLiveAndInABacktest_AndByTheConstructor()
     {
-        // WP37a: the execution layer cannot place a Choch signal yet, so the model must not start (fail closed).
+        // WP37b wires the execution layer, so the refusal of WP37a (prompt item 7) is removed.
         BotParameters choch = RecoveryData.Parameters() with { Choch = new ChochParameters() };
 
-        ArgumentException error = Assert.Throws<ArgumentException>(() => choch.Validate(isBacktest: true));
+        choch.Validate(isBacktest: true);
+        choch.Validate(isBacktest: false);
 
-        Assert.Equal(nameof(BotParameters.Choch), error.ParamName);
-        Assert.Contains("not wired", error.Message, StringComparison.Ordinal);
-        Assert.Throws<ArgumentException>(() => new BotHarness().NewCore(choch));
+        Assert.Equal(EntryMode.ZoneFvg, choch.Mode);
+        Assert.NotNull(new BotHarness().NewCore(choch));
     }
 }
