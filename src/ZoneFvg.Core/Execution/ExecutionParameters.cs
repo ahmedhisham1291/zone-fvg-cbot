@@ -23,10 +23,16 @@ public sealed record ExecutionParameters
     /// </summary>
     public const int MaxSignalAgeMinutes = 15;
 
+    // EXE-029: the only value of SessionEndUtc outside a time of day, the end of the whole day.
+    private static readonly TimeSpan WholeDay = TimeSpan.FromHours(24.0);
+
     /// <summary>Start of the trading window, UTC time of day, included (EXE-002). Default 07:00.</summary>
     public TimeSpan SessionStartUtc { get; init; } = TimeSpan.FromHours(7.0);
 
-    /// <summary>End of the trading window, UTC time of day, excluded (EXE-002). Default 17:00.</summary>
+    /// <summary>
+    /// End of the trading window, UTC time of day, excluded (EXE-002). Default 17:00. It may be
+    /// exactly 24:00, one whole day, so that 00:00 to 24:00 lets every time of day pass (EXE-029).
+    /// </summary>
     public TimeSpan SessionEndUtc { get; init; } = TimeSpan.FromHours(17.0);
 
     /// <summary>On Fridays no entry at or after this UTC time of day (EXE-002). Default 12:00.</summary>
@@ -58,14 +64,20 @@ public sealed record ExecutionParameters
 
     /// <summary>
     /// Checks every value and throws for the first one that is out of range, in the order the
-    /// parameters are declared. The message names the parameter, its allowed range and the
-    /// rejected value in invariant formatting.
+    /// parameters are declared. Every time is a UTC time of day from 00:00 up to but not including
+    /// 24:00, except SessionEndUtc, which may also be exactly 24:00 (EXE-029); SessionEndUtc must be
+    /// after SessionStartUtc. The message names the parameter, its allowed range and the rejected
+    /// value in invariant formatting.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range. The exception's parameter name is the name of the parameter.</exception>
     public void Validate()
     {
         RequireTimeOfDay(SessionStartUtc, nameof(SessionStartUtc));
-        RequireTimeOfDay(SessionEndUtc, nameof(SessionEndUtc));
+        if (SessionEndUtc < TimeSpan.Zero || SessionEndUtc > WholeDay)
+        {
+            throw OutOfRange(nameof(SessionEndUtc), "must be a UTC time of day from 00:00 up to and including 24:00", Text(SessionEndUtc));
+        }
+
         if (SessionEndUtc <= SessionStartUtc)
         {
             throw OutOfRange(nameof(SessionEndUtc), "must be after SessionStartUtc", Text(SessionEndUtc));

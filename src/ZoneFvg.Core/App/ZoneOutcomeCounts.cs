@@ -12,11 +12,29 @@ namespace ZoneFvg.Core.App;
 /// </summary>
 internal sealed class ZoneOutcomeCounts
 {
-    // Journal keys in the order of the line: created, then one per ZoneEndReason in enum order.
-    private static readonly string[] Keys = { "created", "signalled", "no-fvg", "bias", "invalid", "expired", "superseded" };
+    // Journal keys in the order of the line: created, then one per ZoneEndReason in enum order up to Superseded.
+    private static readonly string[] FvgKeys = { "created", "signalled", "no-fvg", "bias", "invalid", "expired", "superseded" };
+
+    // OPS-011: the Choch model names the window end no-choch, in the same place.
+    private static readonly string[] ChochKeys = { "created", "signalled", "no-choch", "bias", "invalid", "expired", "superseded" };
+
+    private readonly string[] _keys;
 
     // Counts by CE(S)T day start (UTC); SortedDictionary so days are taken in time order.
     private readonly SortedDictionary<DateTime, int[]> _days = new SortedDictionary<DateTime, int[]>();
+
+    /// <summary>Creates the counts of the Fvg model (OPS-009).</summary>
+    internal ZoneOutcomeCounts()
+        : this(false)
+    {
+    }
+
+    /// <summary>Creates the counts of the Fvg model or, with <paramref name="choch"/>, of the Choch model (OPS-009, OPS-011).</summary>
+    /// <param name="choch">True in the Choch model: the window end is named <c>no-choch</c>.</param>
+    internal ZoneOutcomeCounts(bool choch)
+    {
+        _keys = choch ? ChochKeys : FvgKeys;
+    }
 
     /// <summary>Adds what one live bar did to the zones to the CE(S)T day of its close time (OPS-009).</summary>
     /// <param name="closeUtc">Close time of the bar, kind UTC.</param>
@@ -31,7 +49,7 @@ internal sealed class ZoneOutcomeCounts
         DateTime day = CestClock.StartOfCestDayUtc(closeUtc);
         if (!_days.TryGetValue(day, out int[]? counts))
         {
-            counts = new int[Keys.Length];
+            counts = new int[_keys.Length];
             _days.Add(day, counts);
         }
 
@@ -68,12 +86,12 @@ internal sealed class ZoneOutcomeCounts
                 break;
             }
 
-            var fields = new (string Key, string? Value)[Keys.Length + 1];
+            var fields = new (string Key, string? Value)[_keys.Length + 1];
             // Noon UTC after the day start lies inside the same CE(S)T date.
             fields[0] = ("day", pair.Key.AddHours(12.0).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            for (int i = 0; i < Keys.Length; i++)
+            for (int i = 0; i < _keys.Length; i++)
             {
-                fields[i + 1] = (Keys[i], pair.Value[i].ToString(CultureInfo.InvariantCulture));
+                fields[i + 1] = (_keys[i], pair.Value[i].ToString(CultureInfo.InvariantCulture));
             }
 
             lines.Add(fields);

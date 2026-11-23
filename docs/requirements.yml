@@ -1930,7 +1930,7 @@ requirements:
     wp: WP37
     spec: "3.9, 5.2"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Choch order. A signal of Kind Choch is placed as a limit order (buy
       limit for Buy, sell limit for Sell) with stop loss, take profit and
@@ -1950,7 +1950,7 @@ requirements:
     wp: WP37
     spec: "3.6, 3.9"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Stop and reward checks of a Choch signal. EXE-003 applies with
       ChochMinStopPips in place of MinStopPips (MaxStopAtr unchanged).
@@ -1969,7 +1969,7 @@ requirements:
     wp: WP37
     spec: "5.1, 7"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       All-day session (owner's answer of 2026-11-23). SessionStartUtc may be
       00:00 and SessionEndUtc may be 24:00 (one whole day), so that 00:00 to
@@ -1986,7 +1986,7 @@ requirements:
     wp: WP37
     spec: "3.9, 6.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       CHoCH bar and news. A Choch signal is skipped when the calendar is
       unavailable (NWS-008), when server time is inside a news window of its
@@ -1999,7 +1999,7 @@ requirements:
     wp: WP37
     spec: "11"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Journal for Choch signals. The signal line of OPS-001 for a Choch
       signal has the same keys in the same order, with zone holding the zone
@@ -2013,7 +2013,7 @@ requirements:
     wp: WP37
     spec: "3.9, 8.3"
     verify: scenario
-    status: planned
+    status: implemented
     text: >-
       Choch across a restart. With EntryModel Choch the bot runs the Choch
       engine live and in recovery (REC-004); a zone id is known when the

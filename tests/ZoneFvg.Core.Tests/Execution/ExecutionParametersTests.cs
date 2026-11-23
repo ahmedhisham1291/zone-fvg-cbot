@@ -39,7 +39,8 @@ public class ExecutionParametersTests
     {
         var p = new ExecutionParameters();
         yield return new object[] { "SessionStartUtc", p with { SessionStartUtc = TimeSpan.FromMinutes(-1.0) } };
-        yield return new object[] { "SessionEndUtc", p with { SessionEndUtc = TimeSpan.FromHours(24.0) } };
+        // EXE-029 (answer of 2026-11-23): 24:00 itself is now a valid end; one second above it is not.
+        yield return new object[] { "SessionEndUtc", p with { SessionEndUtc = TimeSpan.FromHours(24.0) + TimeSpan.FromSeconds(1.0) } };
         yield return new object[] { "SessionEndUtc", p with { SessionEndUtc = TimeSpan.FromHours(7.0) } };
         yield return new object[] { "FridayNoEntryUtc", p with { FridayNoEntryUtc = TimeSpan.FromHours(25.0) } };
         yield return new object[] { "FridayCloseUtc", p with { FridayCloseUtc = TimeSpan.FromHours(-2.0) } };

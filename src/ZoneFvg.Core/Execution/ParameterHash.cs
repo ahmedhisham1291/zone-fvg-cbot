@@ -35,14 +35,20 @@ public static class ParameterHash
     /// RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr and RangeStopAtr in the same
     /// formats (SIG-034); without them nothing is appended, so the hashes of the other modes do not
     /// change.
+    /// With Choch parameters (the Choch entry model of ZoneFvg mode, REC-020) the text ends, after
+    /// every field above, with EntryModel=Choch, RequireSweep, ChochWindowBars, ChochUseBias,
+    /// ChochStopAtDistal, ChochTargetBufferAtr, ChochMinStopPips and MinRewardRisk in the same
+    /// formats; without them nothing is appended, so the hash of the Fvg model does not change.
+    /// SessionEndUtc 24:00 (EXE-029) is written <c>1.00:00:00</c>.
     /// </summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
     /// <param name="breakout">Breakout parameters in Breakout mode, or null in the other modes.</param>
     /// <param name="sessionRange">Session range parameters in SessionRange mode, or null in the other modes.</param>
+    /// <param name="choch">Choch parameters in the Choch model, or null in the other models and modes.</param>
     /// <returns>The canonical text.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
-    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null)
+    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null)
     {
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(execution);
@@ -104,19 +110,33 @@ public static class ParameterHash
             Add(text, "RangeStopAtr", sessionRange.StopAtrMult);
         }
 
+        if (choch != null)
+        {
+            // REC-020: after every existing field, and only in the Choch model.
+            Add(text, "EntryModel", "Choch");
+            Add(text, "RequireSweep", choch.RequireSweep ? "true" : "false");
+            Add(text, "ChochWindowBars", choch.ChochWindowBars);
+            Add(text, "ChochUseBias", choch.ChochUseBias ? "true" : "false");
+            Add(text, "ChochStopAtDistal", choch.ChochStopAtDistal ? "true" : "false");
+            Add(text, "ChochTargetBufferAtr", choch.ChochTargetBufferAtr);
+            Add(text, "ChochMinStopPips", choch.ChochMinStopPips);
+            Add(text, "MinRewardRisk", choch.MinRewardRisk);
+        }
+
         return text.ToString();
     }
 
-    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018, SIG-034).</summary>
+    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018, SIG-034, REC-020).</summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
     /// <param name="breakout">Breakout parameters in Breakout mode, or null in the other modes.</param>
     /// <param name="sessionRange">Session range parameters in SessionRange mode, or null in the other modes.</param>
+    /// <param name="choch">Choch parameters in the Choch model, or null in the other models and modes (REC-020).</param>
     /// <returns>8 lowercase hex characters.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
-    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null)
+    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null)
     {
-        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout, sessionRange)));
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout, sessionRange, choch)));
         var hex = new StringBuilder(Length);
         for (int i = 0; i < Length / 2; i++)
         {

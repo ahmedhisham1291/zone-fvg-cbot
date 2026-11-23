@@ -56,7 +56,10 @@ public sealed class Journal
     /// entry, stop, target, stopPips (1 decimal), volume (0 decimals), spreadPips (1 decimal),
     /// costToRisk (3 decimals), news, skip (reason or <c>none</c>) (OPS-001). For a breakout signal
     /// two more keys follow: kind (<c>breakout</c>) and level (OPS-010); for a session range signal
-    /// kind (<c>range</c>) and level, the range edge that is traded (SIG-034).
+    /// kind (<c>range</c>) and level, the range edge that is traded (SIG-034); for a Choch signal
+    /// kind (<c>choch</c>), level (the broken swing level), sweep (<c>yes</c> or <c>no</c>), target
+    /// (the source of SIG-040) and rr (the reward on the signal's own levels, as a price is written)
+    /// (OPS-011).
     /// </summary>
     /// <param name="entry">The signal fields.</param>
     /// <returns>The line written.</returns>
@@ -96,6 +99,15 @@ public sealed class Journal
             // SIG-034: the same two keys for a session range signal; the level is the range edge that is traded.
             fields.Add(("kind", "range"));
             fields.Add(("level", JournalFormat.Price(entry.Level)));
+        }
+        else if (entry.Kind == SignalKind.Choch)
+        {
+            // OPS-011: five more keys for a Choch signal; the zone keys hold the zone, the gap keys are NA.
+            fields.Add(("kind", "choch"));
+            fields.Add(("level", JournalFormat.Price(entry.Level)));
+            fields.Add(("sweep", entry.Swept.HasValue ? (entry.Swept.Value ? "yes" : "no") : JournalFormat.NotAvailable));
+            fields.Add(("target", entry.TargetSource ?? JournalFormat.NotAvailable));
+            fields.Add(("rr", JournalFormat.Price(entry.RewardRisk)));
         }
 
         return Emit(entry.TimeUtc, "signal", fields);
