@@ -36,12 +36,13 @@ public class RiskDefaultsV012Tests
     [InlineData(-1.0)]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
-    public void Validate_RecoveryFirstRiskUsdNotPositiveAndFinite_ThrowsNamingIt(double value)
+    [InlineData(100.0001)]
+    public void Validate_RecoveryRunLossPercentOutOfRange_ThrowsNamingIt(double value)
     {
-        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => (D.Defaults with { RecoveryFirstRiskUsd = value }).Validate());
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => (D.Defaults with { RecoveryRunLossPercent = value }).Validate());
 
-        Assert.Equal("RecoveryFirstRiskUsd", exception.ParamName);
-        Assert.StartsWith("RecoveryFirstRiskUsd must be a finite number greater than zero but was ", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("RecoveryRunLossPercent", exception.ParamName);
+        Assert.StartsWith("RecoveryRunLossPercent must be greater than 0 and at most 100 but was ", exception.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -66,7 +67,8 @@ public class RiskDefaultsV012Tests
     [Trait("Req", "RSK-018")]
     public void Validate_BoundaryValues_AreAccepted()
     {
-        Assert.Null(Record.Exception(() => (D.Defaults with { RecoveryFirstRiskUsd = 0.01 }).Validate()));
+        Assert.Null(Record.Exception(() => (D.Defaults with { RecoveryRunLossPercent = 0.01 }).Validate()));
+        Assert.Null(Record.Exception(() => (D.Defaults with { RecoveryRunLossPercent = 100.0 }).Validate()));
         Assert.Null(Record.Exception(() => (D.Defaults with { RecoveryMaxRiskPercent = 100.0, SanityCapPercent = 100.0 }).Validate()));
         Assert.Null(Record.Exception(() => D.Recovery.Validate()));
     }
