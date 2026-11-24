@@ -512,7 +512,9 @@ requirements:
       as in RSK-013 clause 4. When the symbol's eighth non-win in a row
       (since its latest win or latest reset) closes, all its columns go back
       to 0 and the next entry is position 1. Freeze (proposal kept from the
-      earlier plan): once an entry's raw amount is above the cap, wins of the
+      earlier plan): once an entry's raw amount is above RecoveryMaxRiskPercent
+      x InitialCapital (a fixed reference, so no other symbol's result can
+      change it; decision of 2026-11-24), wins of the
       symbol that close after that entry was placed raise no step, until the
       next eight-loss reset or a new RiskEpochDate; a raw amount exactly at
       the cap is not above it. The power is computed by repeated
