@@ -221,7 +221,7 @@ write into the five files:
   and "Gold (XAUUSD)" below tell you to set. The risk defaults of spec v0.12
   (owner decisions of 2026-11-24): `InitialCapital=200000.0`,
   `DailyLossLimitPercent=2.0`, `MaxVolumeUnits=3000000.0` (gold 1000.0),
-  `SizingPlan=Ladder`, `RecoveryFirstRiskUsd=100.0`,
+  `SizingPlan=Ladder`, `RecoveryRunLossPercent=1.0`,
   `RecoveryMaxRiskPercent=1.28`, and the per-trade sanity cap, the open-risk
   cap and the currency cap off (`SanityCapEnabled=false` with
   `SanityCapPercent=0.55`, `OpenRiskCapEnabled=false`,

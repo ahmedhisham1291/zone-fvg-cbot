@@ -319,9 +319,9 @@ namespace cAlgo.Robots
         [Parameter("SizingPlan", DefaultValue = "Ladder", Group = "Risk")]
         public string SizingPlan { get; set; } = "Ladder";
 
-        /// <summary>Recovery plan: risk of the first trade after a win, in account currency (RSK-016, PLT-017).</summary>
-        [Parameter("RecoveryFirstRiskUsd", DefaultValue = 100.0, Group = "Risk")]
-        public double RecoveryFirstRiskUsd { get; set; }
+        /// <summary>Recovery plan: what the eight base amounts of a losing run lose together, in percent of InitialCapital (RSK-016, PLT-017).</summary>
+        [Parameter("RecoveryRunLossPercent", DefaultValue = 1.0, Group = "Risk")]
+        public double RecoveryRunLossPercent { get; set; }
 
         /// <summary>Recovery plan: largest risk of one trade in percent of balance (RSK-016, PLT-017).</summary>
         [Parameter("RecoveryMaxRiskPercent", DefaultValue = 1.28, Group = "Risk")]
@@ -799,7 +799,7 @@ namespace cAlgo.Robots
 
                 // PLT-017: the text of SizingPlan is read in the core; a refusal names the parameter.
                 SizingPlan = SizingPlanText.Parse(SizingPlan),
-                RecoveryFirstRiskUsd = RecoveryFirstRiskUsd,
+                RecoveryRunLossPercent = RecoveryRunLossPercent,
                 RecoveryMaxRiskPercent = RecoveryMaxRiskPercent,
                 SanityCapEnabled = SanityCapEnabled,
                 SanityCapPercent = SanityCapPercent,
