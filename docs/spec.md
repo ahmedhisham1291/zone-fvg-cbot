@@ -425,7 +425,9 @@ R   = min( raw , Account.Balance x RecoveryMaxRiskPercent / 100 )
   is a non-win and counts towards the eight, as in the ladder.
 - **Cap and freeze (proposal, kept from the earlier plan).** R is at most
   `RecoveryMaxRiskPercent` (1.28%) of the balance at placement. As in the
-  ladder, once an entry's raw amount is above that cap, wins of the symbol
+  ladder, once an entry's raw amount is above `RecoveryMaxRiskPercent` x
+  `InitialCapital` (a fixed reference, so the freeze of one symbol never
+  depends on another symbol's results; 24 November 2026), wins of the symbol
   that close after that entry was placed raise no step, until the next
   eight-loss reset or a new `RiskEpochDate`. A raw amount exactly at the
   cap is not above it.
