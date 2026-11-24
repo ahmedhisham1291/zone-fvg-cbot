@@ -420,6 +420,17 @@ public class RecoverySizerTests
 
     [Fact]
     [Trait("Req", "RSK-017")]
+    public void EntriesFromBroker_NullPositionOrOrderRecord_FailsClosed()
+    {
+        var p = Assert.Throws<ArgumentException>(() => FromBroker("EURUSD", Array.Empty<ClosedTradeInfo>(), new PositionInfo[] { null! }));
+        var o = Assert.Throws<ArgumentException>(() => FromBroker("EURUSD", Array.Empty<ClosedTradeInfo>(), orders: new PendingOrderInfo[] { null! }));
+
+        Assert.Contains("a position is null", p.Message, StringComparison.Ordinal);
+        Assert.Contains("a pending order is null", o.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-017")]
     public void EntriesFromBroker_NullArguments_Throw()
     {
         Assert.Throws<ArgumentNullException>(() => RecoverySizer.EntriesFromBroker(null!, Array.Empty<PositionInfo>(), Array.Empty<PendingOrderInfo>(), Array.Empty<ClosedTradeInfo>(), RiskData.EpochStart));
