@@ -64,21 +64,48 @@ public class SimDefaultsV012Tests
         Assert.DoesNotContain("(default 1.5)", help, StringComparison.Ordinal);
     }
 
+    // The report and the equity curve that main (901235f, before WP38) printed for FourEurUsdBuys with
+    // its defaults: 100,000, a budget of 1.5%, both caps on. EUR long: the third and fourth would be 3 > 2.
+    private const string OldReport =
+        "# Combined portfolio (SIM-002)\n\n"
+        + "Assumptions:\n\n"
+        + "- The logs are a sample of the past: past trade distributions may not repeat.\n"
+        + "- Money is taken as logged. Each trade is checked when it opens against the kept trades still open, with the caps of RSK-004, RSK-005 and RSK-006 in that order; a refused trade is left out.\n"
+        + "- The balance changes only when a trade closes; open-trade swings are not in the logs, so the drawdown is measured on closed balances.\n\n"
+        + "| Measure | Value |\n"
+        + "|---|---|\n"
+        + "| Trades in the logs | 4 |\n"
+        + "| Trades kept | 2 |\n"
+        + "| Skipped by open risk cap (RSK-004) | 0 |\n"
+        + "| Skipped by currency exposure cap (RSK-005) | 2 |\n"
+        + "| Skipped by daily risk budget (RSK-006) | 0 |\n"
+        + "| Initial capital | 100000.00 |\n"
+        + "| Final balance | 101000.00 |\n"
+        + "| Maximum drawdown | 0.00 (0.00%) |\n\n"
+        + "| Symbol | Trades kept | Net result |\n"
+        + "|---|---|---|\n"
+        + "| EURUSD | 2 | 1000.00 |\n";
+
+    private const string OldEquity = "time_utc,balance\n2026-01-06T20:00:00Z,100500\n2026-01-06T20:00:00Z,101000\n";
+
     [Fact]
     [Trait("Req", "SIM-007")]
-    public void Combine_OldValuesGivenAsOptions_SameOutputAsTheOldDefaultsByteForByte()
+    public void Combine_OldValuesGivenAsOptions_SameOutputAsMainPrintedByteForByte()
     {
-        Dictionary<string, string> files = FourEurUsdBuys();
-        var old = new PortfolioParameters { InitialCapital = 100000.0, DailyLossLimitPercent = 1.5, OpenRiskCapEnabled = true, CurrencyCapEnabled = true };
-        PortfolioResult expected = PortfolioCombiner.Combine(new[] { TradeLogCsv.Read(files["eur.csv"]).Records }, old);
+        SimCommandResult result = Run(FourEurUsdBuys(), "combine", "--log", "eur.csv", "--initial-capital", "100000", "--daily-budget", "1.5", "--max-open-risk", "1.5", "--max-per-currency", "2", "--equity", "eq.csv");
 
-        SimCommandResult result = Run(files, "combine", "--log", "eur.csv", "--initial-capital", "100000", "--daily-budget", "1.5", "--max-open-risk", "1.5", "--max-per-currency", "2", "--equity", "eq.csv");
+        Assert.Equal(OldReport, result.Output);
+        Assert.Equal(OldEquity, Assert.Single(result.Files).Content);
+    }
 
-        // EUR long: the third and the fourth would be 3 > 2.
-        Assert.Equal(expected.ToMarkdown(), result.Output);
-        Assert.Equal(expected.ToEquityCsv(), Assert.Single(result.Files).Content);
-        Assert.Contains("| Trades kept | 2 |", result.Output, StringComparison.Ordinal);
-        Assert.Contains("| Skipped by currency exposure cap (RSK-005) | 2 |", result.Output, StringComparison.Ordinal);
+    [Fact]
+    [Trait("Req", "SIM-007")]
+    public void Combine_ACapOff_AddsTheSentenceThatItRefusesNothing()
+    {
+        SimCommandResult oneOff = Run(FourEurUsdBuys(), "combine", "--log", "eur.csv", "--max-open-risk", "1.5");
+
+        Assert.Contains("a refused trade is left out. A cap shown as off refuses nothing.\n", oneOff.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("A cap shown as off", OldReport, StringComparison.Ordinal);
     }
 
     [Fact]
