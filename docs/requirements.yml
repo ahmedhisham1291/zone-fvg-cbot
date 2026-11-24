@@ -1,4 +1,4 @@
-# Numbered requirements extracted from docs/spec.md (v0.13).
+# Numbered requirements extracted from docs/spec.md (v0.14).
 #
 # Rules for this file
 # - The text of a requirement changes only in a pull request that carries the
@@ -1323,7 +1323,7 @@ requirements:
       No required behaviour depends on the cBot's stop handler running.
 
   - id: PLT-010
-    wp: WP24
+    wp: WP39
     spec: "2, 7, 10.2"
     verify: manual
     status: planned
@@ -1336,7 +1336,12 @@ requirements:
       parameter values stay the forex values. (In the platform's pip of 1
       USD the two gold values are MaxSpreadPips 0.4 and MinStopPips 8, spec
       7; from the owner decision X of 2026-11-24 gold's MaxVolumeUnits is
-      1,000 ounces, set in its parameter file by WP38.)
+      1,000 ounces, set in its parameter file by WP38.) From spec v0.14
+      (owner request of 2026-11-24, rows AC and AG) the gold file equals
+      the forex files apart from its heartbeat address: MaxSpreadPips,
+      MinStopPips, ChochMinStopPips and MaxVolumeUnits are 0 (automatic)
+      in every file, and the bot takes gold's values from the symbol
+      profile (EXE-030), whatever pip size the broker reports.
 
   # ---------------------------------------------------------------- SIMULATION
   - id: SIM-001
@@ -1894,13 +1899,14 @@ requirements:
       across a restart and a sell position with a known BL- id is adopted.
 
   - id: PLT-012
-    wp: WP28
+    wp: WP39
     spec: "7"
     verify: manual
     status: planned
     text: >-
       Entry mode parameters of the cBot (owner request of 2026-11-22). The
-      cBot exposes EntryMode (default Breakout; the other value is ZoneFvg),
+      cBot exposes EntryMode (default ZoneFvg from spec v0.14, PLT-018;
+      Breakout until then; the other values are Breakout and SessionRange),
       BreakoutEntryBufferAtr (default 0.1) and BreakoutStopAtr (default 1.0),
       validates them at start and refuses to start with a clear message on
       any other value. In Breakout mode it passes the breakout parameters to
@@ -1939,10 +1945,10 @@ requirements:
       nothing changes: an empty RiskEpochDate refuses the start, and the
       news filter blocks entries without a trusted calendar.
   - id: PLT-015
-    wp: WP35
+    wp: WP39
     spec: "3.8, 7"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       SessionRange in the cBot. EntryMode accepts SessionRange. The group
       "Entry mode" gains RangeStartNy "19:00", RangeEndNy "03:00",
@@ -1950,8 +1956,8 @@ requirements:
       RangeStopAtr 1.0. They are checked at start in every mode, and a refusal
       names the parameter as cTrader shows it. The parameter hash appends them
       only in SessionRange mode, so the hashes of the other modes do not
-      change. The start line shows mode SessionRange. Breakout stays the
-      default.
+      change. The start line shows mode SessionRange. The default EntryMode
+      is ZoneFvg from spec v0.14 (PLT-018; Breakout until then).
 
   # ---------------------------------------------------------------- CHOCH ENTRY MODEL (spec v0.11, 3.9)
   - id: SIG-035
@@ -2187,37 +2193,41 @@ requirements:
       mode=ZoneFvg model=Choch.
 
   - id: PLT-016
-    wp: WP37
+    wp: WP39
     spec: "3.9, 7"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       Choch in the cBot. A new parameter group "Entry model" holds EntryModel
-      "Fvg", RequireSweep false, ChochWindowBars 32, ChochUseBias false,
-      ChochStopAtDistal false, ChochTargetBufferAtr 0.1, ChochMinStopPips 5
-      and MinRewardRisk 2.0; they are checked at start in every mode and a
+      "Choch" (spec v0.14, PLT-018; "Fvg" until then), RequireSweep false,
+      ChochWindowBars 32, ChochUseBias true (spec v0.14; false until then),
+      ChochStopAtDistal false, ChochTargetBufferAtr 0.1, ChochMinStopPips 0,
+      meaning automatic (EXE-030; 5 until spec v0.14), and MinRewardRisk
+      2.0; they are checked at start in every mode (ChochMinStopPips after
+      the automatic value is resolved) and a
       refusal names the parameter as cTrader shows it. SessionStartUtc
       accepts "00:00" and SessionEndUtc "24:00". What can be tested without
       cTrader lives in the core and is tested there (parameter texts to the
       core's parameters, refusal messages, the hash of the Choch model
       against a hand-computed value, the hashes of the other models and
-      modes unchanged). The parameter files under deploy/params gain the
-      eight lines with their defaults; docs/backtest-howto.md describes the
-      backtest of both models side by side.
+      modes unchanged). The parameter files under deploy/params carry the
+      eight lines with the defaults of PLT-018; docs/backtest-howto.md
+      describes the backtest of both models side by side.
 
   # ---------------------------------------------------------------- SIZING PLANS IN THE CBOT (spec v0.12)
   - id: PLT-017
-    wp: WP38
+    wp: WP39
     spec: "4.1, 4.3, 7"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       Sizing plan, sanity cap, open-risk and currency caps, size cap and
       account defaults in the cBot (owner decisions P to Z of 2026-11-24). The group "Risk" gains
       SizingPlan "Ladder", RecoveryRunLossPercent 1.0, RecoveryMaxRiskPercent
       1.28, SanityCapEnabled false, SanityCapPercent 0.55, OpenRiskCapEnabled
       false and CurrencyCapEnabled false; InitialCapital defaults to 200000,
-      DailyLossLimitPercent to 2.0 and MaxVolumeUnits to 3000000. The values are
+      DailyLossLimitPercent to 2.0 and MaxVolumeUnits to 0, meaning
+      automatic (EXE-030, spec v0.14; 3000000 until then). The values are
       checked at start in every mode and a refusal names the parameter as
       cTrader shows it; the text of SizingPlan is parsed in the core and
       tested there. The parameter hash does not contain the sizing plan or
@@ -2225,5 +2235,103 @@ requirements:
       were. With SizingPlan Recovery the core's start line ends with
       sizing=Recovery; with Ladder the start line is unchanged, byte for
       byte. Every parameter file under deploy/params sets InitialCapital
-      200000.0, DailyLossLimitPercent 2.0, MaxVolumeUnits 3000000.0 (gold
-      1000.0) and the seven new lines with their defaults; deploy/README.md and docs/runbook.md name the new values.
+      200000.0, DailyLossLimitPercent 2.0, MaxVolumeUnits 0.0 (automatic
+      from spec v0.14; 3000000.0, gold 1000.0, until then) and the seven
+      new lines with their defaults; deploy/README.md and docs/runbook.md
+      name the new values.
+
+  # ---------------------------------------------------------------- DEFAULTS AND SYMBOL PROFILE (spec v0.14, 7.1)
+  - id: EXE-030
+    wp: WP39
+    spec: "7, 7.1"
+    verify: unit
+    status: planned
+    text: >-
+      Automatic symbol profile (owner request of 2026-11-24, row AC). A
+      pure core function takes the symbol's name, base and quote asset
+      names and pip size, and the four values MaxSpreadPips, MinStopPips,
+      ChochMinStopPips and MaxVolumeUnits as the cBot has them, and returns
+      the profile and the effective values, or a refusal. Profile (names
+      compared ordinal, ignoring case): Gold for base XAU and quote USD; Fx
+      when base and quote are both in the list of spec 7.1, which needs a
+      pip size of 0.0001, or 0.01 for a JPY quote, within a relative 1e-9
+      (any other pip size is refused, naming the symbol and the pip size);
+      None otherwise. A value of 0 means automatic: Fx uses 1.5, 12 and 5
+      pips and 3,000,000 units; Gold uses 0.40, 8.00 and 3.00 USD of price
+      divided by the pip size and rounded to 9 decimals (midpoint away from
+      zero), and 1,000 units. Profile None with any value at 0 is refused,
+      naming the parameter and saying that the symbol has no automatic
+      profile. A pip size that is not a finite number greater than 0 is
+      refused. Every refusal fails closed: the cBot does not start, through
+      its existing "invalid parameter" path, and the Log line names the
+      parameter as cTrader shows it.
+
+  - id: EXE-031
+    wp: WP39
+    spec: "7.1"
+    verify: unit
+    status: planned
+    text: >-
+      Values set by hand are checked against the profile (owner request of
+      2026-11-24, row AD). A value other than 0 is used as given when it
+      lies from one tenth to ten times the profile's value, both ends
+      accepted with the PriceMath tolerance, compared in pips (units for
+      MaxVolumeUnits) for Fx and in price (value x pip size; units for
+      MaxVolumeUnits) for Gold: the ranges of the table in spec 7.1.
+      Outside them the start is refused with a Log line that names the
+      parameter, the value, the symbol, its pip size, for Gold the value in
+      USD of price, the accepted range and the automatic value. Profile
+      None: a value set by hand is used without this check. A negative
+      value or one that is not a finite number is refused. When the spread
+      at start is above the effective MaxSpreadPips (both in price), the
+      cBot writes one Log line that says so and starts anyway; the text
+      comes from the core function.
+
+  - id: EXE-032
+    wp: WP39
+    spec: "7.1, 13.1"
+    verify: unit
+    status: planned
+    text: >-
+      Start line and parameter hash with the profile (owner request of
+      2026-11-24, row AE). BotParameters gains an optional record of the
+      profile result (profile, pip size, the four effective values, and
+      which were automatic); Validate refuses it when its effective values
+      differ from those in the execution, Choch and risk parameters. With
+      the record, the core's start line ends, after every existing field
+      including sizing, with profile=<Fx|Gold|None> pipSize=<R>
+      maxSpreadPips=<R> minStopPips=<R> chochMinStopPips=<R>
+      maxVolumeUnits=<R> auto=<the automatic ones by their cTrader names,
+      comma-separated in that order, or none>, numbers in the invariant
+      round-trip format. In the parameter hash text an automatic
+      MaxSpreadPips, MinStopPips or ChochMinStopPips (the last only where it
+      is in the text, the Choch model) is written in its usual place as
+      auto:<profile value, R format><USD for Gold, pips for Fx> in place of
+      the number. Without the record, or with no automatic value among
+      those three, the start line and the hash text are exactly as before,
+      byte for byte, so every pinned hash stays.
+
+  - id: PLT-018
+    wp: WP39
+    spec: "2, 3.9, 4.1, 7, 7.1, 12.1"
+    verify: unit
+    status: planned
+    text: >-
+      Defaults of the owner request of 2026-11-24 in the cBot (rows AA, AB,
+      AC and AG). Defaults: EntryMode "ZoneFvg", EntryModel "Choch",
+      ChochUseBias true, SessionStartUtc "00:00", SessionEndUtc "24:00",
+      LadderEnabled false, MaxSpreadPips 0.0, MinStopPips 0.0,
+      ChochMinStopPips 0.0 and MaxVolumeUnits 0.0; every other default is
+      unchanged (among them SizingPlan "Ladder", RiskPercent 0.5,
+      InitialCapital 200000, NewsEnabled true). At start the cBot reads the
+      symbol's name, base and quote asset, pip size and spread, resolves the
+      four values with the core function of EXE-030 and EXE-031 before any
+      of them is checked or used, passes the effective values and the
+      profile record of EXE-032 to the core, and writes the spread line of
+      EXE-031 when there is one. The core's records keep their own
+      defaults. The five files under deploy/params carry these defaults
+      (gold equal to the forex files apart from the heartbeat address) and
+      a LadderEnabled line; deploy/README.md, docs/runbook.md and
+      docs/backtest-howto.md say that a backtest needs no parameter typed
+      by hand except LadderEnabled, and how to choose Breakout, SessionRange
+      or the Fvg model.
