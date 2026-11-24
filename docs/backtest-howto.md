@@ -10,15 +10,50 @@ What happens, in short: you run a backtest in your cTrader app, copy its
 into a trade list and computes the numbers.
 
 The bot has three entry modes (spec v0.10 and 3.8, parameter `EntryMode`):
-**Breakout** (the default), **ZoneFvg** and **SessionRange**. Breakout and
+**ZoneFvg** (the default from WP39 on), **Breakout** (the default before
+WP39) and **SessionRange**. Breakout and
 ZoneFvg are backtested on all five symbols, each as its own series, and each
 is judged by itself (spec 12.1 and 13.1). So you do Parts 2 and 3 twice, once
 per mode. SessionRange is meant for gold alone; its backtest is Part 5.
 
 Inside ZoneFvg mode there are two entry models (spec 3.9, parameter
-`EntryModel`, from WP37 on): **Fvg** (the default, the gap entry) and
-**Choch** (your manual method: the change of character at the zone and the
-retest). Part 6 says how to backtest both side by side.
+`EntryModel`, from WP37 on): **Choch** (your manual method: the change of
+character at the zone and the retest; the default from WP39 on) and **Fvg**
+(the gap entry; the default before WP39). Part 6 says how to backtest both
+side by side.
+
+**The default backtest (from WP39 on, spec v0.14).** Your request of
+24 November 2026: no value typed by hand except `LadderEnabled`. With a
+build from WP39 on, the defaults are the setup your backtests showed best:
+`EntryMode` ZoneFvg, `EntryModel` Choch, `ChochUseBias` true (the D1 trend
+filter), all day (`SessionStartUtc` 00:00, `SessionEndUtc` 24:00), a fixed
+0.5% risk per trade (`LadderEnabled` false), `SizingPlan` Ladder,
+`InitialCapital` 200000, and the four values that differ between the
+currency pairs and gold (`MaxSpreadPips`, `MinStopPips`,
+`ChochMinStopPips`, `MaxVolumeUnits`) at 0, which means automatic: the bot
+works them out from the symbol and the pip size cTrader reports (spec
+7.1). So for gold it does not matter whether cTrader reports a pip of 1 or
+of 0.01. Then a backtest is:
+
+1. Part 1 once (the cBot file, the `sim` tool).
+2. An instance of `ZoneFvgBot` on an M15 chart of the symbol with **every
+   parameter at its default**. The only one you may change is
+   **LadderEnabled**: `false` (the default) for a fixed 0.5% per trade,
+   `true` for the ladder.
+3. cTrader's own backtest settings as in step 7: Starting capital
+   `200000`, the period, the data, the commission.
+4. Steps 8 to 10 (run, save the Log, extract).
+
+Check the `start` line of the Log: it ends with `mode=ZoneFvg model=Choch`
+and then names the profile, for example
+`profile=Gold pipSize=0.01 maxSpreadPips=40 minStopPips=800 chochMinStopPips=300 maxVolumeUnits=1000 auto=MaxSpreadPips,MinStopPips,ChochMinStopPips,MaxVolumeUnits`
+(with a pip of 1 the same line shows `pipSize=1 maxSpreadPips=0.4 minStopPips=8 chochMinStopPips=3`:
+both are 0.40 USD, 8 USD and 3 USD of price). If you type one of the four
+values yourself and it does not fit the symbol (for example the old gold
+value 0.4 while cTrader reports a pip of 0.01, which would be 0.004 USD),
+the bot does not start and its Log line names the parameter, the pip size
+and the automatic value; set it back to 0. The other modes and the Fvg
+model (Parts 2, 5 and 6) need a few values typed, as those parts say.
 
 Why the Log tab: the cBot runs without file access (`AccessRights.None`), so it
 cannot write files itself. During a backtest it prints one line per closed
@@ -78,6 +113,13 @@ step 1).
    panel):
    - **EntryMode:** `Breakout` or `ZoneFvg` (exactly so, with this spelling).
      `SessionRange` is backtested on gold only, as Part 5 describes.
+     **From WP39 on** the defaults are ZoneFvg with the Choch model, all
+     day (see "The default backtest" above). For this part's series set
+     also **EntryModel** `Fvg`, **SessionStartUtc** `07:00` and
+     **SessionEndUtc** `17:00`, in both modes (`ChochUseBias` can stay: only
+     the Choch model reads it): Breakout refuses the Choch model and the end 24:00 (the
+     bot does not start and says which parameter), and the Fvg model was
+     specified for 07:00 to 17:00.
      Run the whole of Part 2 once with `Breakout` and once with `ZoneFvg`,
      with the same period, data, commission and spread in both series. Keep
      the files of the two modes apart: put the mode into every file name,
@@ -102,6 +144,9 @@ step 1).
      type 200000 by hand.
    - **SizingPlan:** leave it at `Ladder` (the default) for these series.
      The Recovery plan is backtested as Part 7 describes.
+   - **LadderEnabled:** from WP39 on the default is `false`: every trade
+     risks a fixed 0.5% of the balance. Set `true` for the ladder (before
+     WP39 the default was `true`). It is the one value you choose.
    - **RiskEpochDate:** leave it empty. In a backtest an empty
      RiskEpochDate means the backtest's first day (its Prague date at the
      start), so nothing has to be typed (from WP31 on). The `start` line in
@@ -120,13 +165,16 @@ step 1).
      chart; it needs Visual mode on (step 7). The drawings exist in ZoneFvg
      mode only: in Breakout mode the bot keeps no zones and no gaps, so
      nothing is drawn.
-   - **Gold (XAUUSD) only:** MaxSpreadPips 0.4, MinStopPips 8,
-     MaxVolumeUnits 1000 (from 24 November 2026; 200 before; the forex
-     default is 3000000 from WP38 on, 500000 before). Everything else as for the forex pairs. FTMO's
-     cTrader reports a gold pip of 1 USD (spec 7), so 0.4 means a spread of
-     0.40 USD and 8 means a stop of 8 USD. (Until 23 November 2026 this
-     guide said 40 and 800, values written for a pip of 0.01 USD. The gold
-     backtests of 22 and 23 November ran with the forex values 12 and 1.5.)
+   - **Gold (XAUUSD) only, from WP39 on:** nothing. Leave MaxSpreadPips,
+     MinStopPips, ChochMinStopPips and MaxVolumeUnits at 0 (automatic):
+     the bot uses 0.40 USD of spread, 8 USD of stop, 3 USD of Choch stop and
+     1,000 ounces, converted with the pip size cTrader reports (spec 7.1).
+     Your two gold backtests reported a pip of 1 USD in one run and of
+     0.01 USD in the other; with a typed 1.5 the second run refused all 52
+     signals as SpreadTooWide. **With a build before WP39** type
+     MaxSpreadPips 0.4, MinStopPips 8 and MaxVolumeUnits 1000, and check in
+     the `start` line's cost description that the pip size is 1; with a pip
+     of 0.01 type 40 and 800 instead.
 7. Open the **Backtesting** tab of that instance (to the right of the chart
    tab) and click the cog icon. Settings (spec 12.1):
    - **Data:** tick data from server.
@@ -211,7 +259,8 @@ step 1).
     If `extract` stops with an error, it says which trade and why. Two runs
     pasted into one file, or a missing trade, are refused on purpose.
 11. Repeat steps 6 to 10 for GBPUSD, USDJPY and AUDUSD, and for XAUUSD
-    (with its own values from step 6). With gold, add
+    (from WP39 on with the same values; before WP39 with gold's own values
+    from step 6). With gold, add
     `--log xauusd-breakout-dev.csv` (or `--dev xauusd-breakout-dev.csv` for
     `accept`) to the commands below.
     Then do steps 6 to 10 again for every symbol with `EntryMode` =
@@ -359,18 +408,26 @@ Write what you see into the record
 step 4.
 
 16. Open an **M15** chart of **XAUUSD** and add an instance of `ZoneFvgBot`
-    with the default parameters, except exactly these three:
+    with the default parameters, except exactly these. **From WP39 on:**
     - **EntryMode:** `SessionRange`
-    - **MinStopPips:** `8`
-    - **MaxSpreadPips:** `0.4`
+    - **EntryModel:** `Fvg` (the default Choch is refused in SessionRange
+      mode; the bot does not start and says so)
+    - **SessionStartUtc:** `07:00` and **SessionEndUtc:** `17:00` (the
+      window of the runs before WP39, which the figures of step 22 assume)
+    - leave `MinStopPips`, `MaxSpreadPips` and `MaxVolumeUnits` at 0
+      (automatic: 8 USD, 0.40 USD and 1,000 ounces at any pip size).
+
+    **Before WP39** the three values were: `EntryMode` `SessionRange`,
+    `MinStopPips` `8` and `MaxSpreadPips` `0.4` (for a pip of 1 USD).
 
     Leave the six range values at their defaults: `RangeStartNy` 19:00,
     `RangeEndNy` 03:00, `RangeLastEntryNy` 12:00, `RangeExitNy` 16:30,
     `RangeMinWidthAtr` 0.5, `RangeStopAtr` 1.0. Leave `InitialCapital`
     (200000), `RiskEpochDate` (empty) and `NewsEnabled` (true) as in step 6.
     The news filter is then off for this run, as in the search (the `start`
-    line shows `news=disabled`). Set `MaxVolumeUnits` to 1000, as in the
-    gold file (the cBot's default is the forex value). With a stop of at
+    line shows `news=disabled`). Before WP39 set `MaxVolumeUnits` to
+    1000, as in the gold file (the cBot's default was the forex value);
+    from WP39 on the automatic value is 1000. With a stop of at
     least 8 USD, a trade of at most 0.5% reaches 1,000 ounces only above
     about 1,600,000 USD of equity, and a Recovery trade of 2,560 USD fits
     at any stop of 2.56 USD or more.
@@ -382,10 +439,11 @@ step 4.
     - **Starting capital:** 200000.
     - **Commission:** the commission of your FTMO account for XAUUSD.
       Write down what you used.
-    - **Spread:** `0.3`. cTrader takes this number in the platform's pip,
-      and the gold pip is 1 USD, so 0.3 means 0.30 USD, the spread the
-      search assumed. **Do not enter more than 0.4.** With a spread above
-      0.4, `MaxSpreadPips` blocks every gold entry and the run has no trade.
+    - **Spread:** 0.30 USD, the spread the search assumed. cTrader takes
+      this number in the platform's pip: with a pip of 1 USD type `0.3`,
+      with a pip of 0.01 USD type `30` (the `start` line shows the pip
+      size). **Do not enter more than 0.40 USD**: above it, `MaxSpreadPips`
+      blocks every gold entry and the run has no trade.
     - **Period:** from **6 May 2020** (the first day of intraday history on
       your FTMO server) to **22 November 2026**.
     - **Visual mode:** off.
@@ -469,23 +527,30 @@ commission and spread, on the **development** period only (before November
 (spec 13.1, "Two entry models").
 
 24. **Series 1: Fvg.** Do Part 2 with `EntryMode` = `ZoneFvg` and
-    `EntryModel` = `Fvg` (the default). Leave `SessionStartUtc` 07:00 and
-    `SessionEndUtc` 17:00. File names as before, for example
+    `EntryModel` = `Fvg` (the default before WP39). `SessionStartUtc` 07:00
+    and `SessionEndUtc` 17:00 (from WP39 on type all three; `ChochUseBias`
+    does not matter, Fvg does not read it). File names as before, for example
     `eurusd-zonefvg-dev.csv`. If you already have these files from a build
     before WP37, run them again with the new build anyway: the parameter
     hash in the `start` line must be the same as before for the Fvg model;
     if it is not, tell the developer.
-25. **Series 2: Choch.** Do Part 2 again with exactly these values
+25. **Series 2: Choch.** **From WP39 on this is the default backtest**
+    ("The default backtest" at the top): change nothing, apart from
+    `LadderEnabled` if you want the ladder; the trend filter
+    `ChochUseBias` is on by default, so the run with it off (step 29) is the
+    variant. **Before WP39**, do Part 2 again with exactly these values
     different from the defaults (besides the gold values of step 6):
     - **EntryMode:** `ZoneFvg` (with `Breakout`, the default, the bot
       refuses to start when `EntryModel` is `Choch`, and says why).
     - **EntryModel:** `Choch`
     - **SessionStartUtc:** `00:00` and **SessionEndUtc:** `24:00` (you trade
       all day; the Friday rules and the news filter stay as they are).
-    - Gold only: **ChochMinStopPips** `3` (the gold pip is 1 USD, so 3 USD).
+    - Gold only: **ChochMinStopPips** `3` (for a pip of 1 USD, so 3 USD;
+      from WP39 on leave it at 0, automatic).
     Leave the other Choch values at their defaults: `RequireSweep` false,
-    `ChochWindowBars` 32, `ChochUseBias` false, `ChochStopAtDistal` false,
-    `ChochTargetBufferAtr` 0.1, `ChochMinStopPips` 5, `MinRewardRisk` 2.0.
+    `ChochWindowBars` 32, `ChochUseBias` false (true from WP39 on),
+    `ChochStopAtDistal` false, `ChochTargetBufferAtr` 0.1,
+    `ChochMinStopPips` 5 (0, automatic, from WP39 on), `MinRewardRisk` 2.0.
     Put the model into the file names, for example
     `eurusd-choch-dev-log.txt` and `eurusd-choch-dev.csv`. The `start` line
     of the Log ends with `mode=ZoneFvg model=Choch`; check it.
@@ -513,7 +578,8 @@ commission and spread, on the **development** period only (before November
     average R, largest drawdown, by symbol. Each model is judged by itself
     (spec 13.1).
 29. **Optional, one at a time** (spec 7, "Test" column): `RequireSweep`
-    true, `ChochUseBias` true, `ChochStopAtDistal` true. Change one value
+    true, `ChochUseBias` true (from WP39 on: false, because true is the
+    default), `ChochStopAtDistal` true. Change one value
     per run and put it into the file name (for example
     `eurusd-choch-sweep-dev.csv`). With `RequireSweep` false you can also
     compare the `sweep=yes` and `sweep=no` trades of one run without a new
@@ -569,8 +635,10 @@ Two ways to see what Recovery would have done:
     - Leave `RecoveryRunLossPercent` (1.0), `LadderGrowth` (1.5924), `RecoveryMaxRiskPercent` (1.28),
       `SanityCapEnabled` (false), `OpenRiskCapEnabled` (false),
       `CurrencyCapEnabled` (false), `DailyLossLimitPercent` (2),
-      `MaxVolumeUnits` (3000000; gold 1000) and `InitialCapital` (200000)
-      at their defaults; Starting capital 200000.
+      `MaxVolumeUnits` (3000000, gold 1000; from WP39 on 0, automatic,
+      which gives the same numbers) and `InitialCapital` (200000)
+      at their defaults; Starting capital 200000. `LadderEnabled` is not
+      read with `Recovery`.
     Put the plan into the file names, for example
     `eurusd-breakout-recovery-dev.csv`. The `start` line of the Log ends
     with `sizing=Recovery`; check it. The parameter `hash` in that line is

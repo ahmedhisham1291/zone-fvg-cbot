@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.13 · 24 November 2026 (v0.12 of the same day, with the owner's later decision of 24 November 2026: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
+Version 0.14 · 24 November 2026 (v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
 
 ## 0. What changed in v0.2
 
@@ -82,14 +82,28 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 |---|---|---|
 | Z. Recovery with step columns | Replaces the amount rule of row Q. A losing run has eight positions with base amounts B1 = F0 and Bk = (B1 + ... + B(k-1) + 2 x F0) / 2, F0 = 1% of initial capital / 49.2578125, so the eight sum to exactly 1% (`RecoveryRunLossPercent` 1.0 replaces `RecoveryFirstRiskUsd`): on 200,000 they are 40.60, 60.90, 91.36, 137.03, 205.55, 308.33, 462.49, 693.74. Each position has a step column (C to J); the risk is Bp x `LadderGrowth` (1.5924) ^ step; a win raises its position's column, never past a column still 0 (the ladder's rule, owner: "yes"); after eight losses in a row all columns go back to 0 and the run starts again at position 1. Per symbol (owner: yes). Kept as a proposal from the earlier plan: at most `RecoveryMaxRiskPercent` (1.28%) of balance per trade, and a raw amount above it freezes the symbol's steps until the reset. The continuation at 1.28% after the 8th loss is dropped. The Ladder plan and every other decision of v0.12 are unchanged | 4.1.1, 7, 12.1 |
 
+**Changes in v0.14 (owner request of 24 November 2026: "make all default inputs you need, I don't want to modify any thing manually except ladder enable/disable"; values decided by the orchestrating session)**
+
+Evidence: two backtests of XAUUSD on the owner's cTrader reported `Symbol.PipSize` 1 (spread 0.30) in one run and 0.01 (spread 0.08) in the other. With a pip of 0.01 the forex default `MaxSpreadPips` 1.5 means 0.015 USD and refused all 52 signals as SpreadTooWide, and `ChochMinStopPips` 3 would mean 0.03 USD. A value in pips is therefore only right for gold when the bot knows the pip size it is given.
+
+| Topic | Decision | Section |
+|---|---|---|
+| AA. Default entry setup | The cBot defaults to `EntryMode` = ZoneFvg, `EntryModel` = Choch, `ChochUseBias` = true, `SessionStartUtc` 00:00 and `SessionEndUtc` 24:00: the setup the backtests showed best (gold, CHoCH with the trend filter). Breakout, SessionRange and the Fvg model stay selectable and unchanged; they are no longer the defaults. The refusal of `EntryModel` = Choch with another `EntryMode` stays (3.9), so choosing Breakout or SessionRange also needs `EntryModel` = Fvg, and Breakout needs a window that ends before 24:00 (as from v0.11); the refusal names the parameter. The core's own parameter records keep their defaults: the cBot passes every value to the core, so they are not what a run uses | 1, 2, 3.9, 7 |
+| AB. Default sizing | `SizingPlan` = Ladder (unchanged) with `LadderEnabled` = **false** by default: every trade risks the fixed `RiskPercent` 0.5% of balance (RSK-001). `LadderEnabled` is the one setting the owner switches; true gives the ladder of RSK-013 as before. Recovery stays opt-in (`SizingPlan` = Recovery). `InitialCapital` 200,000 and the news behaviour are unchanged | 1, 4.1, 7 |
+| AC. Automatic symbol profile | `MaxSpreadPips`, `MinStopPips`, `ChochMinStopPips` and `MaxVolumeUnits` default to **0, meaning automatic**. At start the bot picks the symbol's profile and computes the value from it, so it is right whatever pip size the broker reports: **currency pairs** in pips (spread 1.5, stop 12, Choch stop 5, size cap 3,000,000 units), **gold** in US dollars of price converted with `Symbol.PipSize` (spread 0.40 USD, stop 8.00 USD, Choch stop 3.00 USD, size cap 1,000 ounces). With a pip of 1 gold's values are 0.4, 8 and 3 pips; with a pip of 0.01 they are 40, 800 and 300. No other parameter is in pips: the ATR and R multiples scale by themselves (decision D). Section 7.1 | 3.6, 3.9, 4.3, 5.1, 7, 7.1 |
+| AD. Values set by hand are checked | A value other than 0 is used as given, but the bot refuses to start (fail closed) when it is clearly inconsistent with the symbol: outside one tenth to ten times the automatic value, compared in price (section 7.1). The Log line names the parameter, the value, the symbol's pip size, the value in price and the automatic value. A currency pair whose pip size is not the standard one, and a symbol without a profile on an automatic value, are refused too | 7.1 |
+| AE. Start line and parameter hash | The start line names the profile, the pip size and the effective value of each of the four, marking which are automatic. In the parameter hash an automatic value is written as the profile's value in its own unit, not in pips, so the same settings give the same hash whatever pip size the broker reports (7.1, 13.1). Values set by hand are written as before, so every existing hash stays what it was | 7.1, 13.1 |
+| AF. Gold's stress slippage restated in price | The 15 pips of stress slippage and of the live slippage alert for gold (v0.9) were written for a pip of 0.01 USD: they mean 0.15 USD of price | 12.1, 13.3 |
+| AG. What is still set by hand | In a backtest: `LadderEnabled` (if wanted) and cTrader's own backtest settings (Starting capital 200,000, period, data). Live, the values that cannot have a default stay in the parameter files: `RiskEpochDate`, the Telegram token and chat id, the heartbeat address and the news feed address (sections 7, 10.2, 11) | 7, 12.1 |
+
 ## 1. Purpose and scope
 
-A cTrader cBot that trades four forex pairs and gold (XAUUSD) in the direction of the higher-timeframe trend, with one of three entry modes per instance (section 3). **Breakout** (the default from v0.10) enters with a stop order after an M15 bar closes beyond the previous day's range. **ZoneFvg** waits for price to return to a higher-timeframe supply or demand zone, then enters on a lower-timeframe fair value gap (FVG), or, with `EntryModel` = Choch (v0.11), on the retest of a lower-timeframe change of character (section 3.9).
+A cTrader cBot that trades four forex pairs and gold (XAUUSD) in the direction of the higher-timeframe trend, with one of three entry modes per instance (section 3). **Breakout** (the default from v0.10 to v0.13) enters with a stop order after an M15 bar closes beyond the previous day's range. **ZoneFvg** waits for price to return to a higher-timeframe supply or demand zone, then enters on a lower-timeframe fair value gap (FVG), or, with `EntryModel` = Choch (v0.11), on the retest of a lower-timeframe change of character (section 3.9). From v0.14 the default is ZoneFvg with the Choch model, all day, with the D1 trend filter (row AA).
 
 **In scope (v1)**
 
 - Fully mechanical detection of breakouts, zones and FVGs.
-- One position per symbol; risk per trade from the sizing plan of section 4.1 (ladder, at most 0.5%, by default; Recovery, at most 1.28%, from v0.12).
+- One position per symbol; risk per trade from the sizing plan of section 4.1 (fixed 0.5% by default from v0.14, `LadderEnabled` = false; the ladder, at most 0.5%, with `LadderEnabled` = true; Recovery, at most 1.28%, from v0.12).
 - Broker-side stop loss, take profit and order expiry on every order.
 - News filter for high-impact events.
 - Unattended recovery after power loss, reboot, crash or network loss.
@@ -118,12 +132,12 @@ Reliability can be engineered and tested, and this version does that. Profitabil
 | Item | Setting | Status and reason |
 |---|---|---|
 | Symbols | EURUSD, GBPUSD, USDJPY, AUDUSD, XAUUSD | Decided. Liquid majors, low spread. XAUUSD (gold) added by the owner on 17 November 2026; one instance per symbol |
-| Entry mode | `Breakout` (default), `ZoneFvg` or `SessionRange` (added on 23 November 2026), one per instance | Decided on 22 November 2026 (owner request). Sections 3 and 3.7. Both modes use the bias, the M15 chart and everything from section 4 on |
+| Entry mode | `ZoneFvg` (default from v0.14), `Breakout` (the default until v0.13) or `SessionRange` (added on 23 November 2026), one per instance | Decided on 22 November 2026 (owner request); default changed by the owner's request of 24 November 2026 (row AA). Sections 3 and 3.7. Every mode uses the bias, the M15 chart and everything from section 4 on |
 | Bias timeframe | D1 | Decided. Trend filter |
 | Zone timeframe | H4 | Decided. Higher-timeframe zones |
 | Entry timeframe | M15 (the chart the bot runs on) | Decided. Lower-timeframe FVG |
-| Trading window | 07:00 to 17:00 UTC; 00:00 to 24:00 (all day) for the Choch entry model | 07:00 to 17:00 assumed (London and New York sessions). All day for Choch: owner's answer of 23 November 2026 (3.9) |
-| Entry model in ZoneFvg mode | `Fvg` (default) or `Choch` (v0.11) | Owner's answers of 23 November 2026. Section 3.9. Fvg stays the default until the owner switches after the backtest of both |
+| Trading window | 00:00 to 24:00 (all day; default from v0.14, for the Choch entry model); 07:00 to 17:00 UTC for the Fvg model and Breakout | 07:00 to 17:00 assumed (London and New York sessions). All day for Choch: owner's answer of 23 November 2026 (3.9); the default from v0.14 (row AA) |
+| Entry model in ZoneFvg mode | `Choch` (default from v0.14, with `ChochUseBias` = true) or `Fvg` (v0.11) | Owner's answers of 23 November 2026. Section 3.9. Choch is the default from the owner's request of 24 November 2026, after the backtests (row AA) |
 | Account | FTMO 2-Step Challenge, Swing type, cTrader, 200,000 USD simulated capital, used only by this bot | Decided (section 15); 200,000 USD from the owner's decision of 24 November 2026 (was 100,000). Manual trades on the same symbols would confuse recovery |
 | Language | C# in cTrader Algo | Widest documentation and examples |
 | Hosting | Stage 1: your laptop on a demo account for a few days. Stage 2: rented Linux VPS, cTrader CLI in Docker | Decided. See section 10 |
@@ -217,7 +231,7 @@ Naming the three most recently closed M15 bars c3, c2, c1 (c1 is the newest):
 ### 3.6 Signal is skipped when
 
 - It is not live: its confirmation bar closed more than one bar ago (for example, it was found during a restart replay).
-- Stop distance is under `MinStopPips` (12 pips for the forex pairs, 8 pips for gold: FTMO's cTrader reports a gold pip of 1 USD, and the 800 of earlier versions assumed a pip of 0.01 USD) or over 2.0 x ATR(H4).
+- Stop distance is under `MinStopPips` (12 pips for the forex pairs, 8.00 USD of price for gold, from the symbol profile of 7.1; v0.13 wrote gold's value as 8 pips for a pip of 1 USD, and earlier versions as 800 for a pip of 0.01 USD) or over 2.0 x ATR(H4).
 - **Cost check fails:** spread plus round-trip commission, in pips, is more than `CostToRiskMax` (10%) of the stop distance.
 - An active supply zone sits between entry and 1.5R above entry (ZoneFvg mode).
 - The news filter blocks it (section 6).
@@ -306,13 +320,13 @@ Chosen with `EntryMode` = SessionRange. It follows the D1 trend into a break of 
 
 ### 3.9 CHoCH entry model (v0.11, owner's answers of 23 November 2026)
 
-Chosen with `EntryMode` = ZoneFvg and `EntryModel` = Choch. `EntryModel` = Choch with another `EntryMode` is refused at start, because the default `EntryMode` is Breakout and a backtest must not run another rule than the one chosen. The reason for the model: the backtests of the Fvg model showed no edge on EURUSD 2023–2026 (11 trades, +2.2R; with looser values 35 trades, +0.1R), and the owner traded supply and demand by hand with success. He sent 10 annotated TradingView charts and answered the developer's reading of them on 23 November 2026. This section is that method written as rules. For this bot it is unproven until section 12 says otherwise. Long rules are shown; short rules are the mirror image.
+Chosen with `EntryMode` = ZoneFvg and `EntryModel` = Choch. `EntryModel` = Choch with another `EntryMode` is refused at start, because a backtest must not run another rule than the one chosen (written when the default `EntryMode` was Breakout; kept from v0.14, when ZoneFvg with Choch is the default, row AA). The reason for the model: the backtests of the Fvg model showed no edge on EURUSD 2023–2026 (11 trades, +2.2R; with looser values 35 trades, +0.1R), and the owner traded supply and demand by hand with success. He sent 10 annotated TradingView charts and answered the developer's reading of them on 23 November 2026. This section is that method written as rules. For this bot it is unproven until section 12 says otherwise. Long rules are shown; short rules are the mirror image.
 
 **What the owner confirmed.** He trades all pairs (the Dollar Index on one chart was an example, not a filter). Zones are H4 supply and demand; the trade direction comes from the zone: demand gives a buy, supply a sell. The trigger is the change of character ("CHoCH") seen on M15 at the zone; the entry is the retest of the broken level; the stop is beyond the extreme of the move; the target is "before the next supply/demand but at least taking 1:2"; trading all day, with the Friday and news rules kept; no trailing stop.
 
 **Zones.** The zones of 3.2 with the same parameters (a base before an impulse that breaks structure), the same states, supersede rule, invalidation and age (3.3). Only the confirmation window differs: `ChochWindowBars` (32 M15 bars, 8 hours; **proposal**) from the touch bar, which is bar 0. Two more zone types from the owner's charts, a broken swing level that flipped (support becomes resistance and the reverse) and an H4 fair value gap, are **not** part of this version: they need new detection, new ids and their own supersede rules, and are planned as a second work package after the first backtest of this model shows whether the trigger works on the zones of 3.2.
 
-**Bias.** With `ChochUseBias` = false (default; **proposal**, following "the direction comes from the zone") the D1 bias is not read. With true, a zone whose type does not match the bias of 3.1 gives no signal, as in the Fvg model.
+**Bias.** With `ChochUseBias` = false (the default until v0.13; **proposal**, following "the direction comes from the zone") the D1 bias is not read. With true (the cBot's default from v0.14, row AA: the backtests were best with the trend filter), a zone whose type does not match the bias of 3.1 gives no signal, as in the Fvg model.
 
 **M15 swings.** The swing rule of 3.2 step 2 applied to M15 bars: a swing high is an M15 bar whose high is above the highs of `SwingStrength` (3) bars on each side, confirmed when the third bar to its right has closed, kept while it is among the last 100 M15 bars. Swing lows mirror it.
 
@@ -330,13 +344,13 @@ Chosen with `EntryMode` = ZoneFvg and `EntryModel` = Choch. `EntryModel` = Choch
 **Skipped when** (besides the checks of 3.6 that apply):
 
 - The reward is under `MinRewardRisk` (2.0, the owner's minimum of 1:2): target distance divided by stop distance, on the signal's own levels.
-- The stop is under `ChochMinStopPips` (5 pips; **proposal**) or over `MaxStopAtr` (2.0) x ATR(H4). The cost check (3.6) still applies and is in practice the stricter floor on small stops: at a spread plus commission of about 0.7 pips on EURUSD, a stop must be at least about 7 pips to pass `CostToRiskMax` (10%). The size cap is not changed either: at the ladder's usual 0.30% risk a EURUSD stop under about 6 pips needs more than `MaxVolumeUnits` (500,000 units) and is skipped with an alert (4.3); at 0.5% the limit is about 10 pips. Both caps are the owner's money decisions and stay as they are.
+- The stop is under `ChochMinStopPips` (5 pips; **proposal**; gold 3.00 USD of price, from the symbol profile of 7.1) or over `MaxStopAtr` (2.0) x ATR(H4). The cost check (3.6) still applies and is in practice the stricter floor on small stops: at a spread plus commission of about 0.7 pips on EURUSD, a stop must be at least about 7 pips to pass `CostToRiskMax` (10%). The size cap is not changed either: at the ladder's usual 0.30% risk a EURUSD stop under about 6 pips needs more than `MaxVolumeUnits` (500,000 units) and is skipped with an alert (4.3); at 0.5% the limit is about 10 pips. Both caps are the owner's money decisions and stay as they are.
 - The confirming bar overlaps a news window (section 6.1).
 - Price is already back at the entry when the order is about to be placed.
 
 **What stays the same.** One position or pending order per symbol, sizing and the ladder, every account limit, circuit breaker and sanity cap (including `MaxVolumeUnits`), the Friday rules, the news windows, idempotent placement, recovery, Friday close, alerts and the simulation tools. A trade ends at its stop, its target or the Friday close.
 
-**Trading window.** The owner trades all day. `SessionStartUtc` = 00:00 and `SessionEndUtc` = 24:00 is accepted from v0.11 and is the setting for this model in the parameter files and the backtest guide. The cBot's default stays 07:00 to 17:00, because the default model is Fvg.
+**Trading window.** The owner trades all day. `SessionStartUtc` = 00:00 and `SessionEndUtc` = 24:00 is accepted from v0.11 and is the setting for this model in the parameter files and the backtest guide. From v0.14 it is the cBot's default, because Choch is the default model (row AA); the Fvg model and Breakout were specified and backtested with 07:00 to 17:00, which has to be set by hand for them.
 
 ## 4. Risk and position sizing
 
@@ -358,10 +372,12 @@ that is still 0), steps stop rising once a trade would go over
 0.5%, and all steps go back to 0 only when the owner sets a new
 `RiskEpochDate` after a payout or for a new account (no monthly reset). The formula below then uses
 that percent instead of a fixed 0.5%. With `LadderEnabled` = false the bot
-uses the fixed `RiskPercent` as before.
+uses the fixed `RiskPercent` as before. From v0.14 `LadderEnabled` = false is
+the cBot's default (row AB): a default run risks a fixed 0.5% of balance per
+trade, and the owner switches the ladder on with `LadderEnabled` = true.
 
 ```
-riskAmount  = Account.Balance x riskPercent   (ladder, at most 0.5%)
+riskAmount  = Account.Balance x riskPercent   (fixed RiskPercent 0.5% by default; ladder, at most 0.5%)
 riskAmount  = R of 4.1.1                      (Recovery, step columns, at most 1.28% of Account.Balance)
 volumeUnits = riskAmount / (stopPips x Symbol.PipValue)
 volume      = round DOWN to the symbol's volume step
@@ -521,7 +537,7 @@ Protection against code errors rather than market risk.
 | Order requests per instance per day | 100 | Halt. Five instances stay far below FTMO's 2,000-a-day limit |
 | Unhandled errors per hour | 5 | Halt |
 | Calculated risk above `SanityCapPercent` (0.55%) of balance | Off (`SanityCapEnabled` = false, owner decision of 24 November 2026) | When on: skip and alert |
-| Volume above `MaxVolumeUnits` | Per symbol: 3,000,000 units for the forex pairs, 1,000 for gold (ounces); 500,000 and 200 before v0.12 | Skip and alert |
+| Volume above `MaxVolumeUnits` | Per symbol, from the profile of 7.1 (automatic from v0.14): 3,000,000 units for the forex pairs, 1,000 for gold (ounces); 500,000 and 200 before v0.12 | Skip and alert |
 | Stop or target on the wrong side of entry | n/a | Skip and alert |
 
 **What bounds a single trade (defaults of v0.12: sanity cap, open-risk cap
@@ -559,8 +575,8 @@ plan to work as the owner described.
 
 ### 5.1 Filters checked before placing an order
 
-- Time is inside `SessionStartUtc` to `SessionEndUtc` (07:00 to 17:00 UTC; 00:00 to 24:00 means all day, v0.11), and before `FridayNoEntryUtc` (12:00) on Fridays.
-- Current spread is at most `MaxSpreadPips` (1.5 for the forex pairs, 40 for gold).
+- Time is inside `SessionStartUtc` to `SessionEndUtc` (00:00 to 24:00, all day, by default from v0.14; 07:00 to 17:00 UTC for the Fvg model and Breakout), and before `FridayNoEntryUtc` (12:00) on Fridays.
+- Current spread is at most `MaxSpreadPips` (1.5 pips for the forex pairs, 0.40 USD of price for gold, from the symbol profile of 7.1).
 - The symbol's market is open.
 - No existing bot position or pending order on the symbol.
 - Not inside a news window; calendar data is valid (section 6).
@@ -684,14 +700,14 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 
 | Parameter | Default | Role | Test range |
 |---|---|---|---|
-| EntryMode (new in 0.10) | Breakout | Entry mode of the instance: Breakout, ZoneFvg or SessionRange (section 3) | Both are backtested |
-| EntryModel (new in 0.11) | Fvg | Trigger in ZoneFvg mode: Fvg or Choch (3.9). Choch with another EntryMode is refused | Both are backtested |
+| EntryMode (new in 0.10) | ZoneFvg (Breakout until v0.13; row AA) | Entry mode of the instance: Breakout, ZoneFvg or SessionRange (section 3) | Both are backtested |
+| EntryModel (new in 0.11) | Choch (Fvg until v0.13; row AA) | Trigger in ZoneFvg mode: Fvg or Choch (3.9). Choch with another EntryMode is refused, so Breakout and SessionRange need Fvg | Both are backtested |
 | RequireSweep (new in 0.11) | false | Choch: a sweep of an M15 swing must come before the change of character | Test false and true |
 | ChochWindowBars (new in 0.11) | 32 (proposal) | Choch: M15 bars after the touch in which the change of character must come | Fixed |
-| ChochUseBias (new in 0.11) | false (proposal) | Choch: also require the D1 bias of 3.1 | Test false and true |
+| ChochUseBias (new in 0.11) | true (false until v0.13; row AA) | Choch: also require the D1 bias of 3.1 | Test false and true |
 | ChochStopAtDistal (new in 0.11) | false (proposal) | Choch: stop beyond the zone's distal line too, not only beyond the low since the touch | Test false and true |
 | ChochTargetBufferAtr (new in 0.11) | 0.1 (proposal) | Choch: target this far (x ATR H4) before the next opposing level | Fixed |
-| ChochMinStopPips (new in 0.11) | 5 (proposal); gold 3 (proposal) | Choch: smallest allowed stop, in place of MinStopPips | Per symbol |
+| ChochMinStopPips (new in 0.11) | 0 = automatic (7.1): 5 pips for the forex pairs, 3.00 USD of price for gold (both proposals of 0.11); until v0.13 the default was 5 and the gold file set 3 | Choch: smallest allowed stop, in place of MinStopPips | Per symbol |
 | MinRewardRisk (new in 0.11) | 2.0 | Choch: smallest target distance in R (owner: at least 1:2) | Fixed |
 | BreakoutEntryBufferAtr (new in 0.10) | 0.1 | Breakout entry beyond the confirming bar (x ATR M15) | Fixed |
 | BreakoutStopAtr (new in 0.10) | 1.0 | Breakout stop distance (x ATR H4) | **Optimise** (Breakout mode) 0.75 to 1.5, step 0.25 |
@@ -712,12 +728,13 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | EntryLevelPct | 50 | Entry depth into the gap | Test 0, 50, 100 |
 | EntryExpiryBars | 8 | Limit order life | Fixed |
 | StopBufferAtr | 0.1 | Stop buffer | Fixed |
-| MinStopPips | 12 (was 8); gold 8 (a gold pip is 1 USD on FTMO's cTrader; written as 800 before, for a pip of 0.01 USD) | Smallest allowed stop | Per symbol |
+| MinStopPips | 0 = automatic (7.1): 12 pips for the forex pairs (was 8), 8.00 USD of price for gold (v0.13 wrote 8 for a pip of 1 USD, earlier versions 800 for a pip of 0.01 USD) | Smallest allowed stop | Per symbol |
 | MaxStopAtr | 2.0 | Largest allowed stop (x ATR H4) | Fixed |
 | RewardRisk | 2.0 | Target in R | **Optimise** 1.5 to 3.0, step 0.5 |
 | MinRoomR | 1.5 | Clear space to opposing zone | Fixed |
 | CostToRiskMax (new) | 0.10 | Costs as a share of stop distance | Fixed |
-| RiskPercent | 0.5 | Risk per trade | Fixed |
+| RiskPercent | 0.5 | Risk per trade; with `LadderEnabled` = false (the default from v0.14) every trade uses it | Fixed |
+| LadderEnabled | false (true until v0.13; row AB) | The ladder of RSK-013 on (true) or the fixed `RiskPercent` (false), with `SizingPlan` = Ladder. The one value the owner switches by hand | Both are backtested |
 | SizingPlan (new in 0.12) | Ladder | How the risk of a new trade is set: `Ladder` (RSK-013, unchanged) or `Recovery` (4.1.1) | Both are backtested |
 | RecoveryRunLossPercent (new in 0.13; replaces RecoveryFirstRiskUsd of 0.12) | 1.0 | Recovery: the eight base amounts of a losing run together, in percent of initial capital (4.1.1) | Fixed |
 | RecoveryMaxRiskPercent (new in 0.12) | 1.28 | Recovery: largest risk of one trade, in percent of balance; a raw amount above it freezes the symbol's steps until the eight-loss reset (proposal) | Fixed |
@@ -735,13 +752,13 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | RiskEpochDate (new) | First live day; empty in a backtest means the backtest's first day (added 23 November 2026) | Start date for drawdown measurement | Set manually live |
 | MaxEntriesPerSymbolPerDay (new) | 2 | Circuit breaker | Fixed |
 | MaxEntriesPerDay (new) | 6 | Circuit breaker | Fixed |
-| MaxVolumeUnits (new) | 3,000,000 (30 lots); gold 1,000 (ounces); 500,000 and 200 before v0.12 | Size sanity cap; always on | Per symbol |
+| MaxVolumeUnits (new) | 0 = automatic (7.1): 3,000,000 units (30 lots) for the forex pairs, 1,000 ounces for gold; until v0.13 the default was 3,000,000 and the gold file set 1,000; 500,000 and 200 before v0.12 | Size sanity cap; always on | Per symbol |
 | SanityCapEnabled (new in 0.12) | false | The check "calculated risk above SanityCapPercent of balance" (4.3) on or off | Fixed |
 | SanityCapPercent (new in 0.12) | 0.55 | Its limit when it is on | Fixed |
-| SessionStartUtc / SessionEndUtc | 07:00 / 17:00; 00:00 / 24:00 for Choch (v0.11: 24:00 accepted as the end, not in Breakout mode) | Trading window | Fixed |
+| SessionStartUtc / SessionEndUtc | 00:00 / 24:00 (from v0.14, row AA; 07:00 / 17:00 until v0.13, still the setting for the Fvg model and Breakout; 24:00 is accepted as the end from v0.11, not in Breakout mode) | Trading window | Fixed |
 | FridayNoEntryUtc (new) | 12:00 | Last entry time on Friday | Fixed |
 | FridayCloseUtc | 20:00 | Weekend flat time | Fixed |
-| MaxSpreadPips | 1.5; gold 0.4 (a gold pip is 1 USD; written as 40 before) | Spread filter | Per symbol |
+| MaxSpreadPips | 0 = automatic (7.1): 1.5 pips for the forex pairs, 0.40 USD of price for gold (v0.13 wrote 0.4 for a pip of 1 USD, earlier versions 40 for a pip of 0.01 USD) | Spread filter | Per symbol |
 | NewsEnabled (new) | true; in a backtest whose embedded news history has no events the filter is off for that run and the start log says so (added 23 November 2026) | News filter on or off | Test on and off |
 | TrendSlowEmaPeriod (new in v0.10) | 200 (0 = off) | Breakout trend filter (3.1) | Test 0 and 200 |
 | BreakoutLastConfirmUtc (new in v0.10) | 08:00 (17:00 = off) | Latest close time of a confirming bar (3.7) | Test 08:00 and 17:00 |
@@ -758,6 +775,44 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | ExtraBlackouts (new) | empty | Manual blackout list | n/a |
 | HeartbeatUrl (new) | empty | External monitor address | n/a |
 | TelegramBotToken / TelegramChatId (new in 0.3) | empty | Telegram alerts. Kept in the parameter file, never in code | n/a |
+
+### 7.1 Automatic symbol profile (v0.14, owner request of 24 November 2026)
+
+Four values differ between the currency pairs and gold: `MaxSpreadPips`, `MinStopPips`, `ChochMinStopPips` and `MaxVolumeUnits`. Each defaults to 0, which means automatic. No other parameter is in pips or in units (decision D). The rules below run once at start, in every entry mode, before the core is built; the core then works with the effective values as before.
+
+**Which profile.** From the symbol's base and quote asset names as the broker reports them (cTrader `Symbol.BaseAsset` and `Symbol.QuoteAsset`), compared without regard to case:
+
+- **Gold:** base XAU and quote USD.
+- **Currency pair:** base and quote both one of USD, EUR, GBP, JPY, AUD, NZD, CAD, CHF, SEK, NOK, DKK, SGD, HKD, MXN, ZAR, PLN, HUF, CZK, TRY, CNH. The pip size must be the standard one, 0.0001, or 0.01 when the quote is JPY (relative tolerance 1e-9); any other pip size is refused, because every currency-pair value is written in standard pips.
+- **None:** anything else (other metals such as XAG, indices, crypto, gold quoted in another currency).
+
+**The profile's values.**
+
+| Value | Currency pair | Gold |
+|---|---|---|
+| MaxSpreadPips | 1.5 pips | 0.40 USD of price |
+| MinStopPips | 12 pips | 8.00 USD of price |
+| ChochMinStopPips | 5 pips | 3.00 USD of price |
+| MaxVolumeUnits | 3,000,000 units | 1,000 units (ounces) |
+
+**Automatic value (0).** A currency pair uses its value as written. Gold's price values are converted to pips with the symbol's pip size, `Symbol.PipSize` at start: pips = USD / PipSize, rounded to 9 decimals (midpoint away from zero). Pip 1: 0.4, 8 and 3. Pip 0.1: 4, 80 and 30. Pip 0.01: 40, 800 and 300. Profile None with any value at 0: the bot refuses to start and says that the symbol has no automatic profile and the value must be set.
+
+**Value set by hand (not 0).** Used as given, in pips (units for `MaxVolumeUnits`), after a check against the profile, in price for gold (value x PipSize) and in pips for a currency pair. The bot refuses to start (fail closed) when the value is outside one tenth to ten times the profile's value, both ends accepted:
+
+| Value | Currency pair, accepted | Gold, accepted |
+|---|---|---|
+| MaxSpreadPips | 0.15 to 15 pips | 0.04 to 4.00 USD of price |
+| MinStopPips | 1.2 to 120 pips | 0.80 to 80 USD |
+| ChochMinStopPips | 0.5 to 50 pips | 0.30 to 30 USD |
+| MaxVolumeUnits | 300,000 to 30,000,000 units | 100 to 10,000 ounces |
+
+So gold's old file value `MaxSpreadPips` 0.4 is accepted at a pip of 1 (0.40 USD) and refused at a pip of 0.01 (0.004 USD), and the forex default 1.5 typed on gold at a pip of 0.01 (0.015 USD) is refused. Profile None: a value set by hand is used without this check. Negative values and values that are not finite numbers are refused as before. The refusal names the parameter, the value, the symbol, its pip size, the value in price for gold, the accepted range and the automatic value.
+
+**Spread at start.** When the spread at start is above the effective `MaxSpreadPips` (both in price), one Log line says so and that entries are skipped while it lasts. It is not a refusal: the spread at a backtest's first tick or at the daily roll-over says little about the trading hours.
+
+**Start line.** The core's start line ends with `profile=<Fx|Gold|None> pipSize=<value>` and the four effective values, followed by the list of those that were automatic (format in requirement EXE-032).
+
+**Parameter hash.** An automatic `MaxSpreadPips`, `MinStopPips` or `ChochMinStopPips` is written into the hash text as the profile's value in the profile's own unit (for example `MaxSpreadPips=auto:0.4USD;` for gold, `MaxSpreadPips=auto:1.5pips;` for a currency pair), not as pips. The same settings then give the same hash whatever pip size the broker reports, and a later change of a profile value changes the hash. A value set by hand is written as before, so every hash of earlier settings stays what it was. `MaxVolumeUnits` is a risk value and, as before, not in the hash.
 
 ## 8. Reliability and recovery
 
@@ -993,12 +1048,12 @@ Commission per lot, typical spread per symbol, minimum volume and step, minimum 
 
 **Sequence**
 
-1. Baseline run with default parameters on all five symbols, no optimisation (gold with its own spread, stop and volume values, section 7). From v0.10: one series per entry mode, with the same period, data and costs. Steps 2 to 9 are then done for each mode that is still in the running.
+1. Baseline run with default parameters on all five symbols, no optimisation (gold with its own spread, stop and volume values, section 7; automatic from v0.14, 7.1). From v0.10: one series per entry mode, with the same period, data and costs. Steps 2 to 9 are then done for each mode that is still in the running.
 2. If the baseline is unprofitable across symbols, revisit the rules. Do not optimise a losing baseline into a winner.
 3. Coarse optimisation of the four **Optimise** parameters. Prefer broad plateaus of good results.
 4. Re-run chosen settings as a single backtest; optimisation passes and single runs sometimes disagree.
 5. Sensitivity: move each key parameter 20% either way.
-6. Stress costs: repeat with spread and commission increased by 50% and with 0.5 pip extra slippage on stops (gold: 15 pips, proposed in v0.9).
+6. Stress costs: repeat with spread and commission increased by 50% and with 0.5 pip extra slippage on stops (gold: 0.15 USD of price, proposed in v0.9 as 15 pips of 0.01 USD; row AF).
 7. Combine the five symbols' trade lists by time for portfolio drawdown and exposure caps.
 8. Monte Carlo: reshuffle the trade order 1,000 times to estimate the range of drawdowns and of 30-trade results (used in 13.3).
 9. Challenge simulation: replay the backtest's trades through FTMO's exact rules several thousand times to estimate the chance of passing each phase and the time it takes, at 0.5%, 0.75% and 1.0% risk per trade (section 15.5). With a sizing plan (`--sizing ladder` or, from v0.12, `--sizing recovery`) the plan sets the risk of each trade and only the two phases are run. The tools' defaults follow the account: initial capital 200,000 and daily budget 2% (v0.12).
@@ -1092,7 +1147,7 @@ If the holdout fails, the strategy is rejected or redesigned; the holdout is not
 
 **A mode on one symbol (added on 23 November 2026).** SessionRange is meant for gold alone at first. The rows "Profitable symbols" and "Share of profit from one symbol" cannot be applied to one symbol, and the trade counts were written for five. Which marks such a mode must pass is the owner's decision before go / no-go 1 and is open (section 14, question 4). Until it is made, the mode is not accepted.
 
-**What goes live (added on 23 November 2026).** The parameter files of the instances that go live carry the chosen mode in `EntryMode` and the accepted settings, that is the values of the run the acceptance report judged; every other value stays at its default. The laptop stage, the fault tests (12.3) and the soak test are run with these files. The parameter hash that the bot prints at start must equal, symbol by symbol, the hash of the accepted backtest run (the hash covers the signal, execution and breakout values; the risk and news values are not part of it and are set as sections 4 and 6 say). A mode that did not pass, or was not chosen, is never the `EntryMode` of an instance on the Challenge account.
+**What goes live (added on 23 November 2026).** The parameter files of the instances that go live carry the chosen mode in `EntryMode` and the accepted settings, that is the values of the run the acceptance report judged; every other value stays at its default. The laptop stage, the fault tests (12.3) and the soak test are run with these files. The parameter hash that the bot prints at start must equal, symbol by symbol, the hash of the accepted backtest run (the hash covers the signal, execution and breakout values; the risk and news values are not part of it and are set as sections 4 and 6 say). From v0.14 an automatic value is hashed as its profile's value, not in pips (7.1), so a broker that reports another pip size for gold than the accepted run's gives the same hash. A mode that did not pass, or was not chosen, is never the `EntryMode` of an instance on the Challenge account.
 
 ### 13.2 Reliability thresholds
 
@@ -1113,7 +1168,7 @@ Calculated from account history after every closed trade.
 |---|---|
 | Average result below the 5th percentile | Cut risk to 0.25%; alert |
 | Average result below the 1st percentile | Block new entries; review |
-| Average slippage above 0.5 pip over 20 trades (gold: 15 pips, proposed in v0.9) | Alert; review broker conditions |
+| Average slippage above 0.5 pip over 20 trades (gold: 0.15 USD of price, proposed in v0.9 as 15 pips of 0.01 USD) | Alert; review broker conditions |
 
 Every quarter, re-run the backtest including the latest data and compare live results with it.
 
@@ -1139,7 +1194,7 @@ Every quarter, re-run the backtest including the latest data and compare live re
 4. Which acceptance marks does a mode pass that runs on one symbol (SessionRange on gold, 13.1)? The search measured it once on the holdout already, so the holdout of 12.1 is no longer unused for this rule: the remaining clean evidence is a forward test on the Free Trial or a demo account.
 
 
-**Resolved:** the CHoCH entry model's proposal values of 3.9 and 7 (accepted by the owner on 23 November 2026), account (FTMO 2-Step, Swing, cTrader, 200,000 USD from 24 November 2026, before that 100,000 USD bought and not started), sizing plan, daily budget, per-trade sanity cap, each pair on its own, open-risk and currency caps off, `MaxVolumeUnits` 3,000,000 and gold 1,000, and the Recovery divisor `RewardRisk` (owner decisions of 24 November 2026, v0.12), symbols (four majors, plus gold from v0.9), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
+**Resolved:** the defaults of v0.14 and the automatic symbol profile (owner request of 24 November 2026, rows AA to AG), the CHoCH entry model's proposal values of 3.9 and 7 (accepted by the owner on 23 November 2026), account (FTMO 2-Step, Swing, cTrader, 200,000 USD from 24 November 2026, before that 100,000 USD bought and not started), sizing plan, daily budget, per-trade sanity cap, each pair on its own, open-risk and currency caps off, `MaxVolumeUnits` 3,000,000 and gold 1,000, and the Recovery divisor `RewardRisk` (owner decisions of 24 November 2026, v0.12), symbols (four majors, plus gold from v0.9), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
 
 ## 15. FTMO account
 
