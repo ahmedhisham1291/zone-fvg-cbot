@@ -15,9 +15,9 @@ public class RiskParametersTests
         Assert.Equal(0.5, parameters.RiskPercent);
         Assert.Equal(1.5, parameters.MaxOpenRiskPercent);
         Assert.Equal(2, parameters.MaxPositionsPerCurrency);
-        Assert.Equal(1.5, parameters.DailyLossLimitPercent);
+        Assert.Equal(2.0, parameters.DailyLossLimitPercent);
         Assert.Equal(8.0, parameters.MaxDrawdownPercent);
-        Assert.Equal(100000.0, parameters.InitialCapital);
+        Assert.Equal(200000.0, parameters.InitialCapital);
         Assert.Equal(5.0, parameters.FtmoDailyLossPercent);
         Assert.Equal(10.0, parameters.FtmoMaxLossPercent);
         Assert.Equal(1.0, parameters.FtmoGuardBufferPercent);
@@ -26,8 +26,14 @@ public class RiskParametersTests
         Assert.Equal(20, parameters.MaxRequestsPerHour);
         Assert.Equal(100, parameters.MaxRequestsPerDay);
         Assert.Equal(5, parameters.MaxErrorsPerHour);
-        Assert.Equal(500000.0, parameters.MaxVolumeUnits);
-        Assert.Equal(0.55, RiskParameters.MaxComputedRiskPercent);
+        Assert.Equal(3000000.0, parameters.MaxVolumeUnits);
+        Assert.False(parameters.SanityCapEnabled);
+        Assert.Equal(0.55, parameters.SanityCapPercent);
+        Assert.False(parameters.OpenRiskCapEnabled);
+        Assert.False(parameters.CurrencyCapEnabled);
+        Assert.Equal(SizingPlan.Ladder, parameters.SizingPlan);
+        Assert.Equal(100.0, parameters.RecoveryFirstRiskUsd);
+        Assert.Equal(1.28, parameters.RecoveryMaxRiskPercent);
         Assert.Equal(50.0, RiskParameters.MinFreeMarginPercentOfEquity);
     }
 

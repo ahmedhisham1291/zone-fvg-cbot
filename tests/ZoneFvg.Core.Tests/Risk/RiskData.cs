@@ -33,9 +33,22 @@ public static class RiskData
     /// <summary>
     /// The default risk parameters with the test epoch, pinned to fixed sizing (LadderEnabled false):
     /// the tests written before RSK-013 compute their volumes from RiskPercent (RSK-001). The RSK-013
-    /// tests switch the ladder on explicitly.
+    /// tests switch the ladder on explicitly. Pinned to the account of before spec v0.12 (WP38, owner
+    /// authorisation of 2026-11-24): InitialCapital 100,000, DailyLossLimitPercent 1.5, the sanity,
+    /// open-risk and currency caps on and MaxVolumeUnits 500,000, so the tests written for that
+    /// account keep proving the same rules with the same numbers.
     /// </summary>
-    public static RiskParameters Parameters => new() { RiskEpochDate = Epoch, LadderEnabled = false };
+    public static RiskParameters Parameters => new()
+    {
+        RiskEpochDate = Epoch,
+        LadderEnabled = false,
+        InitialCapital = 100000.0,
+        DailyLossLimitPercent = 1.5,
+        SanityCapEnabled = true,
+        OpenRiskCapEnabled = true,
+        CurrencyCapEnabled = true,
+        MaxVolumeUnits = 500000.0,
+    };
 
     public static RiskEngine Engine => new(Parameters);
 
