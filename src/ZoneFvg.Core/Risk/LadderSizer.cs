@@ -344,7 +344,10 @@ public sealed class LadderSizer
         return new LadderEntry(label, placed, closed[closed.Length - 1].CloseTimeUtc, net);
     }
 
-    private static LadderEntry[] Ordered(IReadOnlyList<LadderEntry> entries)
+    /// <summary>Checks the entries (fail closed, RSK-013) and orders them by placement time, then key (ordinal). Also used by <see cref="RecoverySizer"/> (RSK-017).</summary>
+    /// <param name="entries">The entries, in any order.</param>
+    /// <returns>The checked entries in that order.</returns>
+    internal static LadderEntry[] Ordered(IReadOnlyList<LadderEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
         var keys = new HashSet<string>(StringComparer.Ordinal);
