@@ -1,4 +1,4 @@
-# Numbered requirements extracted from docs/spec.md (v0.12).
+# Numbered requirements extracted from docs/spec.md (v0.13).
 #
 # Rules for this file
 # - The text of a requirement changes only in a pull request that carries the
@@ -493,26 +493,34 @@ requirements:
     verify: unit
     status: planned
     text: >-
-      Recovery sizing amount (owner decision Q of 2026-11-24). With
-      SizingPlan Recovery the risk money of a new trade is R = min((L + RR x
-      F) / RR, B x RecoveryMaxRiskPercent / 100), where F is
-      RecoveryFirstRiskUsd (100, account currency), RR the instance's
-      RewardRisk parameter (2.0) in every entry mode, B the account balance
-      from the broker port at placement, and L the money lost in the current
-      losing run of the instance's own symbol (RSK-017; owner decision V of
-      2026-11-24: each pair on its own). With L = 0 the trade risks F (or the cap, if it
-      is smaller). A raw amount exactly at the cap is the cap. R is passed to
-      the position sizer as the risk amount of RSK-001 (volume = R / (stop
-      pips x pip value), rounded down), and every check of RSK-002 to RSK-006
-      and RSK-010 applies after it. R is not rounded before sizing. With the
-      defaults, a run of trades that each lose exactly their risk, starting
-      at a balance of 200,000, risks 100, 150, 225, 337.5, 506.25, 759.375,
-      1,139.0625, 1,708.59375, then the cap 2,496.95 (1.28% of 195,074.21875)
-      and 1.28% of the balance at each placement after that, until a win.
-      The divisor stays RewardRisk in the Choch model too, whose target may
-      be beyond RR (owner decision Y of 2026-11-24).
-      SizingPlan Recovery does not use LadderEnabled, RiskPercent or the
-      ladder values (RSK-013) for sizing.
+      Recovery sizing amount with step columns (owner decision Z of
+      2026-11-24, which replaces the rule of decision Q; per symbol, decision
+      V). With SizingPlan Recovery, let RR be the instance's RewardRisk
+      (2.0), m1 = 1 and mk = (m1 + ... + m(k-1) + RR) / RR for k = 2 to 8, M
+      = m1 + ... + m8 (49.2578125 at RR = 2), F0 = InitialCapital x
+      RecoveryRunLossPercent (1.0) / 100 / M and Bp = mp x F0. The risk money
+      of an entry at position p (RSK-017) is R = min(Bp x LadderGrowth
+      (1.5924) ^ step(p), balance x RecoveryMaxRiskPercent (1.28) / 100), with
+      step(p) the value of the column of p (C, D, E, F, G, H, I, J for p = 1
+      to 8) when the entry is placed and the balance from the broker port at
+      placement. On 200,000 with all steps 0 the eight base amounts are
+      40.6027, 60.9040, 91.3561, 137.0341, 205.5511, 308.3267, 462.4901 and
+      693.7351, together 2,000. Columns are whole numbers, all 0 at
+      RiskEpochDate. When a win of the symbol closes, the column of the
+      winning entry's position is raised by 1, except that while the column
+      before it is 0 the raise moves one column back (C is always allowed),
+      as in RSK-013 clause 4. When the symbol's eighth non-win in a row
+      (since its latest win or latest reset) closes, all its columns go back
+      to 0 and the next entry is position 1. Freeze (proposal kept from the
+      earlier plan): once an entry's raw amount is above the cap, wins of the
+      symbol that close after that entry was placed raise no step, until the
+      next eight-loss reset or a new RiskEpochDate; a raw amount exactly at
+      the cap is not above it. The power is computed by repeated
+      multiplication, as in the ladder. R is passed to the position sizer as
+      the risk amount of RSK-001, not rounded before sizing, and every check
+      of RSK-002 to RSK-006 and RSK-010 applies after it. SizingPlan Recovery
+      uses LadderGrowth and none of LadderEnabled, RiskPercent,
+      LadderDealRiskPercent, LadderFirstWeight and MaxRiskPercentPerTrade.
 
   - id: RSK-017
     wp: WP38
@@ -520,30 +528,35 @@ requirements:
     verify: unit
     status: planned
     text: >-
-      Recovery losing run from broker data (owner decision Q of 2026-11-24,
-      with the conventions of RSK-013). Trades are built from broker data as
-      the ladder builds its entries, restricted to the instance's symbol
-      (owner decision V of 2026-11-24): only bot positions, pending orders
-      and closed trades whose symbol equals the instance's symbol (ordinal)
-      are read, so trades of other symbols never change L or R.
-      Everything with the same bot label is one trade; it is closed when nothing of it is open or pending, its net
-      result is the sum of the net results (profit, commission, swap) of its
-      closed parts and its close time the latest of them; trades placed
-      before 00:00 CE(S)T of RiskEpochDate are not counted. A win is a closed
-      trade with a net result above zero (1e-9 tolerance); every other
-      closed trade, break-even included, is a non-win. For a trade placed at
-      server time T, the closed trades with a close time at or before T are
-      taken in the order close time, then placement time, then label
-      (ordinal); L is the sum of the absolute net results of the non-wins
-      after the last win in that order, or of all of them when there is no
-      win. Open positions and pending orders do not change L. The ladder
-      (RSK-013) is not changed by this and stays account-wide. The amount is a pure function of the positions, pending orders and
-      history read from the broker at the placement, the parameters and T:
-      the same data in any record order, and the same data after a restart,
-      give the same R, bit for bit. A record with a time that is not UTC, a
-      result that is not finite, an event after T, or history that cannot be
-      read fails closed: no order is placed and the skip reason is
-      BrokerDataInvalid, as for the ladder.
+      Recovery positions and columns from broker data (owner decisions V and
+      Z of 2026-11-24, with the conventions of RSK-013). Entries are built
+      from broker data as the ladder builds its entries, restricted to the
+      instance's symbol: only bot positions, pending orders and closed
+      trades whose symbol equals the instance's symbol (ordinal) are read,
+      so other symbols never change a position, a column or R. Everything
+      with the same bot label is one entry, placed at the earliest of its
+      times; it is closed when nothing of it is open or pending, its net
+      result is the sum of its closed parts (profit, commission, swap) and
+      its close time the latest of them; entries placed before 00:00 CE(S)T
+      of RiskEpochDate are not counted; cancelled or expired orders are not
+      in the data and never count. A win is a closed entry with a net result
+      above zero (1e-9 tolerance); every other closed entry, break-even
+      included, is a non-win. Events are replayed by time; at the same
+      instant closes of earlier-placed entries come before placements,
+      closes among themselves and placements among themselves in entry order
+      (placement time, then label, ordinal), and a close at the instant of
+      its own placement right after that placement. The position of a new
+      entry placed at server time T is 1 plus the number of the symbol's
+      entries placed after the latest win close or reset (whichever is
+      later) and at or before T, at most 8 (a ninth uses position 8,
+      proposal). The amount is a pure function of the positions, pending
+      orders and history read from the broker at the placement, the
+      parameters and T: the same data in any record order, and the same
+      data after a restart, give the same R, bit for bit. The ladder
+      (RSK-013) is not changed and stays account-wide. A record with a time
+      that is not UTC, a result that is not finite, an event after T, or
+      history that cannot be read fails closed: no order is placed and the
+      skip reason is BrokerDataInvalid, as for the ladder.
 
   - id: RSK-018
     wp: WP38
@@ -551,19 +564,20 @@ requirements:
     verify: unit
     status: implemented
     text: >-
-      Risk defaults for the 200,000 USD account (owner decisions P to X of
+      Risk defaults for the 200,000 USD account (owner decisions P to Z of
       2026-11-24). The core's risk parameters default to InitialCapital
       200,000, DailyLossLimitPercent 2.0, SizingPlan Ladder,
-      RecoveryFirstRiskUsd 100, RecoveryMaxRiskPercent 1.28, SanityCapEnabled
-      false, SanityCapPercent 0.55, OpenRiskCapEnabled false,
+      RecoveryRunLossPercent 1.0 (owner decision Z; it replaces
+      RecoveryFirstRiskUsd, which is not a parameter any more),
+      RecoveryMaxRiskPercent 1.28, SanityCapEnabled false, SanityCapPercent 0.55, OpenRiskCapEnabled false,
       CurrencyCapEnabled false and MaxVolumeUnits 3,000,000 (owner decisions
       W and X); every other default is unchanged (RiskPercent 0.5,
       MaxOpenRiskPercent 1.5, MaxPositionsPerCurrency 2, MaxDrawdownPercent 8,
       the FTMO values 5, 10 and 1, the ladder values).
       Validation refuses, naming the parameter, a SizingPlan other than
-      Ladder or Recovery, a RecoveryFirstRiskUsd that is not a finite number
-      greater than 0, and a RecoveryMaxRiskPercent or SanityCapPercent that
-      is not greater than 0 and at most 100. With SizingPlan Ladder every
+      Ladder or Recovery, and a RecoveryRunLossPercent,
+      RecoveryMaxRiskPercent or SanityCapPercent that is not greater than 0
+      and at most 100. With SizingPlan Ladder every
       sizing decision, journal line and the parameter hash are exactly as
       before this change, for the same parameters and broker data.
 
@@ -1387,20 +1401,22 @@ requirements:
     verify: unit
     status: planned
     text: >-
-      Recovery sizing in the challenge simulator (owner decision U of
+      Recovery sizing in the challenge simulator (owner decisions U and Z of
       2026-11-24). The commands ftmo and accept accept --sizing recovery
-      beside fixed and ladder, with --recovery-first <money> (default 100),
-      --recovery-max <percent> (default 1.28) and --reward-risk <R> (default
-      2.0). Each trade then risks the amount of RSK-016 computed from the
-      simulated balance at its open and the simulated losing run of its own
-      symbol (owner decision V): the money results of the trades of the same
-      symbol closed at or before its open, in the simulator's close order, a
-      win being a result above zero. A trade's
+      beside fixed and ladder, with --recovery-run-loss <percent> (default
+      1.0), --recovery-max <percent> (default 1.28), --reward-risk <R>
+      (default 2.0) and the growth of RSK-016 (1.5924, --growth <g>). Each
+      trade then risks the amount of RSK-016 (owner decision Z) computed from
+      the simulated initial capital and balance at its open and the
+      positions, columns, freeze and eight-loss reset of its own symbol
+      (owner decision V), replayed from the simulated opens and closes in the
+      simulator's order, a win being a result above zero. A trade's
       money result is its ResultR times its risk. As for the ladder, only
       the two phases (10% and 5%) are run and the report names the sizing
       recovery. Any other --sizing value is refused with a message naming
-      the three values. With the defaults and every trade losing 1R from
-      200,000 the simulated risks are those of RSK-016.
+      the three values. With the defaults and every trade of one symbol
+      losing 1R from 200,000 the simulated risks are the eight base amounts
+      of RSK-016, then 40.6027 again after the reset.
 
   - id: SIM-007
     wp: WP38
@@ -2195,8 +2211,8 @@ requirements:
     status: planned
     text: >-
       Sizing plan, sanity cap, open-risk and currency caps, size cap and
-      account defaults in the cBot (owner decisions P to X of 2026-11-24). The group "Risk" gains
-      SizingPlan "Ladder", RecoveryFirstRiskUsd 100, RecoveryMaxRiskPercent
+      account defaults in the cBot (owner decisions P to Z of 2026-11-24). The group "Risk" gains
+      SizingPlan "Ladder", RecoveryRunLossPercent 1.0, RecoveryMaxRiskPercent
       1.28, SanityCapEnabled false, SanityCapPercent 0.55, OpenRiskCapEnabled
       false and CurrencyCapEnabled false; InitialCapital defaults to 200000,
       DailyLossLimitPercent to 2.0 and MaxVolumeUnits to 3000000. The values are
