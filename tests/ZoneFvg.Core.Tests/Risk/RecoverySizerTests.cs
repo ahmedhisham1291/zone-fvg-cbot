@@ -305,6 +305,24 @@ public class RecoverySizerTests
 
     [Fact]
     [Trait("Req", "RSK-016")]
+    public void Next_RawAmountNotFinite_IsCappedAndFreezes()
+    {
+        // Extreme values only to reach the guard: B1 = 2.03e298 is below the cap of about 1e305; a win
+        // makes the next p1 B1 x 1e300, which is infinite, so it risks the cap.
+        var sizer = new RecoverySizer(D.Recovery with { InitialCapital = 1e300, RecoveryRunLossPercent = 100.0, RecoveryMaxRiskPercent = 100.0, LadderGrowth = 1e300 });
+        var entries = new[] { D.Nth(1, 1.0) };
+
+        RecoveryDecision next = Next(entries, sizer, balance: 1e305);
+
+        Assert.True(double.IsPositiveInfinity(next.RawAmount));
+        Assert.True(double.IsFinite(next.CapAmount));
+        Assert.True(next.Capped);
+        Assert.True(next.StepsFrozen);
+        Assert.Equal(next.CapAmount, next.RiskMoney);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-016")]
     public void Multipliers_RewardRisk3_StillSumTo2000()
     {
         IReadOnlyList<double> m = RecoverySizer.Multipliers(3.0);
