@@ -21,7 +21,8 @@ namespace ZoneFvg.Core.Tests;
 /// </remarks>
 public class PortfolioCombinerTests
 {
-    private static readonly PortfolioParameters Defaults = new();
+    // The account of before spec v0.12, with both caps on (owner authorisation of 2026-11-24, WP38b).
+    private static readonly PortfolioParameters Defaults = new() { InitialCapital = 100000.0, DailyLossLimitPercent = 1.5, OpenRiskCapEnabled = true, CurrencyCapEnabled = true };
 
     [Fact]
     [Trait("Req", "SIM-002")]
@@ -227,7 +228,7 @@ public class PortfolioCombinerTests
     [Trait("Req", "SIM-002")]
     public void Combine_ParametersAreUsed_ASmallerCapRefusesTheSecondTrade()
     {
-        var tight = new PortfolioParameters { InitialCapital = 50000.0, MaxOpenRiskPercent = 1.5, MaxPositionsPerCurrency = 1, DailyLossLimitPercent = 3.0 };
+        var tight = new PortfolioParameters { InitialCapital = 50000.0, MaxOpenRiskPercent = 1.5, OpenRiskCapEnabled = true, MaxPositionsPerCurrency = 1, CurrencyCapEnabled = true, DailyLossLimitPercent = 3.0 };
         TradeRecord first = Trade("EURUSD", Utc(2026, 1, 6, 8, 0), Utc(2026, 1, 6, 20, 0), 1.0);
         TradeRecord second = Trade("EURJPY", Utc(2026, 1, 6, 9, 0), Utc(2026, 1, 6, 20, 0), 1.0, riskMoney: 200.0);
         TradeRecord third = Trade("GBPJPY", Utc(2026, 1, 6, 10, 0), Utc(2026, 1, 6, 20, 0), 1.0, riskMoney: 300.0);
@@ -296,9 +297,13 @@ public class PortfolioCombinerTests
     [Trait("Req", "SIM-002")]
     public void PortfolioParameters_Defaults_AreThoseOfTheRiskEngine()
     {
-        Assert.Equal(100000.0, Defaults.InitialCapital);
-        Assert.Equal(1.5, Defaults.MaxOpenRiskPercent);
-        Assert.Equal(2, Defaults.MaxPositionsPerCurrency);
-        Assert.Equal(1.5, Defaults.DailyLossLimitPercent);
+        var defaults = new PortfolioParameters();
+
+        Assert.Equal(200000.0, defaults.InitialCapital);
+        Assert.Equal(1.5, defaults.MaxOpenRiskPercent);
+        Assert.False(defaults.OpenRiskCapEnabled);
+        Assert.Equal(2, defaults.MaxPositionsPerCurrency);
+        Assert.False(defaults.CurrencyCapEnabled);
+        Assert.Equal(2.0, defaults.DailyLossLimitPercent);
     }
 }

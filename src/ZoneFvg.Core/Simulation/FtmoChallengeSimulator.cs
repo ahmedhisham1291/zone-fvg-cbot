@@ -23,6 +23,11 @@ namespace ZoneFvg.Core.Simulation;
 /// ladder book in the order below (closes at the same instant in the order taken); the columns
 /// start at 0 on the path's first day, as with a RiskEpochDate on that day, and are never reset
 /// inside the path; a trade refused by the daily budget is not an entry.</para>
+/// <para>Recovery sizing (SIM-006, RSK-016): when <see cref="FtmoChallengeParameters.Recovery"/> is
+/// set, every trade risks the Recovery amount of its own symbol from a <see cref="RecoveryState"/>
+/// per symbol: placed at its open with the balance then, closed at its close with its money result;
+/// a trade refused by the daily budget is not an entry; the states start at 0 on the path's first
+/// day.</para>
 /// <para>Each event is processed in time order; a close at the same instant as an open comes
 /// first. At 00:00 CE(S)T the day's start balance M is the balance then.</para>
 /// <list type="number">
@@ -191,7 +196,7 @@ public static class FtmoChallengeSimulator
     {
         double runs = s.Runs;
         text.Append("| ").Append(PhaseName(s.Parameters.ProfitTargetPercent))
-            .Append(" | ").Append(s.Parameters.Ladder is { LadderEnabled: true } ? "ladder" : SimText.Short(s.Parameters.RiskPercent) + "%")
+            .Append(" | ").Append(SizingText(s.Parameters))
             .Append(" | ").Append(SimText.Short(s.Parameters.DailyBudgetPercent)).Append('%')
             .Append(" | ").Append(SimText.Percent(s.PassProbability))
             .Append(" | ").Append(SimText.Percent(s.BreachProbability))
@@ -201,6 +206,16 @@ public static class FtmoChallengeSimulator
             .Append(" | ").Append(s.MedianDaysToPass.HasValue ? SimText.Int(s.MedianDaysToPass.Value) : "n/a")
             .Append(" | ").Append(s.P90DaysToPass.HasValue ? SimText.Int(s.P90DaysToPass.Value) : "n/a")
             .Append(" |\n");
+    }
+
+    private static string SizingText(FtmoChallengeParameters parameters)
+    {
+        if (parameters.Recovery != null)
+        {
+            return "recovery";
+        }
+
+        return parameters.Ladder is { LadderEnabled: true } ? "ladder" : SimText.Short(parameters.RiskPercent) + "%";
     }
 
     private static string PhaseName(double targetPercent)
@@ -274,6 +289,10 @@ public static class FtmoChallengeSimulator
         private int _refused;
         private int _sequence;
         private LadderState? _ladder;
+
+        // SIM-006: the Recovery state of each symbol (RSK-016), keyed by symbol (ordinal); null when not in the Recovery plan.
+        private readonly SortedDictionary<string, RecoveryState>? _recovery;
+        private readonly RecoverySizer? _recoverySizer;
         private DateTime _lastEvent;
         private ChallengeOutcome? _outcome;
 
@@ -284,6 +303,13 @@ public static class FtmoChallengeSimulator
             _startDay = startDay;
             _p = parameters;
             _ladder = parameters.Ladder is { LadderEnabled: true } ? new LadderSizer(parameters.Ladder).StartState() : null;
+            if (parameters.Recovery != null)
+            {
+                // SIM-006: the base amounts come from the simulated initial capital.
+                _recoverySizer = new RecoverySizer(parameters.Recovery with { InitialCapital = parameters.InitialCapital });
+                _recovery = new SortedDictionary<string, RecoveryState>(StringComparer.Ordinal);
+            }
+
             _balance = parameters.InitialCapital;
             _peak = _balance;
             _day = startDay;
@@ -383,8 +409,18 @@ public static class FtmoChallengeSimulator
                 return;
             }
 
-            double riskPercent = _ladder == null ? _p.RiskPercent : _ladder.Preview(trade.OpenTimeUtc).RiskPercent;
-            double risk = _balance * riskPercent / 100.0;
+            double risk;
+            if (_recovery != null)
+            {
+                // SIM-006: the amount of RSK-016 from the symbol's own state and the balance at the open.
+                risk = RecoveryOf(trade.Symbol).Preview(_balance).RiskMoney;
+            }
+            else
+            {
+                double riskPercent = _ladder == null ? _p.RiskPercent : _ladder.Preview(trade.OpenTimeUtc).RiskPercent;
+                risk = _balance * riskPercent / 100.0;
+            }
+
             double atStop = (-1.0 + (trade.Commission / trade.RiskMoney)) * risk;
             double worst = _balance + atStop;
             foreach (OpenTrade open in _open)
@@ -407,6 +443,11 @@ public static class FtmoChallengeSimulator
                 _ladder = _ladder.Place(trade.OpenTimeUtc, out LadderDecision placed);
                 position = placed.Position;
             }
+            else if (_recovery != null)
+            {
+                _recovery[trade.Symbol] = RecoveryOf(trade.Symbol).Place(trade.OpenTimeUtc, _balance, out RecoveryDecision placed);
+                position = placed.Position;
+            }
 
             _open.Add(new OpenTrade(trade, trade.ResultR * risk, atStop, _sequence++, position));
             _taken++;
@@ -424,6 +465,11 @@ public static class FtmoChallengeSimulator
         {
             _balance += closing.Result;
             _ladder = _ladder?.Close(closing.LadderPosition, closing.Trade.CloseTimeUtc, closing.Result);
+            if (_recovery != null)
+            {
+                _recovery[closing.Trade.Symbol] = RecoveryOf(closing.Trade.Symbol).Close(closing.LadderPosition, closing.Trade.CloseTimeUtc, closing.Result);
+            }
+
             if (closing.Result < closing.AtStop)
             {
                 // Closed below its stop (a gap or slippage): the day's worst case is the actual loss.
@@ -448,6 +494,17 @@ public static class FtmoChallengeSimulator
             {
                 _outcome = ChallengeOutcome.Passed;
             }
+        }
+
+        private RecoveryState RecoveryOf(string symbol)
+        {
+            if (!_recovery!.TryGetValue(symbol, out RecoveryState? state))
+            {
+                state = _recoverySizer!.StartState(_p.RewardRisk);
+                _recovery[symbol] = state;
+            }
+
+            return state;
         }
 
         private void CheckFloors()
@@ -513,8 +570,8 @@ public sealed record ChallengePath(ChallengeOutcome Outcome, int CalendarDays, i
 /// </summary>
 public sealed record FtmoChallengeParameters
 {
-    /// <summary>Initial capital (spec 15.2). Default 100,000.</summary>
-    public double InitialCapital { get; init; } = 100000.0;
+    /// <summary>Initial capital (spec 15.2, SIM-007). Default 200,000 (100,000 before spec v0.12).</summary>
+    public double InitialCapital { get; init; } = 200000.0;
 
     /// <summary>Risk per trade in percent of the balance at the open (RSK-001, spec 15.5). Default 0.5.</summary>
     public double RiskPercent { get; init; } = 0.5;
@@ -531,8 +588,8 @@ public sealed record FtmoChallengeParameters
     /// <summary>Minimum trading days per phase (spec 15.2). Default 4.</summary>
     public int MinTradingDays { get; init; } = 4;
 
-    /// <summary>The bot's daily risk budget in percent of initial capital at <see cref="RiskPercent"/> (RSK-006, spec 15.4). Default 1.5.</summary>
-    public double DailyBudgetPercent { get; init; } = 1.5;
+    /// <summary>The bot's daily risk budget in percent of initial capital at <see cref="RiskPercent"/> (RSK-006, spec 15.4, SIM-007). Default 2.0 (1.5 before spec v0.12).</summary>
+    public double DailyBudgetPercent { get; init; } = 2.0;
 
     /// <summary>The bot's drawdown kill switch in percent of the peak balance (RSK-008, spec 15.4). Default 8.</summary>
     public double KillSwitchPercent { get; init; } = 8.0;
@@ -544,6 +601,18 @@ public sealed record FtmoChallengeParameters
     /// LadderEnabled false: every trade risks <see cref="RiskPercent"/>. Default null.
     /// </summary>
     public RiskParameters? Ladder { get; init; }
+
+    /// <summary>
+    /// Recovery sizing (SIM-006, RSK-016). When set, each trade risks the Recovery amount of its own
+    /// symbol, with RecoveryRunLossPercent, RecoveryMaxRiskPercent and LadderGrowth of these values,
+    /// <see cref="InitialCapital"/> and <see cref="RewardRisk"/>; the positions, columns, freeze and
+    /// eight-loss reset are replayed per symbol from the simulated opens and closes. Not together with
+    /// a <see cref="Ladder"/> that has LadderEnabled. Default null.
+    /// </summary>
+    public RiskParameters? Recovery { get; init; }
+
+    /// <summary>The RewardRisk that sets the Recovery multipliers (SIM-006, RSK-016). Default 2.0.</summary>
+    public double RewardRisk { get; init; } = 2.0;
 
     /// <summary>Number of runs of <see cref="FtmoChallengeSimulator.Simulate"/> ("several thousand", spec 12.1 step 9). Default 5,000.</summary>
     public int Runs { get; init; } = 5000;
@@ -574,6 +643,16 @@ public sealed record FtmoChallengeParameters
         }
 
         Ladder?.ValidateSizing();
+        Recovery?.ValidateSizing();
+        if (!double.IsFinite(RewardRisk) || RewardRisk <= 0.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(RewardRisk), "RewardRisk must be a finite number greater than zero.");
+        }
+
+        if (Recovery != null && Ladder is { LadderEnabled: true })
+        {
+            throw new ArgumentOutOfRangeException(nameof(Recovery), "Recovery and Ladder sizing cannot be used together.");
+        }
     }
 
     private static void RequirePercent(double value, string name)

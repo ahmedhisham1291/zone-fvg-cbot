@@ -15,7 +15,8 @@ namespace ZoneFvg.Core.Simulation;
 /// </summary>
 /// <remarks>
 /// Every command except <c>extract</c> first combines the trade logs it is given with <see cref="PortfolioCombiner"/>
-/// and the default caps. Combining a list that is already combined changes nothing, because each
+/// and the default caps (SIM-007: the daily budget of 2% on 200,000; the open-risk and currency caps
+/// only when their option is given). Combining a list that is already combined changes nothing, because each
 /// kept trade was checked against exactly the trades that are kept again.
 /// </remarks>
 public static class SimCommandLine
@@ -151,11 +152,11 @@ public static class SimCommandLine
         PortfolioResult portfolio = c.Combined("--log");
         ulong seed = c.Options.Seed();
         FtmoChallengeParameters parameters = FtmoParameters(c.Options);
-        IReadOnlyList<ChallengeSummary> grid = parameters.Ladder == null
+        IReadOnlyList<ChallengeSummary> grid = parameters.Ladder == null && parameters.Recovery == null
             ? FtmoChallengeSimulator.Grid(portfolio.Trades, parameters, seed)
             : new[]
             {
-                // RSK-013: the ladder sets the risk of each trade, so only the two phases are run.
+                // RSK-013, SIM-006: the ladder or the Recovery plan sets the risk of each trade, so only the two phases are run.
                 FtmoChallengeSimulator.Simulate(portfolio.Trades, parameters with { ProfitTargetPercent = 10.0 }, seed),
                 FtmoChallengeSimulator.Simulate(portfolio.Trades, parameters with { ProfitTargetPercent = 5.0 }, seed),
             };
@@ -196,33 +197,79 @@ public static class SimCommandLine
 
     private static FtmoChallengeParameters FtmoParameters(Options options)
     {
+        string sizing = Sizing(options);
         return new FtmoChallengeParameters
         {
-            InitialCapital = options.Number("--initial-capital", 100000.0),
+            InitialCapital = options.Number("--initial-capital", 200000.0),
             RiskPercent = options.Number("--risk", 0.5),
             DailyLossPercent = options.Number("--daily-loss", 5.0),
             MaxLossPercent = options.Number("--max-loss", 10.0),
             MinTradingDays = options.Int("--min-days", 4),
-            DailyBudgetPercent = options.Number("--daily-budget", 1.5),
+            DailyBudgetPercent = options.Number("--daily-budget", 2.0),
             KillSwitchPercent = options.Number("--kill-switch", 8.0),
             Runs = options.Int("--runs", 5000),
-            Ladder = Sizing(options),
+            Ladder = sizing == "ladder" ? new RiskParameters() : null,
+            Recovery = sizing == "recovery" ? Recovery(options) : null,
+            RewardRisk = Positive(options, "--reward-risk", 2.0),
         };
     }
 
-    private static RiskParameters? Sizing(Options options)
+    private static string Sizing(Options options)
     {
-        // RSK-013: "ladder" sizes every trade with LadderSizer and its default values; "fixed" (the default) uses --risk.
+        // RSK-013: "ladder" sizes every trade with LadderSizer and its default values; SIM-006: "recovery" with
+        // RecoverySizer; "fixed" (the default) uses --risk.
         string sizing = options.Single("--sizing") ?? "fixed";
-        switch (sizing)
+        if (sizing != "fixed" && sizing != "ladder" && sizing != "recovery")
         {
-            case "fixed":
-                return null;
-            case "ladder":
-                return new RiskParameters();
-            default:
-                throw new SimInputException(ExitInvalid, "Option --sizing needs fixed or ladder, but was \"" + sizing + "\".");
+            throw new SimInputException(ExitInvalid, "Option --sizing needs fixed, ladder or recovery, but was \"" + sizing + "\".");
         }
+
+        return sizing;
+    }
+
+    private static RiskParameters Recovery(Options options)
+    {
+        // SIM-006: the values of RSK-016; each is refused naming its option.
+        return new RiskParameters
+        {
+            SizingPlan = SizingPlan.Recovery,
+            RecoveryRunLossPercent = Percent(options, "--recovery-run-loss", 1.0),
+            RecoveryMaxRiskPercent = Percent(options, "--recovery-max", 1.28),
+            LadderGrowth = Growth(options),
+        };
+    }
+
+    private static double Percent(Options options, string name, double fallback)
+    {
+        double value = options.Number(name, fallback);
+        if (value <= 0.0 || value > 100.0)
+        {
+            throw new SimInputException(ExitInvalid, "Option " + name + " needs a percent greater than 0 and at most 100, but was " + SimText.Short(value) + ".");
+        }
+
+        return value;
+    }
+
+    private static double Positive(Options options, string name, double fallback)
+    {
+        double value = options.Number(name, fallback);
+        if (value <= 0.0)
+        {
+            throw new SimInputException(ExitInvalid, "Option " + name + " needs a number greater than 0, but was " + SimText.Short(value) + ".");
+        }
+
+        return value;
+    }
+
+    private static double Growth(Options options)
+    {
+        double value = options.Number("--growth", 1.5924);
+        if (value < 1.0)
+        {
+            throw new SimInputException(ExitInvalid, "Option --growth needs a number of at least 1, but was " + SimText.Short(value) + ".");
+        }
+
+        return value;
     }
 
     /// <summary>The options and the file reader of one command.</summary>
@@ -263,12 +310,15 @@ public static class SimCommandLine
 
         internal PortfolioResult Combine(IReadOnlyList<IReadOnlyList<TradeRecord>> logs)
         {
+            // SIM-007: the open-risk and currency caps are off unless their option is given.
             var parameters = new PortfolioParameters
             {
-                InitialCapital = Options.Number("--initial-capital", 100000.0),
+                InitialCapital = Options.Number("--initial-capital", 200000.0),
                 MaxOpenRiskPercent = Options.Number("--max-open-risk", 1.5),
+                OpenRiskCapEnabled = Options.Single("--max-open-risk") != null,
                 MaxPositionsPerCurrency = Options.Int("--max-per-currency", 2),
-                DailyLossLimitPercent = Options.Number("--daily-budget", 1.5),
+                CurrencyCapEnabled = Options.Single("--max-per-currency") != null,
+                DailyLossLimitPercent = Options.Number("--daily-budget", 2.0),
             };
             return PortfolioCombiner.Combine(logs, parameters);
         }
@@ -422,20 +472,25 @@ public static class SimCommandLine
 
         internal static CommandSpec? Find(string name)
         {
-            const string caps = "  --initial-capital <n>   Initial capital (default 100000)\n"
-                + "  --max-open-risk <pct>   Open risk cap, RSK-004 (default 1.5)\n"
-                + "  --max-per-currency <n>  Same-side trades per currency, RSK-005 (default 2)\n"
-                + "  --daily-budget <pct>    Daily risk budget, RSK-006 (default 1.5)\n";
+            const string caps = "  --initial-capital <n>   Initial capital (default 200000)\n"
+                + "  --max-open-risk <pct>   Open risk cap, RSK-004: off unless given (for example 1.5)\n"
+                + "  --max-per-currency <n>  Same-side trades per currency, RSK-005: off unless given (for example 2)\n"
+                + "  --daily-budget <pct>    Daily risk budget, RSK-006 (default 2)\n";
             const string ftmo = "  --risk <pct>            Risk per trade at which --daily-budget applies (default 0.5)\n"
                 + "  --daily-loss <pct>      FTMO maximum daily loss (default 5)\n"
                 + "  --max-loss <pct>        FTMO maximum loss (default 10)\n"
                 + "  --min-days <n>          Minimum trading days (default 4)\n"
                 + "  --kill-switch <pct>     Bot drawdown kill switch (default 8)\n"
                 + "  --runs <n>              Runs per cell (default 5000)\n"
-                + "  --sizing <fixed|ladder> fixed: every trade risks --risk; ladder: RSK-013 ladder sizing, Challenge and Verification only (default fixed)\n"
+                + "  --sizing <fixed|ladder|recovery> fixed: every trade risks --risk; ladder: RSK-013 ladder sizing; recovery: RSK-016\n"
+                + "                          Recovery sizing per symbol; ladder and recovery: Challenge and Verification only (default fixed)\n"
+                + "  --recovery-run-loss <pct> Recovery: the eight base amounts of a run lose this much of the initial capital (default 1)\n"
+                + "  --recovery-max <pct>    Recovery: largest risk of one trade in percent of balance (default 1.28)\n"
+                + "  --reward-risk <R>       Recovery: the RewardRisk that sets the base amounts (default 2)\n"
+                + "  --growth <g>            Recovery: growth per step of a column (default 1.5924)\n"
                 + "  --seed <n>              Seed of the generator (required)\n";
             string[] capOptions = { "--initial-capital", "--max-open-risk", "--max-per-currency", "--daily-budget" };
-            string[] ftmoOptions = { "--initial-capital", "--max-open-risk", "--max-per-currency", "--daily-budget", "--risk", "--daily-loss", "--max-loss", "--min-days", "--kill-switch", "--runs", "--seed", "--sizing" };
+            string[] ftmoOptions = { "--initial-capital", "--max-open-risk", "--max-per-currency", "--daily-budget", "--risk", "--daily-loss", "--max-loss", "--min-days", "--kill-switch", "--runs", "--seed", "--sizing", "--recovery-run-loss", "--recovery-max", "--reward-risk", "--growth" };
             switch (name)
             {
                 case "extract":

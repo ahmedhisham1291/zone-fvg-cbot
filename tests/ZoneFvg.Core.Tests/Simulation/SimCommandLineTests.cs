@@ -124,7 +124,7 @@ public class SimCommandLineTests
         TradeRecord loss = Trade("USDJPY", Utc(2026, 1, 6, 10, 0), Utc(2026, 1, 6, 11, 30), -1.0);
         var files = new Dictionary<string, string> { ["a.csv"] = TradeLogCsv.Write(new[] { win }), ["b.csv"] = TradeLogCsv.Write(new[] { loss }) };
 
-        SimCommandResult result = Run(files, "combine", "--log", "b.csv", "--log", "a.csv", "--out", "combined.csv", "--equity", "equity.csv");
+        SimCommandResult result = Run(files, "combine", "--log", "b.csv", "--log", "a.csv", "--out", "combined.csv", "--equity", "equity.csv", "--initial-capital", "100000", "--daily-budget", "1.5");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(string.Empty, result.Error);
@@ -145,7 +145,7 @@ public class SimCommandLineTests
         TradeRecord second = Trade("USDJPY", Utc(2026, 1, 6, 9, 0), Utc(2026, 1, 6, 12, 0), 1.0);
         var files = new Dictionary<string, string> { ["a.csv"] = TradeLogCsv.Write(new[] { first, second }) };
 
-        SimCommandResult result = Run(files, "combine", "--log", "a.csv", "--max-open-risk", "0.5");
+        SimCommandResult result = Run(files, "combine", "--log", "a.csv", "--max-open-risk", "0.5", "--initial-capital", "100000", "--daily-budget", "1.5");
 
         Assert.Contains("| Skipped by open risk cap (RSK-004) | 1 |", result.Output);
     }
@@ -182,8 +182,8 @@ public class SimCommandLineTests
     [Trait("Req", "SIM-004")]
     public void Ftmo_SampleLogs_PrintsBothPhasesAtThreeRisksDeterministically()
     {
-        SimCommandResult first = RunSamples("ftmo", "--log", EurUsd, "--log", GbpUsd, "--seed", "11", "--runs", "200");
-        SimCommandResult second = RunSamples("ftmo", "--log", EurUsd, "--log", GbpUsd, "--seed", "11", "--runs", "200");
+        SimCommandResult first = RunSamples("ftmo", "--log", EurUsd, "--log", GbpUsd, "--seed", "11", "--runs", "200", "--initial-capital", "100000", "--daily-budget", "1.5", "--max-open-risk", "1.5", "--max-per-currency", "2");
+        SimCommandResult second = RunSamples("ftmo", "--log", EurUsd, "--log", GbpUsd, "--seed", "11", "--runs", "200", "--initial-capital", "100000", "--daily-budget", "1.5", "--max-open-risk", "1.5", "--max-per-currency", "2");
 
         Assert.Equal(0, first.ExitCode);
         Assert.Equal(first.Output, second.Output);
@@ -197,7 +197,7 @@ public class SimCommandLineTests
     [Trait("Req", "SIM-005")]
     public void Accept_SampleLogs_PrintsTheReportAndTheChallengeRun()
     {
-        SimCommandResult result = RunSamples("accept", "--dev", EurUsd, "--dev", GbpUsd, "--stress", EurUsd, "--seed", "3", "--runs", "200");
+        SimCommandResult result = RunSamples("accept", "--dev", EurUsd, "--dev", GbpUsd, "--stress", EurUsd, "--seed", "3", "--runs", "200", "--initial-capital", "100000", "--daily-budget", "1.5", "--max-open-risk", "1.5", "--max-per-currency", "2");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("# Acceptance report, spec 13.1 (SIM-005)", result.Output);
@@ -205,14 +205,14 @@ public class SimCommandLineTests
         Assert.Contains("| Trades, all symbols | Holdout | no holdout log | 60 or more | NOT EVALUATED |", result.Output);
         Assert.Contains("Overall: FAIL", result.Output);
         Assert.Contains("| Challenge | 0.5% | 1.5% |", result.Output);
-        Assert.Equal(result.Output, RunSamples("accept", "--dev", EurUsd, "--dev", GbpUsd, "--stress", EurUsd, "--seed", "3", "--runs", "200").Output);
+        Assert.Equal(result.Output, RunSamples("accept", "--dev", EurUsd, "--dev", GbpUsd, "--stress", EurUsd, "--seed", "3", "--runs", "200", "--initial-capital", "100000", "--daily-budget", "1.5", "--max-open-risk", "1.5", "--max-per-currency", "2").Output);
     }
 
     [Fact]
     [Trait("Req", "SIM-005")]
     public void Accept_AllLogGroups_AreReadAndCombined()
     {
-        SimCommandResult result = RunSamples("accept", "--dev", EurUsd, "--holdout", GbpUsd, "--benchmark", GbpUsd, "--benchmark-holdout", EurUsd, "--seed", "3", "--runs", "50");
+        SimCommandResult result = RunSamples("accept", "--dev", EurUsd, "--holdout", GbpUsd, "--benchmark", GbpUsd, "--benchmark-holdout", EurUsd, "--seed", "3", "--runs", "50", "--initial-capital", "100000", "--daily-budget", "1.5", "--max-open-risk", "1.5", "--max-per-currency", "2");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("| Trades, all symbols | Holdout | 40 | 60 or more | FAIL |", result.Output);

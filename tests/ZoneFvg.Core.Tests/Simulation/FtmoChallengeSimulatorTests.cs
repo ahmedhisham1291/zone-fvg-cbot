@@ -19,7 +19,7 @@ namespace ZoneFvg.Core.Tests;
 /// </remarks>
 public class FtmoChallengeSimulatorTests
 {
-    private static readonly FtmoChallengeParameters OnePercent = new() { RiskPercent = 1.0 };
+    private static readonly FtmoChallengeParameters OnePercent = new() { InitialCapital = 100000.0, DailyBudgetPercent = 1.5, RiskPercent = 1.0 };
 
     private static DateTime DayStart(DateTime utc)
     {
@@ -125,7 +125,7 @@ public class FtmoChallengeSimulatorTests
         // Risk 1.25% = 1,250 each; all four end at +1R, but while all are open the worst case is
         // 100,000 - 4 x 1,250 = 95,000. Floor = 100,000 - 5% = 95,000: equal is a breach.
         // 5.00001% puts the floor one cent lower (94,999.99), 4.99999% one cent higher.
-        FtmoChallengeParameters parameters = new FtmoChallengeParameters { RiskPercent = 1.25, DailyBudgetPercent = 10.0 } with { DailyLossPercent = dailyLossPercent };
+        FtmoChallengeParameters parameters = new FtmoChallengeParameters { InitialCapital = 100000.0, RiskPercent = 1.25, DailyBudgetPercent = 10.0 } with { DailyLossPercent = dailyLossPercent };
         TradeRecord[] trades = FourOpenAtOnce();
 
         ChallengePath path = FtmoChallengeSimulator.RunPath(trades, DayStart(trades[0].OpenTimeUtc), parameters);
@@ -146,7 +146,7 @@ public class FtmoChallengeSimulatorTests
         // refused, and so is a fifth trade the same day. Three trades end at +1R: 103,750.
         TradeRecord[] four = FourOpenAtOnce();
         TradeRecord fifth = Trade("NZDUSD", Utc(2026, 1, 6, 17, 0), Utc(2026, 1, 6, 18, 0), 1.0);
-        FtmoChallengeParameters parameters = new FtmoChallengeParameters { RiskPercent = 1.25, DailyBudgetPercent = 3.75 };
+        FtmoChallengeParameters parameters = new FtmoChallengeParameters { InitialCapital = 100000.0, RiskPercent = 1.25, DailyBudgetPercent = 3.75 };
 
         ChallengePath path = FtmoChallengeSimulator.RunPath(four.Append(fifth).ToArray(), DayStart(four[0].OpenTimeUtc), parameters);
 
@@ -166,7 +166,7 @@ public class FtmoChallengeSimulatorTests
         // Risk 10%: the worst case is 100,000 - 10,000 = 90,000 = static floor, a breach. The
         // daily floor is 80,000 here, and the budget allows the whole risk.
         TradeRecord trade = Trade("EURUSD", Utc(2026, 1, 6, 8, 0), Utc(2026, 1, 6, 12, 0), 1.0);
-        var parameters = new FtmoChallengeParameters { RiskPercent = 10.0, DailyLossPercent = 20.0, DailyBudgetPercent = 100.0, MaxLossPercent = maxLossPercent };
+        var parameters = new FtmoChallengeParameters { InitialCapital = 100000.0, RiskPercent = 10.0, DailyLossPercent = 20.0, DailyBudgetPercent = 100.0, MaxLossPercent = maxLossPercent };
 
         ChallengePath path = FtmoChallengeSimulator.RunPath(new[] { trade }, DayStart(trade.OpenTimeUtc), parameters);
 
@@ -181,7 +181,7 @@ public class FtmoChallengeSimulatorTests
         // 92,236.816; 90,392.07968. Day 6 opens with risk 1,807.84...: worst case 88,584.24 is
         // below 90,000. The daily floor that day is 85,392.08, so it is the static floor.
         TradeRecord[] trades = Enumerable.Range(5, 6).Select(day => DayTrade(day, -1.0)).ToArray();
-        var parameters = new FtmoChallengeParameters { RiskPercent = 2.0, DailyBudgetPercent = 3.0, KillSwitchPercent = 100.0 };
+        var parameters = new FtmoChallengeParameters { InitialCapital = 100000.0, RiskPercent = 2.0, DailyBudgetPercent = 3.0, KillSwitchPercent = 100.0 };
 
         ChallengePath path = FtmoChallengeSimulator.RunPath(trades, DayStart(trades[0].OpenTimeUtc), parameters);
 
@@ -198,7 +198,7 @@ public class FtmoChallengeSimulatorTests
         // Same losses with the kill switch at 8%: after day 4 the drawdown is 7.76%, after day 5
         // it is 9.61%, so the bot halts and the sixth trade is not taken.
         TradeRecord[] trades = Enumerable.Range(5, 6).Select(day => DayTrade(day, -1.0)).ToArray();
-        var parameters = new FtmoChallengeParameters { RiskPercent = 2.0, DailyBudgetPercent = 3.0 };
+        var parameters = new FtmoChallengeParameters { InitialCapital = 100000.0, RiskPercent = 2.0, DailyBudgetPercent = 3.0 };
 
         ChallengePath path = FtmoChallengeSimulator.RunPath(trades, DayStart(trades[0].OpenTimeUtc), parameters);
 
@@ -217,7 +217,7 @@ public class FtmoChallengeSimulatorTests
         // Risk 8%: day 1 loses 8,000, a drawdown of exactly 8%. If the bot does not halt, day 2
         // risks 7,360 and the worst case 84,640 is below the static floor.
         TradeRecord[] trades = { DayTrade(5, -1.0), DayTrade(6, 1.0) };
-        var parameters = new FtmoChallengeParameters { RiskPercent = 8.0, DailyLossPercent = 20.0, DailyBudgetPercent = 100.0, KillSwitchPercent = killSwitchPercent };
+        var parameters = new FtmoChallengeParameters { InitialCapital = 100000.0, RiskPercent = 8.0, DailyLossPercent = 20.0, DailyBudgetPercent = 100.0, KillSwitchPercent = killSwitchPercent };
 
         ChallengePath path = FtmoChallengeSimulator.RunPath(trades, DayStart(trades[0].OpenTimeUtc), parameters);
 
@@ -268,7 +268,7 @@ public class FtmoChallengeSimulatorTests
         // Logged commission -10 on risk 500 is -0.02R, so at 1.25% a stop costs 1,275. Four open
         // trades: 100,000 - 5,100 = 94,900, below the floor even with the floor 50 lower (4.95%).
         TradeRecord[] trades = FourOpenAtOnce().Select(t => Trade(t.Symbol, t.OpenTimeUtc, t.CloseTimeUtc, 1.0, commission: -10.0)).ToArray();
-        var parameters = new FtmoChallengeParameters { RiskPercent = 1.25, DailyBudgetPercent = 10.0, DailyLossPercent = 5.05 };
+        var parameters = new FtmoChallengeParameters { InitialCapital = 100000.0, RiskPercent = 1.25, DailyBudgetPercent = 10.0, DailyLossPercent = 5.05 };
 
         ChallengePath path = FtmoChallengeSimulator.RunPath(trades, DayStart(trades[0].OpenTimeUtc), parameters);
 
@@ -339,7 +339,7 @@ public class FtmoChallengeSimulatorTests
     public void Grid_BothPhasesThreeRisks_ScalesTheBudgetWithTheRisk()
     {
         TradeRecord[] trades = RandomDays(2, 60);
-        FtmoChallengeParameters parameters = new FtmoChallengeParameters { Runs = 50 };
+        FtmoChallengeParameters parameters = new FtmoChallengeParameters { InitialCapital = 100000.0, DailyBudgetPercent = 1.5, Runs = 50 };
 
         IReadOnlyList<ChallengeSummary> grid = FtmoChallengeSimulator.Grid(trades, parameters, 9UL);
         string text = FtmoChallengeSimulator.ToMarkdown(grid, 9UL);
@@ -409,13 +409,13 @@ public class FtmoChallengeSimulatorTests
     {
         var defaults = new FtmoChallengeParameters();
 
-        Assert.Equal(100000.0, defaults.InitialCapital);
+        Assert.Equal(200000.0, defaults.InitialCapital);
         Assert.Equal(0.5, defaults.RiskPercent);
         Assert.Equal(10.0, defaults.ProfitTargetPercent);
         Assert.Equal(5.0, defaults.DailyLossPercent);
         Assert.Equal(10.0, defaults.MaxLossPercent);
         Assert.Equal(4, defaults.MinTradingDays);
-        Assert.Equal(1.5, defaults.DailyBudgetPercent);
+        Assert.Equal(2.0, defaults.DailyBudgetPercent);
         Assert.Equal(8.0, defaults.KillSwitchPercent);
         Assert.Equal(5000, defaults.Runs);
     }

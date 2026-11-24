@@ -14,7 +14,7 @@ namespace ZoneFvg.Core.Tests;
 /// </summary>
 public class LadderSimulationTests
 {
-    private static readonly FtmoChallengeParameters WithLadder = new() { Ladder = new RiskParameters(), MinTradingDays = 100 };
+    private static readonly FtmoChallengeParameters WithLadder = new() { InitialCapital = 100000.0, DailyBudgetPercent = 1.5, Ladder = new RiskParameters(), MinTradingDays = 100 };
 
     private static string Sample(string name)
     {

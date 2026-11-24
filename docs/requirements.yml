@@ -1401,7 +1401,7 @@ requirements:
     wp: WP38
     spec: "4.1.1, 12.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Recovery sizing in the challenge simulator (owner decisions U and Z of
       2026-11-24). The commands ftmo and accept accept --sizing recovery
@@ -1424,7 +1424,7 @@ requirements:
     wp: WP38
     spec: "12.1, 15"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Simulation defaults for the 200,000 USD account (owner decisions P and
       R of 2026-11-24). The initial capital of the combiner, the challenge
@@ -2210,7 +2210,7 @@ requirements:
     wp: WP38
     spec: "4.1, 4.3, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Sizing plan, sanity cap, open-risk and currency caps, size cap and
       account defaults in the cBot (owner decisions P to Z of 2026-11-24). The group "Risk" gains

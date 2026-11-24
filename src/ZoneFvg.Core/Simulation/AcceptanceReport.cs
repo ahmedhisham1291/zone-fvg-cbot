@@ -535,8 +535,8 @@ public sealed record AcceptanceInputs
     /// <summary>The number of symbols the holdout run covers (SIM-005), for its value text. Null: the distinct symbols of <see cref="Holdout"/>.</summary>
     public int? HoldoutSymbolCount { get; init; }
 
-    /// <summary>Starting balance for the return-to-drawdown ratio (SIM-005). Default 100,000.</summary>
-    public double InitialCapital { get; init; } = 100000.0;
+    /// <summary>Starting balance for the return-to-drawdown ratio (SIM-005, SIM-007). Default 200,000 (100,000 before spec v0.12).</summary>
+    public double InitialCapital { get; init; } = 200000.0;
 
     /// <summary>Risk per trade for the drawdown row, in percent (spec 13.1). Default 0.5.</summary>
     public double DrawdownRiskPercent { get; init; } = 0.5;
