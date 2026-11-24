@@ -106,10 +106,11 @@ public sealed record RiskParameters
     public SizingPlan SizingPlan { get; init; } = SizingPlan.Ladder;
 
     /// <summary>
-    /// Recovery plan: risk money of the first trade after a win or from RiskEpochDate, in the
-    /// account currency (RSK-016, RSK-018). Default 100.
+    /// Recovery plan: the money the eight base amounts of a losing run lose together, in percent of
+    /// <see cref="InitialCapital"/> (RSK-016, RSK-018, owner decision Z of 2026-11-24, "1% start").
+    /// Default 1.0.
     /// </summary>
-    public double RecoveryFirstRiskUsd { get; init; } = 100.0;
+    public double RecoveryRunLossPercent { get; init; } = 1.0;
 
     /// <summary>
     /// Recovery plan: largest risk of one trade in percent of the balance at placement (RSK-016,
@@ -195,8 +196,8 @@ public sealed record RiskParameters
     /// this order: RiskPercent, LadderDealRiskPercent and MaxRiskPercentPerTrade greater than 0
     /// and at most 100, LadderGrowth a finite number of at least 1, LadderFirstWeight greater than
     /// 0 and at most 1 / 3.375, so that the four parts (3.375 x w1 together) never exceed the
-    /// deal; then (RSK-018) SizingPlan Ladder or Recovery, RecoveryFirstRiskUsd a finite number
-    /// greater than 0, RecoveryMaxRiskPercent greater than 0 and at most 100. Called by
+    /// deal; then (RSK-018) SizingPlan Ladder or Recovery, RecoveryRunLossPercent and
+    /// RecoveryMaxRiskPercent greater than 0 and at most 100. Called by
     /// <see cref="Validate"/>.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range. The exception's parameter name is the name of the parameter.</exception>
@@ -220,11 +221,7 @@ public sealed record RiskParameters
             throw OutOfRange(nameof(SizingPlan), "must be Ladder or Recovery", ((int)SizingPlan).ToString(CultureInfo.InvariantCulture));
         }
 
-        if (!double.IsFinite(RecoveryFirstRiskUsd) || RecoveryFirstRiskUsd <= 0.0)
-        {
-            throw OutOfRange(nameof(RecoveryFirstRiskUsd), "must be a finite number greater than zero", Text(RecoveryFirstRiskUsd));
-        }
-
+        RequirePercent(RecoveryRunLossPercent, nameof(RecoveryRunLossPercent));
         RequirePercent(RecoveryMaxRiskPercent, nameof(RecoveryMaxRiskPercent));
     }
 
