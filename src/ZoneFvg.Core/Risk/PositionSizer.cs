@@ -72,6 +72,41 @@ public sealed class PositionSizer
             return SizingResult.Skipped(RiskReason.InvalidInput, 0.0, 0.0, 0.0, 0.0, invalid);
         }
 
+        return SizeChecked(account, plan, symbol, account.Balance * riskPercent / 100.0);
+    }
+
+    /// <summary>
+    /// Sizes a trade with a risk amount in money in place of a percent: the amount R of the
+    /// Recovery plan (RSK-016, spec 4.1.1), used as the riskAmount of RSK-001 without rounding. The
+    /// checks and their order are those of <see cref="Size(AccountSnapshot, TradePlan, SymbolInfo, double)"/>
+    /// (RSK-001, RSK-002); an amount that is not a finite number greater than 0 is an invalid
+    /// input (fail closed).
+    /// </summary>
+    /// <param name="account">Account values from the broker port; the balance is used for the input check and the sanity cap.</param>
+    /// <param name="plan">Symbol, side, entry, stop and target of the trade.</param>
+    /// <param name="symbol">Symbol data from the broker port for the plan's symbol.</param>
+    /// <param name="riskAmount">Risk of the trade in the account currency.</param>
+    /// <returns>The allowed volume, or a skip with its reason and measured value.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public SizingResult SizeAmount(AccountSnapshot account, TradePlan plan, SymbolInfo symbol, double riskAmount)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(symbol);
+
+        string? invalid = !double.IsFinite(riskAmount) || riskAmount <= 0.0
+            ? "risk amount must be a finite number greater than 0"
+            : InvalidInput(account, plan, symbol);
+        if (invalid != null)
+        {
+            return SizingResult.Skipped(RiskReason.InvalidInput, 0.0, 0.0, 0.0, 0.0, invalid);
+        }
+
+        return SizeChecked(account, plan, symbol, riskAmount);
+    }
+
+    private SizingResult SizeChecked(AccountSnapshot account, TradePlan plan, SymbolInfo symbol, double riskAmount)
+    {
         if (!RiskMath.IsOnLossSide(plan.Side, plan.Entry, plan.StopLoss))
         {
             return SizingResult.Skipped(RiskReason.StopOnWrongSide, 0.0, 0.0, plan.StopLoss, plan.Entry, "stop " + Text(plan.StopLoss) + " entry " + Text(plan.Entry));
@@ -83,7 +118,6 @@ public sealed class PositionSizer
         }
 
         double stopPips = PriceMath.ToPips(Math.Abs(plan.Entry - plan.StopLoss), symbol.PipSize);
-        double riskAmount = account.Balance * riskPercent / 100.0;
         double rawVolume = riskAmount / (stopPips * symbol.PipValuePerUnit);
         if (!double.IsFinite(rawVolume))
         {
