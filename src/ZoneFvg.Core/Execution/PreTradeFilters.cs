@@ -13,15 +13,17 @@ namespace ZoneFvg.Core.Execution;
 
 /// <summary>
 /// Decides whether a signal becomes an order (EXE-001 to EXE-008, EXE-011, EXE-014, EXE-015,
-/// EXE-019, NWS-008, NWS-009, NWS-014, RSK-001 to RSK-006, RSK-013). Reads the broker port at every
-/// call and keeps nothing between calls; its fields are the validated parameters and the ports.
+/// EXE-019, NWS-008, NWS-009, NWS-014, RSK-001 to RSK-006, RSK-013, RSK-016, RSK-017). Reads the
+/// broker port at every call and keeps nothing between calls; its fields are the validated
+/// parameters and the ports.
 /// </summary>
 /// <remarks>
 /// <para>Checks, in this fixed order, stopping at the first failure: inputs (fail closed);
 /// EXE-001 freshness; state Running; no bot position without a stop loss (EXE-011); EXE-002
 /// session, Friday, spread, market open and symbol busy; NWS-008; NWS-009; stop and target on the
 /// correct side (RSK-002) and EXE-003 stop bounds; EXE-005; EXE-004; EXE-006; EXE-015; sizing
-/// (RSK-001, RSK-002) with the ladder percent of RSK-013 when LadderEnabled is true; the broker's
+/// (RSK-001, RSK-002) with the ladder percent of RSK-013 when LadderEnabled is true, or with the
+/// Recovery amount of RSK-016 and RSK-017 when SizingPlan is Recovery; the broker's
 /// maximum volume; the account limits of
 /// <see cref="RiskEngine.CheckNewTrade"/> (RSK-003 to RSK-006, RSK-010).</para>
 /// <para>Levels: entry, stop and target are rounded to the broker's tick size
@@ -58,6 +60,7 @@ public sealed class PreTradeFilters
     private readonly RiskParameters _riskParameters;
     private readonly PositionSizer _sizer;
     private readonly LadderSizer _ladder;
+    private readonly RecoverySizer _recovery;
     private readonly RiskEngine _risk;
     private readonly IBroker _broker;
     private readonly NewsService _news;
@@ -65,12 +68,15 @@ public sealed class PreTradeFilters
     private readonly string _parameterHash;
     private readonly bool _dailyBudgetRecordOnly;
 
+    // RSK-016: the divisor of the Recovery plan, the instance's RewardRisk in every mode (owner decision Y).
+    private readonly double _rewardRisk;
+
     // EXE-027, EXE-028: the Choch parameters in the Choch model, null otherwise (a Choch signal is then invalid).
     private readonly ChochParameters? _choch;
 
     /// <summary>Creates the filters. All parameter sets are validated here (EXE-002 to EXE-006, EXE-015).</summary>
     /// <param name="parameters">Execution parameters.</param>
-    /// <param name="signalParameters">Signal parameters; used only for the parameter hash (EXE-008).</param>
+    /// <param name="signalParameters">Signal parameters; used for the parameter hash (EXE-008) and, with SizingPlan Recovery, for RewardRisk (RSK-016).</param>
     /// <param name="riskParameters">Risk parameters (RSK-001 to RSK-006, RSK-010).</param>
     /// <param name="broker">Broker port: the source of time, symbol data, positions, orders, history and margin.</param>
     /// <param name="news">News service for NWS-008, NWS-009 and the next window start (EXE-015).</param>
@@ -105,6 +111,8 @@ public sealed class PreTradeFilters
         _riskParameters = riskParameters;
         _sizer = new PositionSizer(riskParameters);
         _ladder = new LadderSizer(riskParameters);
+        _recovery = new RecoverySizer(riskParameters);
+        _rewardRisk = signalParameters.RewardRisk;
         _risk = new RiskEngine(riskParameters);
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _news = news ?? throw new ArgumentNullException(nameof(news));
@@ -580,23 +588,23 @@ public sealed class PreTradeFilters
     {
         SymbolInfo info = c.Info!;
         c.Account = _broker.GetAccount();
-        double riskPercent = _riskParameters.RiskPercent;
-        if (_riskParameters.LadderEnabled)
+        var plan = new TradePlan(c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, c.Target);
+        SkipRecord? refused;
+        SizingResult? sizing;
+        if (_riskParameters.SizingPlan == SizingPlan.Recovery)
         {
-            // RSK-013: the percent comes from the bot's entries since RiskEpochDate, read from the broker now; the new entry is placed at server time.
-            c.History = _broker.GetHistory(HistoryStart(c.Now));
-            try
-            {
-                DateTime epochStart = CestClock.StartOfCestDateUtc(_riskParameters.RiskEpochDate);
-                riskPercent = _ladder.NextRiskPercent(LadderSizer.EntriesFromBroker(c.Positions, c.Orders, c.History, epochStart), c.Now);
-            }
-            catch (ArgumentException exception)
-            {
-                return c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, exception.Message);
-            }
+            sizing = SizeRecovery(c, plan, info, out refused);
+        }
+        else
+        {
+            sizing = SizeLadder(c, plan, info, out refused);
         }
 
-        SizingResult sizing = _sizer.Size(c.Account, new TradePlan(c.Context.Symbol, c.Signal.Side, c.Entry, c.Stop, c.Target), info, riskPercent);
+        if (sizing == null)
+        {
+            return refused;
+        }
+
         if (!sizing.IsAllowed)
         {
             return c.Skip(SkipReasons.FromRisk(sizing.Reason), sizing.Measured, sizing.Limit, sizing.Detail);
@@ -609,6 +617,51 @@ public sealed class PreTradeFilters
         }
 
         return null;
+    }
+
+    private SizingResult? SizeLadder(Candidate c, TradePlan plan, SymbolInfo info, out SkipRecord? refused)
+    {
+        refused = null;
+        double riskPercent = _riskParameters.RiskPercent;
+        if (_riskParameters.LadderEnabled)
+        {
+            // RSK-013: the percent comes from the bot's entries since RiskEpochDate, read from the broker now; the new entry is placed at server time.
+            c.History = _broker.GetHistory(HistoryStart(c.Now));
+            try
+            {
+                DateTime epochStart = CestClock.StartOfCestDateUtc(_riskParameters.RiskEpochDate);
+                riskPercent = _ladder.NextRiskPercent(LadderSizer.EntriesFromBroker(c.Positions, c.Orders, c.History, epochStart), c.Now);
+            }
+            catch (ArgumentException exception)
+            {
+                refused = c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, exception.Message);
+                return null;
+            }
+        }
+
+        return _sizer.Size(c.Account!, plan, info, riskPercent);
+    }
+
+    private SizingResult? SizeRecovery(Candidate c, TradePlan plan, SymbolInfo info, out SkipRecord? refused)
+    {
+        // RSK-016, RSK-017: the amount comes from the entries of this symbol since RiskEpochDate, read from the broker now.
+        refused = null;
+        c.History = _broker.GetHistory(HistoryStart(c.Now));
+        RecoveryDecision amount;
+        try
+        {
+            DateTime epochStart = CestClock.StartOfCestDateUtc(_riskParameters.RiskEpochDate);
+            IReadOnlyList<LadderEntry> entries = RecoverySizer.EntriesFromBroker(c.Context.Symbol, c.Positions, c.Orders, c.History, epochStart);
+            amount = _recovery.Next(entries, c.Now, c.Account!.Balance, _rewardRisk);
+        }
+        catch (ArgumentException exception)
+        {
+            refused = c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, exception.Message);
+            return null;
+        }
+
+        // R is the risk amount of RSK-001, not rounded; every later check applies to it.
+        return _sizer.SizeAmount(c.Account!, plan, info, amount.RiskMoney);
     }
 
     private SkipRecord? CheckAccountRisk(Candidate c)

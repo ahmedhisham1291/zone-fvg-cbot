@@ -491,7 +491,7 @@ requirements:
     wp: WP38
     spec: "4.1, 4.1.1, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Recovery sizing amount with step columns (owner decision Z of
       2026-11-24, which replaces the rule of decision Q; per symbol, decision
@@ -528,7 +528,7 @@ requirements:
     wp: WP38
     spec: "4.1.1, 8.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Recovery positions and columns from broker data (owner decisions V and
       Z of 2026-11-24, with the conventions of RSK-013). Entries are built
