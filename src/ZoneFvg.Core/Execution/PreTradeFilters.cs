@@ -644,15 +644,15 @@ public sealed class PreTradeFilters
 
     private SizingResult? SizeRecovery(Candidate c, TradePlan plan, SymbolInfo info, out SkipRecord? refused)
     {
-        // RSK-016, RSK-017: the amount comes from the closed trades of this symbol since RiskEpochDate, read from the broker now.
+        // RSK-016, RSK-017: the amount comes from the entries of this symbol since RiskEpochDate, read from the broker now.
         refused = null;
         c.History = _broker.GetHistory(HistoryStart(c.Now));
-        RecoveryAmount amount;
+        RecoveryDecision amount;
         try
         {
             DateTime epochStart = CestClock.StartOfCestDateUtc(_riskParameters.RiskEpochDate);
-            IReadOnlyList<LadderEntry> trades = RecoverySizer.EntriesFromBroker(c.Context.Symbol, c.Positions, c.Orders, c.History, epochStart);
-            amount = _recovery.Next(trades, c.Now, c.Account!.Balance, _rewardRisk);
+            IReadOnlyList<LadderEntry> entries = RecoverySizer.EntriesFromBroker(c.Context.Symbol, c.Positions, c.Orders, c.History, epochStart);
+            amount = _recovery.Next(entries, c.Now, c.Account!.Balance, _rewardRisk, c.History);
         }
         catch (ArgumentException exception)
         {

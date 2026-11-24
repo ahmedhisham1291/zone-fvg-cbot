@@ -1,38 +1,40 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution.Ports;
 
 namespace ZoneFvg.Core.Risk;
 
 /// <summary>
-/// The Recovery sizing plan (RSK-016, RSK-017, spec 4.1.1, owner decisions Q, V and Y of
-/// 2026-11-24): the risk money of the next trade of one symbol as a pure function of that
-/// symbol's bot trades since RiskEpochDate, the placement time, the balance and RewardRisk. The
-/// only field is the validated parameter set; nothing is remembered between calls.
+/// The Recovery sizing plan with step columns (RSK-016, RSK-017, spec 4.1.1, owner decisions V, Y
+/// and Z of 2026-11-24): the risk money of the next entry of one symbol as a pure function of that
+/// symbol's bot entries since RiskEpochDate, the placement time, the balance, the account's closed
+/// trades and RewardRisk. The only field is the validated parameter set; the columns are rebuilt
+/// from the full entry list at every call.
 /// </summary>
 /// <remarks>
-/// <para>R = min((L + RR x F) / RR, B x RecoveryMaxRiskPercent / 100), F being
-/// RecoveryFirstRiskUsd, RR the instance's RewardRisk, B the balance and L the losing run. A raw
-/// amount within 1e-9 of the cap, or above it, is the cap.</para>
-/// <para>The losing run L: the closed trades with a close time at or before the placement time T
-/// are taken in the order close time, then placement time, then key (ordinal); a win is a net
-/// result above zero (1e-9 tolerance) and sets L to 0; every other closed trade adds the absolute
-/// value of its net result. The sum runs in that fixed order, so the order of the broker's records
-/// cannot change the last bits. Open and pending trades do not change L.</para>
-/// <para>The trades are the ladder's entries (<see cref="LadderSizer.EntriesFromBroker"/>,
-/// <see cref="LadderEntry"/>) built from the broker records of the instance's symbol only
-/// (<see cref="EntriesFromBroker"/>); the ladder itself stays account-wide.</para>
+/// <para>Base amounts: m1 = 1, mk = (m1 + ... + m(k-1) + RR) / RR for k = 2 to 8, M = m1 + ... + m8,
+/// F0 = InitialCapital x RecoveryRunLossPercent / 100 / M and Bp = mp x F0, each sum in that fixed
+/// order. The state rule is <see cref="RecoveryState"/>.</para>
+/// <para>The entries are the ladder's entries (<see cref="LadderSizer.EntriesFromBroker"/>,
+/// <see cref="LadderEntry"/>) of the instance's symbol only (<see cref="EntriesFromBroker"/>), and
+/// they are replayed in the ladder's event order; the ladder itself stays account-wide.</para>
+/// <para>The cap of a past entry, which decides the freeze, uses the balance at its placement:
+/// the balance read now minus the net result of every account trade closed after that instant
+/// (summed in the order close time, position id, net), as the risk engine rebuilds balances
+/// (RSK-007).</para>
 /// </remarks>
 public sealed class RecoverySizer
 {
+    /// <summary>Number of positions of a losing run and of step columns C to J (RSK-016).</summary>
+    public const int Positions = 8;
+
     private const string Prefix = "Recovery sizing (RSK-017): ";
 
     private readonly RiskParameters _parameters;
 
     /// <summary>Creates a Recovery sizer. The sizing values are validated here (RSK-018).</summary>
-    /// <param name="parameters">The risk parameters; RecoveryFirstRiskUsd and RecoveryMaxRiskPercent are used.</param>
+    /// <param name="parameters">The risk parameters; InitialCapital, RecoveryRunLossPercent, RecoveryMaxRiskPercent and LadderGrowth are used.</param>
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A sizing value is out of range.</exception>
     public RecoverySizer(RiskParameters parameters)
@@ -43,18 +45,70 @@ public sealed class RecoverySizer
     }
 
     /// <summary>
-    /// Builds the trades of one symbol from broker data (RSK-017): the bot positions, pending
+    /// The eight base multipliers m1 to m8 for the divisor <paramref name="rewardRisk"/> (RSK-016):
+    /// m1 = 1, mk = (m1 + ... + m(k-1) + RR) / RR.
+    /// </summary>
+    /// <param name="rewardRisk">The instance's RewardRisk.</param>
+    /// <returns>m1 to m8.</returns>
+    /// <exception cref="ArgumentException"><paramref name="rewardRisk"/> is not a finite number greater than zero.</exception>
+    public static IReadOnlyList<double> Multipliers(double rewardRisk)
+    {
+        Require(double.IsFinite(rewardRisk) && rewardRisk > 0.0, "RewardRisk is not a finite number greater than zero");
+        var m = new double[Positions];
+        double sum = 0.0;
+        for (int k = 0; k < Positions; k++)
+        {
+            m[k] = k == 0 ? 1.0 : (sum + rewardRisk) / rewardRisk;
+            sum += m[k];
+        }
+
+        return m;
+    }
+
+    /// <summary>
+    /// The eight base amounts B1 to B8 in account currency (RSK-016): mp x InitialCapital x
+    /// RecoveryRunLossPercent / 100 / M. They sum to RecoveryRunLossPercent of InitialCapital.
+    /// </summary>
+    /// <param name="rewardRisk">The instance's RewardRisk.</param>
+    /// <returns>B1 to B8.</returns>
+    /// <exception cref="ArgumentException">RewardRisk or InitialCapital is not a finite number greater than zero.</exception>
+    public IReadOnlyList<double> BaseAmounts(double rewardRisk)
+    {
+        IReadOnlyList<double> m = Multipliers(rewardRisk);
+        double capital = _parameters.InitialCapital;
+        Require(double.IsFinite(capital) && capital > 0.0, "InitialCapital is not a finite number greater than zero");
+        double total = 0.0;
+        foreach (double multiplier in m)
+        {
+            total += multiplier;
+        }
+
+        double first = capital * _parameters.RecoveryRunLossPercent / 100.0 / total;
+        return m.Select(multiplier => multiplier * first).ToArray();
+    }
+
+    /// <summary>The state of one symbol before its first entry: all columns 0, not frozen (RSK-016), also used by the simulator (SIM-006).</summary>
+    /// <param name="rewardRisk">The instance's RewardRisk.</param>
+    /// <returns>The start state.</returns>
+    /// <exception cref="ArgumentException">RewardRisk or InitialCapital is not a finite number greater than zero.</exception>
+    public RecoveryState StartState(double rewardRisk)
+    {
+        return RecoveryState.Start(BaseAmounts(rewardRisk).ToArray(), _parameters.LadderGrowth, _parameters.RecoveryMaxRiskPercent);
+    }
+
+    /// <summary>
+    /// Builds the entries of one symbol from broker data (RSK-017): the bot positions, pending
     /// orders and closed trades whose symbol equals <paramref name="symbol"/> (ordinal) are given
-    /// to <see cref="LadderSizer.EntriesFromBroker"/>, which groups them by label, leaves out trades
+    /// to <see cref="LadderSizer.EntriesFromBroker"/>, which groups them by label, leaves out entries
     /// placed before <paramref name="epochStartUtc"/> and checks every record. Records of other
-    /// symbols are never read further, so they cannot change the result.
+    /// symbols are never read further, so they cannot change a position or a column.
     /// </summary>
     /// <param name="symbol">The instance's symbol.</param>
     /// <param name="positions">All open positions.</param>
     /// <param name="pendingOrders">All pending orders.</param>
     /// <param name="history">Closed trades at least since <paramref name="epochStartUtc"/>.</param>
     /// <param name="epochStartUtc">00:00 CE(S)T of RiskEpochDate, kind UTC.</param>
-    /// <returns>The trades of the symbol, ordered by placement time and then label.</returns>
+    /// <returns>The entries of the symbol, ordered by placement time and then label.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">The symbol is empty, a record is null, or a record of the symbol has a time that is not UTC or a result that is not finite.</exception>
     public static IReadOnlyList<LadderEntry> EntriesFromBroker(
@@ -79,93 +133,79 @@ public sealed class RecoverySizer
     }
 
     /// <summary>
-    /// The losing run L at the placement time <paramref name="placedUtc"/> (RSK-017): the sum of
-    /// the absolute net results of the closed non-wins after the last win, in the order of the
-    /// remarks.
+    /// The Recovery sizing of the next entry of the symbol, placed at <paramref name="placedUtc"/>
+    /// (RSK-016, RSK-017): its position, step, raw amount, R, cap, the columns C to J and the
+    /// freeze. The state is rebuilt from <paramref name="entries"/> alone, so the same broker data
+    /// always gives the same result.
     /// </summary>
-    /// <param name="entries">The trades of the instance's symbol, in any order.</param>
-    /// <param name="placedUtc">Placement time of the new trade, kind UTC: the broker's server time.</param>
-    /// <returns>L, zero or more.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="entries"/> is null.</exception>
-    /// <exception cref="ArgumentException">A trade is null or invalid, two share a key, the time is not UTC, or a trade was placed or closed after it.</exception>
-    public static double LosingRun(IReadOnlyList<LadderEntry> entries, DateTime placedUtc)
-    {
-        double run = 0.0;
-        foreach (LadderEntry entry in ClosedInOrder(entries, placedUtc))
-        {
-            run = IsWin(entry) ? 0.0 : run + Math.Abs(entry.NetResult);
-        }
-
-        return run;
-    }
-
-    /// <summary>
-    /// F, the risk money of the first trade of a losing run (RSK-016): RecoveryFirstRiskUsd. It is
-    /// a function of the symbol's trades so that a rule that lets F depend on them (for example on
-    /// the wins so far) changes only this method; today the trades are checked but do not change F.
-    /// </summary>
-    /// <param name="entries">The trades of the instance's symbol, in any order.</param>
-    /// <param name="placedUtc">Placement time of the new trade, kind UTC.</param>
-    /// <returns>F, greater than zero.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="entries"/> is null.</exception>
-    /// <exception cref="ArgumentException">The trades are invalid (see <see cref="LosingRun"/>).</exception>
-    public double FirstAmount(IReadOnlyList<LadderEntry> entries, DateTime placedUtc)
-    {
-        ClosedInOrder(entries, placedUtc);
-        return _parameters.RecoveryFirstRiskUsd;
-    }
-
-    /// <summary>
-    /// The risk money of the new trade of the instance's symbol (RSK-016): R = min((L + RR x F) /
-    /// RR, B x RecoveryMaxRiskPercent / 100), with L from <see cref="LosingRun"/> and F from
-    /// <see cref="FirstAmount"/>.
-    /// </summary>
-    /// <param name="entries">The trades of the instance's symbol (<see cref="EntriesFromBroker"/>), in any order.</param>
-    /// <param name="placedUtc">Placement time of the new trade, kind UTC.</param>
+    /// <param name="entries">The entries of the instance's symbol (<see cref="EntriesFromBroker"/>), in any order.</param>
+    /// <param name="placedUtc">Placement time of the next entry, kind UTC: the broker's server time.</param>
     /// <param name="balance">The account balance from the broker port at the placement.</param>
-    /// <param name="rewardRisk">The instance's RewardRisk, the divisor RR (owner decision Y).</param>
-    /// <returns>R with L, the raw amount, the cap and whether the cap applied.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="entries"/> is null.</exception>
-    /// <exception cref="ArgumentException">The trades are invalid (see <see cref="LosingRun"/>), or the balance or RewardRisk is not a finite number greater than zero.</exception>
-    public RecoveryAmount Next(IReadOnlyList<LadderEntry> entries, DateTime placedUtc, double balance, double rewardRisk)
+    /// <param name="rewardRisk">The instance's RewardRisk (owner decision Y).</param>
+    /// <param name="accountHistory">Every closed trade of the account (all symbols, bot or not) since at least the epoch start, to rebuild the balance at past placements.</param>
+    /// <returns>The sizing of the next entry.</returns>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentException">An entry or a closed trade is null or invalid, two entries share a key, a time is not UTC, an entry was placed or closed after <paramref name="placedUtc"/>, or the balance, RewardRisk or InitialCapital is not a finite number greater than zero.</exception>
+    public RecoveryDecision Next(IReadOnlyList<LadderEntry> entries, DateTime placedUtc, double balance, double rewardRisk, IReadOnlyList<ClosedTradeInfo> accountHistory)
     {
-        double run = LosingRun(entries, placedUtc);
-        double first = FirstAmount(entries, placedUtc);
-        Require(double.IsFinite(balance) && balance > 0.0, "the balance is not a finite number greater than zero");
-        Require(double.IsFinite(rewardRisk) && rewardRisk > 0.0, "RewardRisk is not a finite number greater than zero");
-        double raw = (run + (rewardRisk * first)) / rewardRisk;
-        double cap = balance * _parameters.RecoveryMaxRiskPercent / 100.0;
-        bool capped = !PriceMath.LessThan(raw, cap, PriceMath.DefaultTolerance);
-        return new RecoveryAmount(capped ? cap : raw, run, raw, cap, capped);
-    }
-
-    /// <summary>
-    /// The checked closed trades with a close time at or before <paramref name="placedUtc"/>, in
-    /// the order close time, then placement time, then key (ordinal) (RSK-017). Fails closed on
-    /// invalid trades and on any trade placed or closed after <paramref name="placedUtc"/>.
-    /// </summary>
-    private static LadderEntry[] ClosedInOrder(IReadOnlyList<LadderEntry> entries, DateTime placedUtc)
-    {
-        LadderEntry[] checkedEntries = Relabel(() => LadderSizer.Ordered(entries));
-        Require(placedUtc.Kind == DateTimeKind.Utc, "the placement time of the new trade is not UTC");
-        foreach (LadderEntry entry in checkedEntries)
+        ArgumentNullException.ThrowIfNull(accountHistory);
+        LadderEntry[] ordered = Relabel(() => LadderSizer.Ordered(entries));
+        Require(placedUtc.Kind == DateTimeKind.Utc, "the placement time of the new entry is not UTC");
+        foreach (LadderEntry entry in ordered)
         {
             // Broker data cannot hold an event after the server time; such data is not trusted (fail closed).
-            Require(entry.PlacedUtc <= placedUtc, "trade " + entry.Key + " was placed after the new trade");
-            Require(!entry.ClosedUtc.HasValue || entry.ClosedUtc.Value <= placedUtc, "trade " + entry.Key + " closed after the new trade was placed");
+            Require(entry.PlacedUtc <= placedUtc, "entry " + entry.Key + " was placed after the new entry");
+            Require(!entry.ClosedUtc.HasValue || entry.ClosedUtc.Value <= placedUtc, "entry " + entry.Key + " closed after the new entry was placed");
         }
 
-        return checkedEntries
-            .Where(entry => entry.ClosedUtc.HasValue)
-            .OrderBy(entry => entry.ClosedUtc!.Value)
-            .ThenBy(entry => entry.PlacedUtc)
-            .ThenBy(entry => entry.Key, StringComparer.Ordinal)
+        Require(double.IsFinite(balance) && balance > 0.0, "the balance is not a finite number greater than zero");
+        (DateTime Close, double Net)[] closes = Closes(accountHistory);
+        RecoveryState state = StartState(rewardRisk);
+        var positions = new int[ordered.Length];
+        foreach (LadderSizer.BookEvent e in LadderSizer.SortedEvents(ordered))
+        {
+            if (e.IsClose)
+            {
+                state = state.Close(positions[e.Index], e.TimeUtc, ordered[e.Index].NetResult);
+            }
+            else
+            {
+                state = state.Place(e.TimeUtc, BalanceAt(balance, closes, e.TimeUtc), out RecoveryDecision placed);
+                positions[e.Index] = placed.Position;
+            }
+        }
+
+        return state.Preview(balance);
+    }
+
+    private static (DateTime Close, double Net)[] Closes(IReadOnlyList<ClosedTradeInfo> history)
+    {
+        foreach (ClosedTradeInfo trade in history)
+        {
+            Require(trade != null, "a closed trade of the account is null");
+            Require(trade!.CloseTimeUtc.Kind == DateTimeKind.Utc, "the close time of a closed trade of the account is not UTC");
+            Require(double.IsFinite(trade.NetProfit), "the net result of a closed trade of the account is not a finite number");
+        }
+
+        // Fixed summation order, so the broker's order of the records cannot change the last bits.
+        return history
+            .OrderBy(trade => trade.CloseTimeUtc)
+            .ThenBy(trade => trade.PositionId)
+            .ThenBy(trade => trade.NetProfit)
+            .Select(trade => (trade.CloseTimeUtc, trade.NetProfit))
             .ToArray();
     }
 
-    private static bool IsWin(LadderEntry entry)
+    private static double BalanceAt(double balance, (DateTime Close, double Net)[] closes, DateTime timeUtc)
     {
-        return PriceMath.GreaterThan(entry.NetResult, 0.0, PriceMath.DefaultTolerance);
+        // A close at the instant of a placement came before it (RSK-017), so only later closes are taken back.
+        double later = 0.0;
+        foreach ((DateTime close, double net) in closes)
+        {
+            later += close > timeUtc ? net : 0.0;
+        }
+
+        return balance - later;
     }
 
     private static bool Same(string? a, string b)
@@ -193,31 +233,4 @@ public sealed class RecoverySizer
             throw new ArgumentException(Prefix + problem + ".");
         }
     }
-}
-
-/// <summary>
-/// The amount of the Recovery plan for one new trade (RSK-016), with the values it came from, so
-/// that tests and a journal can see them.
-/// </summary>
-/// <param name="RiskMoney">R, the risk money of the trade in the account currency: <paramref name="CapAmount"/> when <paramref name="Capped"/>, else <paramref name="RawAmount"/>.</param>
-/// <param name="LosingRun">L, the money lost in the current losing run of the symbol (RSK-017).</param>
-/// <param name="RawAmount">(L + RR x F) / RR, before the cap.</param>
-/// <param name="CapAmount">Balance x RecoveryMaxRiskPercent / 100.</param>
-/// <param name="Capped">True when the raw amount is at or above the cap (1e-9 tolerance).</param>
-public sealed record RecoveryAmount(double RiskMoney, double LosingRun, double RawAmount, double CapAmount, bool Capped)
-{
-    /// <summary>R, the risk money of the trade in the account currency (RSK-016).</summary>
-    public double RiskMoney { get; init; } = RiskMoney;
-
-    /// <summary>L, the money lost in the current losing run of the symbol (RSK-017).</summary>
-    public double LosingRun { get; init; } = LosingRun;
-
-    /// <summary>(L + RR x F) / RR, before the cap (RSK-016).</summary>
-    public double RawAmount { get; init; } = RawAmount;
-
-    /// <summary>Balance x RecoveryMaxRiskPercent / 100 (RSK-016).</summary>
-    public double CapAmount { get; init; } = CapAmount;
-
-    /// <summary>True when the raw amount is at or above the cap, 1e-9 tolerance (RSK-016).</summary>
-    public bool Capped { get; init; } = Capped;
 }

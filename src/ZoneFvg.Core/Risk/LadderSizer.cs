@@ -194,6 +194,35 @@ public sealed class LadderSizer
 
     private LadderState Replay(LadderEntry[] ordered)
     {
+        LadderState state = StartState();
+        var positions = new int[ordered.Length];
+        foreach (BookEvent e in SortedEvents(ordered))
+        {
+            if (e.IsClose)
+            {
+                // The entry's own placement came earlier in this order, so its position is known.
+                state = state.Close(positions[e.Index], e.TimeUtc, ordered[e.Index].NetResult);
+            }
+            else
+            {
+                state = state.Place(e.TimeUtc, out LadderDecision placed);
+                positions[e.Index] = placed.Position;
+            }
+        }
+
+        return state;
+    }
+
+    /// <summary>
+    /// The placements and closes of the ordered entries in the ladder's event order (RSK-013), also
+    /// used by <see cref="RecoverySizer"/> (RSK-017): by time; at the same instant closes of entries
+    /// placed earlier before placements, closes among themselves and placements among themselves in
+    /// entry order, and a close at the instant of its own placement right after that placement.
+    /// </summary>
+    /// <param name="ordered">Entries from <see cref="Ordered"/>.</param>
+    /// <returns>The events in that total order.</returns>
+    internal static List<BookEvent> SortedEvents(LadderEntry[] ordered)
+    {
         var events = new List<BookEvent>(ordered.Length * 2);
         for (int i = 0; i < ordered.Length; i++)
         {
@@ -215,24 +244,7 @@ public sealed class LadderSizer
             return result != 0 ? result : a.Sub.CompareTo(b.Sub);
         });
 
-        LadderState state = StartState();
-        var positions = new int[ordered.Length];
-        foreach (BookEvent e in events)
-        {
-            bool isClose = e.Group == 0 || e.Sub == 1;
-            if (isClose)
-            {
-                // The entry's own placement came earlier in this order, so its position is known.
-                state = state.Close(positions[e.Index], e.TimeUtc, ordered[e.Index].NetResult);
-            }
-            else
-            {
-                state = state.Place(e.TimeUtc, out LadderDecision placed);
-                positions[e.Index] = placed.Position;
-            }
-        }
-
-        return state;
+        return events;
     }
 
     private static DateTime LatestTime(IReadOnlyList<LadderEntry> entries)
@@ -403,5 +415,9 @@ public sealed class LadderSizer
     private sealed record BrokerPart(string Label, DateTime TimeUtc, ClosedTradeInfo? Closed);
 
     /// <summary>A placement (group 1, sub 0) or close (group 0, or group 1 sub 1 at its own placement instant) of entry Index (RSK-013).</summary>
-    private readonly record struct BookEvent(DateTime TimeUtc, int Group, int Index, int Sub);
+    internal readonly record struct BookEvent(DateTime TimeUtc, int Group, int Index, int Sub)
+    {
+        /// <summary>True for a close, false for a placement.</summary>
+        internal bool IsClose => Group == 0 || Sub == 1;
+    }
 }
