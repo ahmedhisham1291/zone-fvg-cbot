@@ -117,10 +117,12 @@ administrator. Follow the steps in order and do not skip a check.
 The bot has three entry modes (spec 3.7, 3.8 and section 7). Each instance
 runs one of them, chosen with the parameter `EntryMode` at start:
 
-- **Breakout** (the default): in the direction of the D1 trend, the bot
+- **Breakout** (the default until spec v0.13): in the direction of the D1 trend, the bot
   waits for an M15 bar that closes beyond the previous day's high or low
   inside the trading window, then places a stop order beyond that bar.
-- **ZoneFvg**: the zone and fair value gap entry of spec 3.2 to 3.5.
+- **ZoneFvg** (the default from spec v0.14, owner request of 2026-11-24,
+  with the Choch entry model below, all day, with the D1 trend filter): the
+  zone entry of spec 3.2 to 3.5 and 3.9.
 - **SessionRange** (added on 23 November 2026, spec 3.8): in the direction
   of the D1 trend, a stop order at the edge of the range that price made
   from 19:00 to 03:00 New York time. The order ends at 12:00 New York. It is
@@ -135,7 +137,7 @@ alerts) is the same in all modes. The eleven parameters of the group
 
 | Parameter | Value in the example files | What it does |
 |---|---|---|
-| `EntryMode` | `Breakout` | `Breakout` or `ZoneFvg`. Any other text makes the bot refuse to start and name the parameter |
+| `EntryMode` | `ZoneFvg` | `ZoneFvg`, `Breakout` or `SessionRange`. Any other text makes the bot refuse to start and name the parameter. Breakout and SessionRange also need `EntryModel=Fvg`; Breakout also needs a window that ends before 24:00 (`SessionStartUtc=07:00`, `SessionEndUtc=17:00`) |
 | `BreakoutEntryBufferAtr` | `0.1` | Breakout mode: how far beyond the confirming bar the stop order is placed, in ATR(M15) |
 | `BreakoutStopAtr` | `1.0` | Breakout mode: stop distance from the entry, in ATR(H4) |
 | `TrendSlowEmaPeriod` | `200` | Breakout mode: trend filter. A buy needs the D1 EMA(`BiasEmaPeriod`) above the D1 EMA(`TrendSlowEmaPeriod`), a sell below it (spec 3.1). `0` switches it off. Allowed: 0 or 2 to 10000 |
@@ -159,28 +161,29 @@ and are not part of the parameter hash. The gold file uses the same eleven
 values as the forex files.
 
 **Entry model of ZoneFvg mode (spec 3.9, v0.11).** In ZoneFvg mode the
-parameter `EntryModel` chooses the trigger at a touched zone: `Fvg` (the fair
-value gap of spec 3.4, the default) or `Choch` (the change of character of
-your manual method, spec 3.9). The eight parameters of the group "Entry
+parameter `EntryModel` chooses the trigger at a touched zone: `Choch` (the
+change of character of your manual method, spec 3.9; the default from spec
+v0.14) or `Fvg` (the fair value gap of spec 3.4, the default until v0.13). The eight parameters of the group "Entry
 model" are the next eight lines of every file in `deploy/params/`:
 
 | Parameter | Value in the example files | What it does |
 |---|---|---|
-| `EntryModel` | `Fvg` | `Fvg` or `Choch`, exactly so. `Choch` with an `EntryMode` other than `ZoneFvg` makes the bot refuse to start and name both parameters |
+| `EntryModel` | `Choch` | `Fvg` or `Choch`, exactly so. `Choch` with an `EntryMode` other than `ZoneFvg` makes the bot refuse to start and name both parameters |
 | `RequireSweep` | `false` | Choch: a change of character counts only after a sweep of a recent M15 swing |
 | `ChochWindowBars` | `32` | Choch: M15 bars after the touch in which the change of character must come. 4 to 96 |
-| `ChochUseBias` | `false` | Choch: `true` trades a zone only when the D1 trend matches it |
+| `ChochUseBias` | `true` | Choch: `true` (the default from spec v0.14) trades a zone only when the D1 trend matches it |
 | `ChochStopAtDistal` | `false` | Choch: `true` puts the stop beyond the zone's far edge as well |
 | `ChochTargetBufferAtr` | `0.1` | Choch: the target sits this far (in ATR(H4)) before the next opposing level. 0 to 1 |
-| `ChochMinStopPips` | `5` (gold `3`) | Choch: smallest stop in pips, in place of `MinStopPips`. More than 0 |
+| `ChochMinStopPips` | `0.0` | Choch: smallest stop in pips, in place of `MinStopPips`. `0` = automatic (spec 7.1): 5 pips for the forex pairs, 3.00 USD of price for gold at whatever pip size the broker reports |
 | `MinRewardRisk` | `2.0` | Choch: a setup whose target gives less than this reward to risk is skipped. 1 to 10 |
 
 The eight values are checked at start in every mode, like the values of
-"Entry mode". The files keep `EntryModel=Fvg` and the window 07:00 to 17:00,
-the cBot's defaults. For the Choch model set, together, `EntryMode=ZoneFvg`,
-`EntryModel=Choch`, `SessionStartUtc=00:00` and `SessionEndUtc=24:00` (you
-trade all day; `24:00` is accepted for `SessionEndUtc` only, and in Breakout
-mode the bot still refuses it). The Choch values are part of the parameter
+"Entry mode". From spec v0.14 the files carry the cBot's defaults,
+`EntryMode=ZoneFvg`, `EntryModel=Choch`, `ChochUseBias=true`,
+`SessionStartUtc=00:00` and `SessionEndUtc=24:00` (you trade all day;
+`24:00` is accepted for `SessionEndUtc` only, and in Breakout mode the bot
+still refuses it). For the Fvg model or Breakout set `EntryModel=Fvg`,
+`SessionStartUtc=07:00` and `SessionEndUtc=17:00`. The Choch values are part of the parameter
 hash only with `EntryModel=Choch`, so the Fvg model keeps its hash.
 
 **Warm-up of the trend filter.** The D1 EMA of period n reads 4 x n closed
@@ -197,8 +200,8 @@ reports the D1 series as a data problem and the bot does not trade (fail
 closed).
 
 **Which mode and which values go live (spec 13.1, "What goes live").** The
-example files carry `EntryMode=Breakout` only because Breakout is the
-cBot's default. That is not a choice of the mode. Before the laptop stage,
+example files carry `EntryMode=ZoneFvg` with `EntryModel=Choch` only because
+that is the cBot's default (spec v0.14). That is not a choice of the mode. Before the laptop stage,
 write into the five files:
 
 - `EntryMode`: the mode chosen by the acceptance procedure
@@ -219,8 +222,10 @@ write into the five files:
   and risk values, so it cannot catch this mistake.
 - Every other value stays at its default, except the values that step 10.3
   and "Gold (XAUUSD)" below tell you to set. The risk defaults of spec v0.12
-  (owner decisions of 2026-11-24): `InitialCapital=200000.0`,
-  `DailyLossLimitPercent=2.0`, `MaxVolumeUnits=3000000.0` (gold 1000.0),
+  and v0.14 (owner decisions and request of 2026-11-24): `InitialCapital=200000.0`,
+  `DailyLossLimitPercent=2.0`, `MaxVolumeUnits=0.0` (automatic: 3,000,000
+  units, gold 1,000 ounces), `LadderEnabled=false` (a fixed 0.5% per trade;
+  `true` for the ladder, the one value you choose),
   `SizingPlan=Ladder`, `RecoveryRunLossPercent=1.0`,
   `RecoveryMaxRiskPercent=1.28`, and the per-trade sanity cap, the open-risk
   cap and the currency cap off (`SanityCapEnabled=false` with
@@ -235,7 +240,10 @@ The laptop stage, the fault tests and the soak test run with these files
 **Check the hash.** The core `start` line shows `hash=` followed by eight
 characters. It must equal, symbol by symbol, the `hash=` of the accepted
 backtest run of that symbol (the same line in its Log). The hash covers the
-signal and execution values of the files and, in Breakout mode, the breakout
+signal and execution values of the files (from spec v0.14 an automatic
+`MaxSpreadPips`, `MinStopPips` or `ChochMinStopPips` as its profile value,
+for example `auto:0.4USD`, so gold's hash does not depend on the pip size
+the broker reports) and, in Breakout mode, the breakout
 values with the trading window (`TrendSlowEmaPeriod` and
 `BreakoutLastConfirmUtc` only when they are not switched off); in
 SessionRange mode the six range values. It does not cover the risk and
@@ -243,21 +251,21 @@ news values (`src/ZoneFvg.Core/Execution/ParameterHash.cs`). If a hash
 differs, a value differs from the accepted run: stop that instance and
 compare the files before it trades. For the example files as they are:
 
-| `EntryMode` | Four forex files | Gold file |
+| Settings | Four forex files | Gold file |
 |---|---|---|
-| `Breakout` | `8aa3f28a` | `fbdef461` |
-| `ZoneFvg` | `f681dff2` | `05ee8872` |
-| `SessionRange` | `3f0f30a3` | `377b6162` |
-| `Breakout` with both filters off (`TrendSlowEmaPeriod=0`, `BreakoutLastConfirmUtc=17:00`) | `119a3864` | `f900f393` |
+| As the files are (ZoneFvg, Choch, all day, `ChochUseBias=true`, the four values automatic) | `13502944` | `0e7d9dc3` |
+| `EntryMode=Breakout`, `EntryModel=Fvg`, 07:00 to 17:00 | `b8e70ce0` | `faade1ee` |
+| `EntryMode=SessionRange`, `EntryModel=Fvg`, 07:00 to 17:00 | `f99c0872` | `57c90d56` |
+| `EntryMode=ZoneFvg`, `EntryModel=Fvg`, 07:00 to 17:00 | `a1e63feb` | `8655594c` |
 
-The gold hashes changed on 23 November 2026 (WP35), because the gold file
-now has `MinStopPips=8.0` and `MaxSpreadPips=0.4` (see "Gold (XAUUSD)").
-With the old values 800 and 40 they were `4af5c9fc`, `8793fa69`,
-`40ff1e5b` and `66c5a44e`. (Computed with the rule of `ParameterHash`:
+The gold hashes are the same at a pip of 1 and of 0.01. The hashes changed
+with spec v0.14 (WP39), because the values became automatic; the files of
+v0.13 gave `8aa3f28a` / `fbdef461` (Breakout), `f681dff2` / `05ee8872`
+(ZoneFvg) and `3f0f30a3` / `377b6162` (SessionRange), and those values set
+by hand still give them. (Computed with the rule of `ParameterHash`:
 SHA-256 of the canonical text, first eight hex characters, with Python's
-hashlib. Every value of the table except `f900f393` is also asserted in
-`tests/ZoneFvg.Core.Tests/App/SessionRangeTextTests.cs` and
-`tests/ZoneFvg.Core.Tests/Execution/ParameterHashBreakoutFilterTests.cs`.)
+hashlib. The first row is also asserted in
+`tests/ZoneFvg.Core.Tests/Execution/ParameterHashProfileTests.cs`.)
 
 **Check after each start.** The first adapter line ends with the mode, for
 example `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
@@ -326,9 +334,10 @@ these must also be done on a demo or FTMO Free Trial account:
 1. The stop-order record
    [`docs/test-records/WP26-stop-orders.md`](../docs/test-records/WP26-stop-orders.md)
    (PLT-011), as for Breakout: SessionRange enters with stop orders too.
-2. The gold spread: compare the live XAUUSD spread with `MaxSpreadPips`
-   0.4 (0.40 USD). If the normal spread is above 0.4, every gold entry is
-   blocked (`docs/architecture.md` section 10, row "Gold's stop and spread
+2. The gold spread: compare the live XAUUSD spread with the automatic
+   limit of 0.40 USD (the `start` line shows it in pips, for example
+   `maxSpreadPips=40` at a pip of 0.01). If the normal spread is above 0.40
+   USD, every gold entry is blocked (`docs/architecture.md` section 10, row "Gold's stop and spread
    limits in the platform's pip").
 3. The SessionRange record
    [`docs/test-records/WP35-session-range.md`](../docs/test-records/WP35-session-range.md).
@@ -336,7 +345,8 @@ these must also be done on a demo or FTMO Free Trial account:
 "What goes live" (spec 13.1) applies to this mode as to the others: the gold
 file carries `EntryMode=SessionRange` only if SessionRange is the accepted
 mode for gold, with the values of the judged run, and the gold instance's
-`hash=` equals that run's (`377b6162` with the example values).
+`hash=` equals that run's (`57c90d56` with the example values and
+`EntryModel=Fvg`, 07:00 to 17:00).
 
 ---
 
@@ -378,8 +388,8 @@ before you pay for a server.
    only. Check that the `hash=` of the `start` line equals the accepted run's.
 4. Add four more instances on **M15** charts of GBPUSD, USDJPY, AUDUSD and
    XAUUSD (gold), each with the values of its own file (only `HeartbeatUrl`
-   differs among the forex files, one monitor per symbol). The gold
-   instance also has its own three values (see "Gold (XAUUSD)" below).
+   differs among the forex files, one monitor per symbol). From spec v0.14
+   the gold file differs only in its heartbeat (see "Gold (XAUUSD)" below).
    All five instances use the chosen `EntryMode`, and each `hash=` equals
    the accepted run of its symbol (see "Entry mode" above).
 5. Optional, one instance only: right-click it and choose **Start in external
@@ -723,8 +733,9 @@ service user.
 The eleven values of the group "Entry mode" and the accepted settings are
 those of section "Entry mode", "Which mode and which values go live": the
 chosen mode, never simply the default. Leave every other value at the spec
-default. `MaxSpreadPips` is 1.5 for the
-four forex symbols until the broker conditions (spec 10.4) say otherwise. A value
+default. `MaxSpreadPips`, `MinStopPips`, `ChochMinStopPips` and
+`MaxVolumeUnits` stay `0.0` (automatic, spec 7.1) in all five files until the
+broker conditions (spec 10.4) say otherwise. A value
 left as `CHANGE_ME...` makes the bot refuse to start (`RiskEpochDate`) or fail
 safely (no calendar means no entries; failed alerts are logged).
 
@@ -736,23 +747,29 @@ chmod 600 /opt/zfvg/params/*/bot.cbotset
 
 Gold runs as a fifth instance (spec v0.9, owner decision D of 2026-11-17,
 requirement PLT-010): its own container `xauusd`, parameter file
-`params/xauusd/bot.cbotset`, storage and log volumes and heartbeat check. Its
-parameter file is a copy of the forex file with exactly these differences:
-
-| Parameter | Forex | Gold | Why |
-|---|---|---|---|
-| `MaxSpreadPips` | 1.5 | 0.4 | FTMO's cTrader reports a gold pip of 1 USD (spec 7), so 0.4 is a spread of 0.40 USD |
-| `MinStopPips` | 12.0 | 8.0 | 8.00 USD per ounce, in the same 1 USD pip |
-| `MaxVolumeUnits` | 3000000.0 | 1000.0 | Gold volume is in ounces (500000.0 and 200.0 before spec v0.12, owner decision X) |
-| `HeartbeatUrl` | one check per symbol | its own check | So an alert names gold |
+`params/xauusd/bot.cbotset`, storage and log volumes and heartbeat check.
+From spec v0.14 its parameter file equals the forex files apart from
+`HeartbeatUrl` (its own check, so an alert names gold). `MaxSpreadPips`,
+`MinStopPips`, `ChochMinStopPips` and `MaxVolumeUnits` are `0.0`, automatic
+(spec 7.1): at start the bot sees that XAUUSD is gold (base XAU, quote USD)
+and uses 0.40 USD of spread, 8.00 USD of stop, 3.00 USD of Choch stop and
+1,000 ounces, converted with the pip size the broker reports. Two of your
+backtests reported a gold pip of 1 USD and of 0.01 USD; both give the same
+limits in price. The `start` line shows the profile, the pip size and the
+values (`profile=Gold pipSize=... maxSpreadPips=...`). A value you type
+yourself is checked: outside one tenth to ten times the automatic value in
+price (for example the old 0.4 at a pip of 0.01, which is 0.004 USD) the bot
+refuses to start and its Log line names the parameter, the pip size and the
+automatic value. (Until spec v0.13 the gold file set `MaxSpreadPips=0.4`,
+`MinStopPips=8.0` and `MaxVolumeUnits=1000.0` for a pip of 1 USD.)
 
 If the accepted settings differ between symbols (section "Entry mode"),
 each file carries those of its own symbol as well.
 
 No other parameter is in pips; the ATR and R multiples scale by themselves.
-The cBot's default values stay the forex values, so a gold instance started
-without its parameter file would use the forex limits: always load
-`xauusd.cbotset`.
+From spec v0.14 the cBot's defaults are automatic, so a gold instance started
+without its parameter file also uses gold's limits; still load
+`xauusd.cbotset` for the heartbeat and the other live values.
 
 Before the gold instance trades on the demo account, open the XAUUSD symbol
 information in cTrader and compare it with the adapter's start line

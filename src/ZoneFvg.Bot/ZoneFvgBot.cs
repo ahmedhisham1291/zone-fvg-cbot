@@ -39,9 +39,9 @@ namespace cAlgo.Robots
         // Parameter attribute (Name, DefaultValue, Group): https://help.ctrader.com/ctrader-algo/references/Attributes/ParameterAttribute/
         // Parameter types: https://help.ctrader.com/ctrader-algo/guides/parameter-types
 
-        /// <summary>Entry mode of this instance, Breakout, ZoneFvg or SessionRange (PLT-012, PLT-015, spec 3.7, 3.8 and 7).</summary>
-        [Parameter("EntryMode", DefaultValue = "Breakout", Group = "Entry mode")]
-        public string EntryMode { get; set; } = "Breakout";
+        /// <summary>Entry mode of this instance, ZoneFvg (the default from spec v0.14, PLT-018), Breakout or SessionRange (PLT-012, PLT-015, spec 3.7, 3.8 and 7).</summary>
+        [Parameter("EntryMode", DefaultValue = "ZoneFvg", Group = "Entry mode")]
+        public string EntryMode { get; set; } = "ZoneFvg";
 
         /// <summary>Breakout entry beyond the confirming bar in ATR(M15) (PLT-012, SIG-024).</summary>
         [Parameter("BreakoutEntryBufferAtr", DefaultValue = 0.1, Group = "Entry mode")]
@@ -83,9 +83,9 @@ namespace cAlgo.Robots
         [Parameter("RangeStopAtr", DefaultValue = 1.0, Group = "Entry mode")]
         public double RangeStopAtr { get; set; }
 
-        /// <summary>Entry model of ZoneFvg mode, Fvg or Choch (PLT-016, spec 3.9 and 7). Choch needs EntryMode ZoneFvg.</summary>
-        [Parameter("EntryModel", DefaultValue = "Fvg", Group = "Entry model")]
-        public string EntryModel { get; set; } = "Fvg";
+        /// <summary>Entry model of ZoneFvg mode, Choch (the default from spec v0.14, PLT-018) or Fvg (PLT-016, spec 3.9 and 7). Choch needs EntryMode ZoneFvg.</summary>
+        [Parameter("EntryModel", DefaultValue = "Choch", Group = "Entry model")]
+        public string EntryModel { get; set; } = "Choch";
 
         /// <summary>Choch: a change of character counts only after a sweep (PLT-016, SIG-038).</summary>
         [Parameter("RequireSweep", DefaultValue = false, Group = "Entry model")]
@@ -95,8 +95,8 @@ namespace cAlgo.Robots
         [Parameter("ChochWindowBars", DefaultValue = 32, Group = "Entry model")]
         public int ChochWindowBars { get; set; }
 
-        /// <summary>Choch: the D1 bias must match the zone (PLT-016, SIG-036).</summary>
-        [Parameter("ChochUseBias", DefaultValue = false, Group = "Entry model")]
+        /// <summary>Choch: the D1 bias must match the zone (PLT-016, SIG-036). Default true from spec v0.14 (PLT-018).</summary>
+        [Parameter("ChochUseBias", DefaultValue = true, Group = "Entry model")]
         public bool ChochUseBias { get; set; }
 
         /// <summary>Choch: the stop also beyond the zone's distal line (PLT-016, SIG-039).</summary>
@@ -107,8 +107,8 @@ namespace cAlgo.Robots
         [Parameter("ChochTargetBufferAtr", DefaultValue = 0.1, Group = "Entry model")]
         public double ChochTargetBufferAtr { get; set; }
 
-        /// <summary>Choch: smallest stop in pips, more than 0 (PLT-016, EXE-028). Gold: 3.</summary>
-        [Parameter("ChochMinStopPips", DefaultValue = 5.0, Group = "Entry model")]
+        /// <summary>Choch: smallest stop in pips (PLT-016, EXE-028); 0 = automatic from the symbol profile, 5 pips or 3.00 USD of gold's price (EXE-030, PLT-018, spec 7.1).</summary>
+        [Parameter("ChochMinStopPips", DefaultValue = 0.0, Group = "Entry model")]
         public double ChochMinStopPips { get; set; }
 
         /// <summary>Choch: smallest reward to risk on the signal's levels, 1 to 10 (PLT-016, EXE-028).</summary>
@@ -191,8 +191,8 @@ namespace cAlgo.Robots
         [Parameter("EntryExpiryBars", DefaultValue = 8, Group = "Execution")]
         public int EntryExpiryBars { get; set; }
 
-        /// <summary>Smallest allowed stop in pips (EXE-003).</summary>
-        [Parameter("MinStopPips", DefaultValue = 12.0, Group = "Execution")]
+        /// <summary>Smallest allowed stop in pips (EXE-003); 0 = automatic from the symbol profile, 12 pips or 8.00 USD of gold's price (EXE-030, PLT-018, spec 7.1).</summary>
+        [Parameter("MinStopPips", DefaultValue = 0.0, Group = "Execution")]
         public double MinStopPips { get; set; }
 
         /// <summary>Largest allowed stop in ATR(H4) (EXE-003).</summary>
@@ -207,13 +207,13 @@ namespace cAlgo.Robots
         [Parameter("CostToRiskMax", DefaultValue = 0.10, Group = "Execution")]
         public double CostToRiskMax { get; set; }
 
-        /// <summary>Start of the trading window, UTC, HH:mm (EXE-002); 00:00 to 23:59.</summary>
-        [Parameter("SessionStartUtc", DefaultValue = "07:00", Group = "Execution")]
-        public string SessionStartUtc { get; set; } = "07:00";
+        /// <summary>Start of the trading window, UTC, HH:mm (EXE-002); 00:00 to 23:59. Default 00:00 from spec v0.14 (PLT-018).</summary>
+        [Parameter("SessionStartUtc", DefaultValue = "00:00", Group = "Execution")]
+        public string SessionStartUtc { get; set; } = "00:00";
 
-        /// <summary>End of the trading window, UTC, HH:mm, or 24:00 for the end of the day (EXE-002, EXE-029, PLT-016).</summary>
-        [Parameter("SessionEndUtc", DefaultValue = "17:00", Group = "Execution")]
-        public string SessionEndUtc { get; set; } = "17:00";
+        /// <summary>End of the trading window, UTC, HH:mm, or 24:00 for the end of the day (EXE-002, EXE-029, PLT-016). Default 24:00 from spec v0.14 (PLT-018).</summary>
+        [Parameter("SessionEndUtc", DefaultValue = "24:00", Group = "Execution")]
+        public string SessionEndUtc { get; set; } = "24:00";
 
         /// <summary>Last entry time on Friday, UTC, HH:mm (EXE-002).</summary>
         [Parameter("FridayNoEntryUtc", DefaultValue = "12:00", Group = "Execution")]
@@ -223,8 +223,8 @@ namespace cAlgo.Robots
         [Parameter("FridayCloseUtc", DefaultValue = "20:00", Group = "Execution")]
         public string FridayCloseUtc { get; set; } = "20:00";
 
-        /// <summary>Spread filter in pips (EXE-002).</summary>
-        [Parameter("MaxSpreadPips", DefaultValue = 1.5, Group = "Execution")]
+        /// <summary>Spread filter in pips (EXE-002); 0 = automatic from the symbol profile, 1.5 pips or 0.40 USD of gold's price (EXE-030, PLT-018, spec 7.1).</summary>
+        [Parameter("MaxSpreadPips", DefaultValue = 0.0, Group = "Execution")]
         public double MaxSpreadPips { get; set; }
 
         /// <summary>Risk per trade in percent (RSK-001).</summary>
@@ -291,12 +291,12 @@ namespace cAlgo.Robots
         [Parameter("MaxEntriesPerDay", DefaultValue = 6, Group = "Risk")]
         public int MaxEntriesPerDay { get; set; }
 
-        /// <summary>Size sanity cap in units (RSK-002, PLT-017). Default 3,000,000 from spec v0.12; gold 1,000 in its parameter file.</summary>
-        [Parameter("MaxVolumeUnits", DefaultValue = 3000000.0, Group = "Risk")]
+        /// <summary>Size sanity cap in units (RSK-002, PLT-017); 0 = automatic from the symbol profile, 3,000,000 units or 1,000 ounces of gold (EXE-030, PLT-018, spec 7.1).</summary>
+        [Parameter("MaxVolumeUnits", DefaultValue = 0.0, Group = "Risk")]
         public double MaxVolumeUnits { get; set; }
 
-        /// <summary>Ladder sizing on; when off the fixed RiskPercent is used (RSK-013).</summary>
-        [Parameter("LadderEnabled", DefaultValue = true, Group = "Risk")]
+        /// <summary>Ladder sizing on; when off (the default from spec v0.14, PLT-018) the fixed RiskPercent is used (RSK-013).</summary>
+        [Parameter("LadderEnabled", DefaultValue = false, Group = "Risk")]
         public bool LadderEnabled { get; set; }
 
         /// <summary>Risk of one ladder deal in percent, before growth (RSK-013).</summary>
@@ -450,6 +450,12 @@ namespace cAlgo.Robots
                 _core = null;
                 Refuse(refusal);
                 return;
+            }
+
+            // EXE-031, PLT-018: one line when the spread at start is above the effective MaxSpreadPips; not a refusal.
+            if (parameters.SymbolProfile?.SpreadNote != null)
+            {
+                _log!.Info(parameters.SymbolProfile.SpreadNote);
             }
 
             // PLT-014: one start line when the news filter is off for this backtest although NewsEnabled is true.
@@ -662,6 +668,16 @@ namespace cAlgo.Robots
             ParameterText.Fixed(nameof(DayResetZone), DayResetZone, "Europe/Prague");
             CoreEntryMode mode = ParameterText.EnumName<CoreEntryMode>(nameof(EntryMode), EntryMode);
 
+            // EXE-030, EXE-031, PLT-018: the four symbol-dependent values are resolved from the symbol profile before any
+            // of them is checked or used; 0 means automatic. The cBot's own properties then hold the effective values,
+            // so BuildExecution, ChochText.Build and BuildRisk read them as before. A refusal is an ArgumentException.
+            // Symbol.Name, BaseAsset, QuoteAsset, PipSize, Spread: https://help.ctrader.com/ctrader-algo/references/MarketData/Symbols/Symbol/
+            SymbolProfileResult profile = SymbolProfile.Resolve(SymbolName, Symbol.BaseAsset.Name, Symbol.QuoteAsset.Name, Symbol.PipSize, Symbol.Spread, MaxSpreadPips, MinStopPips, ChochMinStopPips, MaxVolumeUnits);
+            MaxSpreadPips = profile.MaxSpreadPips;
+            MinStopPips = profile.MinStopPips;
+            ChochMinStopPips = profile.ChochMinStopPips;
+            MaxVolumeUnits = profile.MaxVolumeUnits;
+
             // The signal texts are parsed before the time texts, as before PLT-012, so the order of the refusals is unchanged.
             SignalParameters signal = BuildSignal();
             ExecutionParameters execution = BuildExecution();
@@ -692,6 +708,9 @@ namespace cAlgo.Robots
                 },
                 SessionRange = mode == CoreEntryMode.SessionRange ? sessionRange : null,
                 Choch = choch,
+
+                // EXE-032: the profile and the effective values, for the start line and the parameter hash.
+                SymbolProfile = profile,
                 Risk = BuildRisk(isBacktest),
                 News = BuildNews(isBacktest, newsHistory),
 

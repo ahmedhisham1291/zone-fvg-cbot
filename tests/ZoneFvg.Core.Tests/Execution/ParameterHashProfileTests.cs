@@ -156,6 +156,21 @@ public class ParameterHashProfileTests
         Assert.Equal("88051907", ParameterHash.Compute(new SignalParameters(), new ExecutionParameters(), null, null, new ChochParameters(), null));
     }
 
+    [Theory]
+    [Trait("Req", "EXE-032")]
+    [InlineData("EURUSD", "EUR", "USD", 0.0001, "13502944")]
+    [InlineData("XAUUSD", "XAU", "USD", 1.0, "0e7d9dc3")]
+    [InlineData("XAUUSD", "XAU", "USD", 0.01, "0e7d9dc3")]
+    public void Compute_TheDefaultsOfTheParameterFiles_TheHashOfDeployReadme(string symbol, string baseAsset, string quote, double pip, string hash)
+    {
+        // The files of spec v0.14: ZoneFvg, Choch, ChochUseBias true, 00:00 to 24:00, the four values automatic.
+        SymbolProfileResult profile = ZoneFvg.Core.App.SymbolProfile.Resolve(symbol, baseAsset, quote, pip, 0.0, 0.0, 0.0, 0.0, 0.0);
+        var execution = new ExecutionParameters { SessionStartUtc = TimeSpan.Zero, SessionEndUtc = TimeSpan.FromHours(24.0), MaxSpreadPips = profile.MaxSpreadPips, MinStopPips = profile.MinStopPips };
+        var choch = new ChochParameters { ChochUseBias = true, ChochMinStopPips = profile.ChochMinStopPips };
+
+        Assert.Equal(hash, ParameterHash.Compute(new SignalParameters(), execution, null, null, choch, profile));
+    }
+
     [Fact]
     [Trait("Req", "EXE-032")]
     public void HashText_OtherName_Refused()
