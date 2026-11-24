@@ -526,12 +526,19 @@ commission and spread, on the **development** period only (before November
 
 ## Part 7. The Recovery sizing plan (from WP38 on)
 
-Spec 4.1.1 (v0.12, your decision of 24 November 2026): the first trade
-after a win risks 100 USD; after losses each trade risks (money lost since
-the last win + 2 x 100) / 2, so one 2R win recovers the run plus 200; from
-the 9th trade of a losing run every trade risks 1.28% of the balance until
-a win. Each pair has its own losing run: a loss on EURUSD does not raise
-the next GBPUSD trade. The daily budget is 2% (4,000 USD) over all pairs
+Spec 4.1.1 (v0.13, your decision of 24 November 2026, which replaces the
+first version with 100 USD and 1.28% after the 8th loss): a losing run has
+eight positions whose base amounts sum to 1% of initial capital. On
+200,000 they are 40.60, 60.90, 91.36, 137.03, 205.55, 308.33, 462.49 and
+693.74 USD, and each one recovers the run before it plus 2 x 40.60 with a
+2R win. Each position has a step column (C to J); a win raises the column
+of its position (never past a column that is still 0) and the next trade
+is position 1 again; a position's risk is its base amount x 1.5924 ^ its
+step. After eight losses in a row all columns go back to 0 and the run
+starts again from 1%. No trade risks more than 1.28% of the balance, and
+a trade that would have risked more stops the steps from rising until the
+next reset. Each pair has its own positions and columns: a win or a loss
+on EURUSD does not change the next GBPUSD trade. The daily budget is 2% (4,000 USD) over all pairs
 together, and the per-trade sanity cap, the open-risk cap and the
 currency cap are off by default, in both plans. Because the run is per
 pair, a cTrader backtest of one symbol sizes its trades exactly as the
@@ -551,7 +558,7 @@ Two ways to see what Recovery would have done:
     ```
 
     and the same with `--sizing ladder` for comparison. The defaults are
-    `--initial-capital 200000`, `--daily-budget 2`, `--recovery-first 100`,
+    `--initial-capital 200000`, `--daily-budget 2`, `--recovery-run-loss 1`, `--growth 1.5924`,
     `--recovery-max 1.28` and `--reward-risk 2`; set `--reward-risk` to the
     RewardRisk of the backtest if you changed it. Compare the pass and
     breach rates of the two plans in the Challenge and Verification rows.
@@ -559,7 +566,7 @@ Two ways to see what Recovery would have done:
     same period, data, commission and spread, and these values different
     from Part 2:
     - **SizingPlan:** `Recovery` (exactly so).
-    - Leave `RecoveryFirstRiskUsd` (100), `RecoveryMaxRiskPercent` (1.28),
+    - Leave `RecoveryRunLossPercent` (1.0), `LadderGrowth` (1.5924), `RecoveryMaxRiskPercent` (1.28),
       `SanityCapEnabled` (false), `OpenRiskCapEnabled` (false),
       `CurrencyCapEnabled` (false), `DailyLossLimitPercent` (2),
       `MaxVolumeUnits` (3000000; gold 1000) and `InitialCapital` (200000)
@@ -569,8 +576,10 @@ Two ways to see what Recovery would have done:
     with `sizing=Recovery`; check it. The parameter `hash` in that line is
     the same as with `Ladder`: the plan does not change it.
 33. **What to look at.** The order comment of each trade shows the risk
-    money. After a loss the next trade's risk must grow as in spec 4.1.1;
-    after a win it must be 100 again, on the same pair. With the size cap of
+    money. After a loss the next trade of the same pair takes the next
+    position (40.60, 60.90, 91.36, ... with no step); after a win it is
+    position 1 again, larger by 1.5924 for each step its column has; after
+    eight losses in a row it is 40.60 again. With the size cap of
     3,000,000 units (gold 1,000 ounces) a Recovery trade of 2,560 USD fits
     at every allowed stop; a skip with `FreeMarginTooLow` means the margin
     check stopped a large position (spec 4.1). A skipped trade is not

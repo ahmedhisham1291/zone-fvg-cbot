@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.12 · 24 November 2026 (v0.11 of 23 November 2026, with the owner's decisions of 24 November 2026: a 200,000 USD account, a second sizing plan "Recovery" computed per pair, a 2% daily risk budget, a per-trade sanity cap, open-risk cap and currency cap that are off by default, and a larger size cap, section 4)
+Version 0.13 · 24 November 2026 (v0.12 of the same day, with the owner's later decision of 24 November 2026: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
 
 ## 0. What changed in v0.2
 
@@ -66,7 +66,7 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | Topic | Decision | Section |
 |---|---|---|
 | P. Account size | The owner starts with a 200,000 USD FTMO account. `InitialCapital` defaults to 200,000; FTMO's limits are computed from it as before (daily floor: 00:00 CE(S)T balance minus 10,000; overall floor 180,000). Backtests start with 200,000 | 2, 4.1, 4.2, 7, 15 |
-| Q. Sizing plan | `SizingPlan` = `Ladder` (default, the behaviour of v0.11 unchanged) or `Recovery` (new, 4.1.1). Recovery: the first trade after a win, or from `RiskEpochDate`, risks `RecoveryFirstRiskUsd` (100 USD); after losses each trade risks (L + RewardRisk x first) / RewardRisk, L being the money lost in the current losing run, so that one 2R win recovers the run plus 2 x first; at most `RecoveryMaxRiskPercent` (1.28%) of balance; a win resets. The owner was told and accepted that continuing at 1.28% fails much more often than restarting (simulation at 40% winners: pass 59%, fail or stop 32% in 500 trades), that a long enough losing run breaks FTMO's 10% limit, and that the 8% kill switch stops trading after about 13 losses in a row | 4.1, 4.1.1, 7, 12.1 |
+| Q. Sizing plan | `SizingPlan` = `Ladder` (default, the behaviour of v0.11 unchanged) or `Recovery` (new, 4.1.1). Recovery: the first trade after a win, or from `RiskEpochDate`, risks `RecoveryFirstRiskUsd` (100 USD); after losses each trade risks (L + RewardRisk x first) / RewardRisk, L being the money lost in the current losing run, so that one 2R win recovers the run plus 2 x first; at most `RecoveryMaxRiskPercent` (1.28%) of balance; a win resets. The owner was told and accepted that continuing at 1.28% fails much more often than restarting (simulation at 40% winners: pass 59%, fail or stop 32% in 500 trades), that a long enough losing run breaks FTMO's 10% limit, and that the 8% kill switch stops trading after about 13 losses in a row. The amount rule of this row is replaced in v0.13 (row Z) | 4.1, 4.1.1, 7, 12.1 |
 | R. Daily risk budget | 2% of initial capital (was 1.5%), in both sizing plans. FTMO's 5% and the emergency guard unchanged | 4.2, 7, 15.4 |
 | S. Per-trade sanity cap | The check "calculated risk above 0.55% of balance" can be switched with `SanityCapEnabled`, **default off** (the owner's explicit choice after being told that it is the last protection against a sizing bug or bad price data). Its percent stays a parameter, `SanityCapPercent` (0.55), for when it is on. The other sanity checks (volume above `MaxVolumeUnits`, stop or target on the wrong side) always apply | 4.3, 7 |
 | T. Unchanged | Kill switch 8%, FTMO emergency guard, the margin check, the circuit breakers and every other limit not named in rows V to X | 4.2, 4.3 |
@@ -75,6 +75,12 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | W. Open-risk and currency caps off | The total open-risk cap (1.5%) and the same-direction currency cap (2) are switched off by default with `OpenRiskCapEnabled` and `CurrencyCapEnabled` (both false); their values stay parameters. Account-wide stay: the 2% daily risk budget (all symbols' open worst case plus today's results), the 8% kill switch and the FTMO emergency guard. The owner accepts that with five independent instances up to 6.4% (5 x 1.28%) could ask to be at risk at once; live the account-wide daily budget refuses every trade that would take the day's worst case beyond 2%, and that keeps a day inside FTMO's 5% | 4.2, 4.3, 7 |
 | X. Size cap raised | `MaxVolumeUnits` defaults to 3,000,000 units (30 lots) for the currency pairs and 1,000 ounces for gold (was 500,000 and 200). The margin check is unchanged | 4.1, 4.3, 7, 15.3 |
 | Y. Recovery divisor | The divisor stays the instance's `RewardRisk` (2.0) in every mode; a Choch win whose target is beyond 2R returns more than planned, accepted | 4.1.1 |
+
+**Changes in v0.13 (owner decision of 24 November 2026, later the same day)**
+
+| Topic | Decision | Section |
+|---|---|---|
+| Z. Recovery with step columns | Replaces the amount rule of row Q. A losing run has eight positions with base amounts B1 = F0 and Bk = (B1 + ... + B(k-1) + 2 x F0) / 2, F0 = 1% of initial capital / 49.2578125, so the eight sum to exactly 1% (`RecoveryRunLossPercent` 1.0 replaces `RecoveryFirstRiskUsd`): on 200,000 they are 40.60, 60.90, 91.36, 137.03, 205.55, 308.33, 462.49, 693.74. Each position has a step column (C to J); the risk is Bp x `LadderGrowth` (1.5924) ^ step; a win raises its position's column, never past a column still 0 (the ladder's rule, owner: "yes"); after eight losses in a row all columns go back to 0 and the run starts again at position 1. Per symbol (owner: yes). Kept as a proposal from the earlier plan: at most `RecoveryMaxRiskPercent` (1.28%) of balance per trade, and a raw amount above it freezes the symbol's steps until the reset. The continuation at 1.28% after the 8th loss is dropped. The Ladder plan and every other decision of v0.12 are unchanged | 4.1.1, 7, 12.1 |
 
 ## 1. Purpose and scope
 
@@ -356,7 +362,7 @@ uses the fixed `RiskPercent` as before.
 
 ```
 riskAmount  = Account.Balance x riskPercent   (ladder, at most 0.5%)
-riskAmount  = R of 4.1.1                      (Recovery, at most 1.28% of Account.Balance)
+riskAmount  = R of 4.1.1                      (Recovery, step columns, at most 1.28% of Account.Balance)
 volumeUnits = riskAmount / (stopPips x Symbol.PipValue)
 volume      = round DOWN to the symbol's volume step
 ```
@@ -367,79 +373,96 @@ volume      = round DOWN to the symbol's volume step
 - cTrader's `Symbol.VolumeForProportionalRisk` is logged beside the formula for comparison, because forum users have reported it disagreeing with manual calculation.
 - **Margin check:** skip if free margin after the trade would fall below 50% of equity.
 
-#### 4.1.1 The Recovery plan (owner decision of 24 November 2026)
+#### 4.1.1 The Recovery plan (owner decisions of 24 November 2026; step columns from v0.13)
 
-The owner's rule, in his words: the first trade risks 100 USD; after a
-loss the next trade risks enough that one win at the target recovers
-everything lost since the last win plus a normal win; from the 9th trade
-of a losing run every trade risks 1.28% until a win; a win starts again at
-100 USD.
+The owner's rule of v0.13, which replaces the rule of v0.12 (a first
+trade of 100 USD and 1.28% from the 9th loss on): a losing run has at most
+eight trades; their base amounts recover the run and sum to exactly 1% of
+initial capital ("1% start"); each of the eight positions has a step
+column that wins raise, as in the ladder; after eight losses in a row the
+pair starts again from 1%.
 
 ```
-F  = RecoveryFirstRiskUsd                 (default 100, account currency)
-RR = RewardRisk                           (the instance's parameter, default 2.0)
-L  = money lost in the current losing run (see below)
-R  = min( (L + RR x F) / RR ,  Account.Balance x RecoveryMaxRiskPercent / 100 )
+RR  = RewardRisk                          (the instance's parameter, default 2.0)
+m1  = 1;  mk = (m1 + ... + m(k-1) + RR) / RR      for k = 2 .. 8
+M   = m1 + ... + m8                       (49.2578125 at RR = 2)
+F0  = InitialCapital x RecoveryRunLossPercent / 100 / M
+                                          (RecoveryRunLossPercent default 1.0)
+Bp  = mp x F0                             (base amount of position p)
+raw = Bp x LadderGrowth ^ step(p)         (LadderGrowth default 1.5924)
+R   = min( raw , Account.Balance x RecoveryMaxRiskPercent / 100 )
                                           (RecoveryMaxRiskPercent default 1.28)
 ```
 
-- **The losing run.** L is the sum of the absolute net results (profit,
-  commission and swap, as the broker booked them, so costs and slippage
-  count) of the bot's closed trades **of the instance's symbol** that closed after the latest win, from
-  broker history since `RiskEpochDate`. A win is a closed trade with a net
-  result above zero; a break-even trade (net exactly 0) or a losing trade
-  continues the run; a win ends it, and the next trade risks F again. With
-  no win since `RiskEpochDate` the run starts at `RiskEpochDate`; with no
-  closed trade at all L = 0 and the trade risks F.
-- **The owner's sequence** at RR = 2 and F = 100, every trade losing exactly
-  its risk: 100, 150, 225, 337.50, 506.25, 759.38, 1,139.06, 1,708.59, then
-  (2,562.89 before the cap). On a 200,000 USD account the 9th trade is
-  capped: after eight losses the balance is 195,074.22 and 1.28% of it is
-  2,496.95, so from the 9th trade of the run every trade risks 1.28% of
-  the current balance until a win. At a balance of exactly 200,000 the cap
-  is 2,560.
-- **Why it recovers.** A win at the target RR returns RR x R = L + RR x F:
-  the whole run plus a normal win. When the cap applies it no longer
-  recovers the whole run.
-- **What counts as a trade, and in which order** (the ladder's conventions,
-  RSK-013 and RSK-017, restricted to the instance's symbol): one trade is everything with the same label (a
-  partial fill, its remainder and partial closes belong together); it is
-  closed when nothing of it is open or pending, and its result is the sum
-  of its closed parts. Trades placed before `RiskEpochDate` are not
-  counted. Closed trades are taken in order of close time; at the same
-  instant in order of placement time, then label. A trade that closed at
-  the same instant as the new trade is placed counts as closed before it.
-- **Each pair on its own (owner decision V).** L counts only the closed
-  bot trades of the instance's own symbol; trades of the other symbols
-  never change it. Each of the five instances has its own losing run and
-  its own amount, so several of them can be at the cap at the same time.
-  Only closed trades change L (one position or order per symbol, so
-  normally none of the symbol is open when its next trade is placed). The account-wide daily budget, kill switch and
-  emergency guard (4.2) still apply to all symbols together.
-- **Nothing is remembered.** R is recomputed from broker data at every
-  placement, so a restart gives the same amount. If the history cannot be
-  read or is invalid, no order is placed.
-- **The owner was told and accepted** (24 November 2026): continuing at
-  1.28% after a long losing run fails much more often than starting
-  again (simulation at a 40% win rate: pass 59%, fail or stop 32% within
-  500 trades); a long enough losing run breaks FTMO's 10% limit. With the
-  cap taken from the current balance and each loss equal to its risk, the
-  drawdown after 13 losses in a row is 8.55% of 200,000, so the 8% kill
-  switch halts after the 13th; FTMO's 10% would be passed by the 15th (14
-  with the cap taken as a flat 2,560). Gaps and slippage make each loss
-  larger, and the daily budget (2%) lets only one loss of the capped size
-  happen per day. These figures are for one pair. With each pair on its
-  own, losing runs on several pairs add up in the account: the kill
-  switch and the daily budget, both account-wide, are what stops them.
-- `SizingPlan` = `Recovery` does not use `LadderEnabled`, `RiskPercent` or
-  the ladder values for sizing (RSK-016).
+- **Base amounts on 200,000 USD** (RR = 2, all steps 0): F0 = 2,000 /
+  49.2578125 = 40.6027 and B1 to B8 = 40.60, 60.90, 91.36, 137.03, 205.55,
+  308.33, 462.49, 693.74, together exactly 2,000 (1%). Each base amount is
+  (the base amounts before it + 2 x F0) / 2, so a 2R win at position p
+  recovers the run plus 2 x F0. The 1% holds only while every step is 0;
+  a raised step makes its position larger. The owner gave the formula for
+  RR = 2; for another `RewardRisk` the multipliers follow RR as written
+  above, so the eight still sum to `RecoveryRunLossPercent` (**proposal**).
+- **Position.** The position p of a new entry is 1 plus the number of the
+  symbol's bot entries placed after the symbol's latest win or latest
+  reset (whichever is later), counting only those that closed or are
+  still open or pending before the new entry is placed (cancelled or
+  expired orders are not entries, as in the ladder). p runs from 1 to 8.
+  With one position or order per symbol a ninth position cannot normally
+  occur; if it does (an entry placed while the eighth is still open), it
+  uses position 8 (**proposal**).
+- **Step columns.** Eight columns C, D, E, F, G, H, I, J hold the steps of
+  positions 1 to 8, whole numbers, all 0 at `RiskEpochDate`. step(p) is
+  the column of p when the entry is placed.
+- **Raising (the ladder's rule, RSK-013 clause 4, confirmed by the owner).**
+  When a win of the symbol closes, the column of the winning entry's
+  position is raised by 1, but never past a column that is still 0: while
+  the column before it is 0 the raise moves one column back (a win at
+  position 3 with C = 1 and D = 0 raises D; with C = 0 it raises C). C can
+  always be raised. A win also ends the run: the next entry is position 1.
+- **Reset after eight losses.** When the symbol's eighth non-win in a row
+  (since its latest win or latest reset) closes, all eight columns go back
+  to 0 and the next entry is position 1 again. A break-even trade (net 0)
+  is a non-win and counts towards the eight, as in the ladder.
+- **Cap and freeze (proposal, kept from the earlier plan).** R is at most
+  `RecoveryMaxRiskPercent` (1.28%) of the balance at placement. As in the
+  ladder, once an entry's raw amount is above that cap, wins of the symbol
+  that close after that entry was placed raise no step, until the next
+  eight-loss reset or a new `RiskEpochDate`. A raw amount exactly at the
+  cap is not above it.
+- **What counts as a trade, and in which order** (the ladder's
+  conventions, RSK-013 and RSK-017, restricted to the instance's symbol):
+  one entry is everything with the same label (a partial fill, its
+  remainder and partial closes belong together); it is closed when
+  nothing of it is open or pending, and its result is the sum of its
+  closed parts (profit, commission and swap). A win is a closed entry with
+  a net result above zero (1e-9 tolerance). Entries placed before
+  `RiskEpochDate` are not counted. Events are taken by time; at the same
+  instant closes come before placements, closes in order of placement
+  time then label, placements likewise.
+- **Each pair on its own (owner decisions V of v0.12, confirmed for this
+  rule).** Positions, columns, freeze and reset are kept per symbol from
+  that symbol's bot entries only. The account-wide daily budget, kill
+  switch and emergency guard (4.2) still apply to all symbols together.
+- **Nothing is remembered.** The columns are rebuilt from the symbol's
+  entries in broker data at every placement, so a restart gives the same
+  amount. If the history cannot be read or is invalid, no order is placed.
+- **What a losing run can cost.** With every step 0, eight losses in a row
+  on one pair lose 1% plus costs. With raised steps a run costs more, at
+  most 8 x 1.28% in theory, and then the pair starts again from 1%. Runs
+  on several pairs add up in the account; the account-wide kill switch
+  (8%) and daily budget (2%) are what stop them. Gaps and slippage make a
+  loss larger than its risk.
+- `SizingPlan` = `Recovery` uses `LadderGrowth` and not `LadderEnabled`,
+  `RiskPercent`, `LadderDealRiskPercent`, `LadderFirstWeight` or
+  `MaxRiskPercentPerTrade` (RSK-016). The ladder plan is unchanged and
+  stays account-wide.
 
 **At 200,000 USD (FTMO simulated capital, from v0.12)**
 
 | Item | Amount |
 |---|---|
 | Risk per trade, Ladder (at most 0.5%) | at most 1,000 USD |
-| Risk per trade, Recovery | 100 USD first, at most 1.28% of balance (2,560 USD at 200,000) |
+| Risk per trade, Recovery | 40.60 USD at position 1 with no step; the eight base amounts of a run sum to 2,000 (1%); at most 1.28% of balance (2,560 USD at 200,000) |
 | Total open risk cap (1.5%) | 3,000 USD, only if `OpenRiskCapEnabled` (off by default from v0.12) |
 | Daily risk budget (2%) | 4,000 USD |
 | Drawdown kill switch (8%) | 16,000 USD |
@@ -694,8 +717,8 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | CostToRiskMax (new) | 0.10 | Costs as a share of stop distance | Fixed |
 | RiskPercent | 0.5 | Risk per trade | Fixed |
 | SizingPlan (new in 0.12) | Ladder | How the risk of a new trade is set: `Ladder` (RSK-013, unchanged) or `Recovery` (4.1.1) | Both are backtested |
-| RecoveryFirstRiskUsd (new in 0.12) | 100 | Recovery: risk of the first trade after a win or from `RiskEpochDate`, in account currency | Fixed |
-| RecoveryMaxRiskPercent (new in 0.12) | 1.28 | Recovery: largest risk of one trade, in percent of balance | Fixed |
+| RecoveryRunLossPercent (new in 0.13; replaces RecoveryFirstRiskUsd of 0.12) | 1.0 | Recovery: the eight base amounts of a losing run together, in percent of initial capital (4.1.1) | Fixed |
+| RecoveryMaxRiskPercent (new in 0.12) | 1.28 | Recovery: largest risk of one trade, in percent of balance; a raw amount above it freezes the symbol's steps until the eight-loss reset (proposal) | Fixed |
 | MaxOpenRiskPercent | 1.5 | Total open risk, when `OpenRiskCapEnabled` | Fixed |
 | OpenRiskCapEnabled (new in 0.12) | false | Total open-risk cap on or off (4.2) | Fixed |
 | MaxPositionsPerCurrency | 2 | Correlation cap, when `CurrencyCapEnabled` | Fixed |
