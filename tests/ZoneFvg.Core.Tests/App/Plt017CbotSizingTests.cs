@@ -15,7 +15,7 @@ public class Plt017CbotSizingTests
     private static readonly string[] NewParameters =
     {
         "[Parameter(\"SizingPlan\", DefaultValue = \"Ladder\", Group = \"Risk\")]",
-        "[Parameter(\"RecoveryFirstRiskUsd\", DefaultValue = 100.0, Group = \"Risk\")]",
+        "[Parameter(\"RecoveryRunLossPercent\", DefaultValue = 1.0, Group = \"Risk\")]",
         "[Parameter(\"RecoveryMaxRiskPercent\", DefaultValue = 1.28, Group = \"Risk\")]",
         "[Parameter(\"SanityCapEnabled\", DefaultValue = false, Group = \"Risk\")]",
         "[Parameter(\"SanityCapPercent\", DefaultValue = 0.55, Group = \"Risk\")]",
@@ -78,7 +78,7 @@ public class Plt017CbotSizingTests
     [Theory]
     [Trait("Req", "PLT-017")]
     [InlineData("SizingPlan = SizingPlanText.Parse(SizingPlan),")]
-    [InlineData("RecoveryFirstRiskUsd = RecoveryFirstRiskUsd,")]
+    [InlineData("RecoveryRunLossPercent = RecoveryRunLossPercent,")]
     [InlineData("RecoveryMaxRiskPercent = RecoveryMaxRiskPercent,")]
     [InlineData("SanityCapEnabled = SanityCapEnabled,")]
     [InlineData("SanityCapPercent = SanityCapPercent,")]
@@ -107,7 +107,7 @@ public class Plt017CbotSizingTests
             string volume = name == "xauusd" ? "MaxVolumeUnits=1000.0" : "MaxVolumeUnits=3000000.0";
             string[] expected =
             {
-                "InitialCapital=200000.0", "DailyLossLimitPercent=2.0", volume, "SizingPlan=Ladder", "RecoveryFirstRiskUsd=100.0", "RecoveryMaxRiskPercent=1.28",
+                "InitialCapital=200000.0", "DailyLossLimitPercent=2.0", volume, "SizingPlan=Ladder", "RecoveryRunLossPercent=1.0", "RecoveryMaxRiskPercent=1.28",
                 "SanityCapEnabled=false", "SanityCapPercent=0.55", "OpenRiskCapEnabled=false", "CurrencyCapEnabled=false",
             };
             foreach (string line in expected)
