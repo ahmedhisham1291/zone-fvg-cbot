@@ -165,6 +165,32 @@ public class Rsk016RecoveryScenarios
         Assert.Equal(20000.0, aud.Order!.VolumeUnits);
     }
 
+    [Theory]
+    [Trait("Req", "RSK-017")]
+    [Trait("Req", "RSK-016")]
+    [InlineData(0.0)]
+    [InlineData(-100000.0)]
+    [InlineData(250000.0)]
+    public void Isolation_AnotherSymbolsResultInTheBrokerHistory_ChangesNoEurUsdColumnOrVolume(double audUsdNet)
+    {
+        // Cap 0.05% (freeze limit 100 on 200,000), balance 300,000 (cap 150 now). EURUSD has three wins at p1;
+        // the third (raw 102.9578) froze the steps, so C = 2 and the next p1 risks 102.9578: 51,478.9 -> 51,000 units.
+        // An AUDUSD result after it, read by the same broker call, changes nothing.
+        var filters = new SymbolFilters(D.Recovery with { RecoveryMaxRiskPercent = 0.05 }, D.Account(300000.0));
+        filters.Broker.AddClosedTrade(D.Trade(1, "EURUSD", "T01", D.Placed(1), D.ClosedAt(1), 81.2054));
+        filters.Broker.AddClosedTrade(D.Trade(2, "EURUSD", "T02", D.Placed(2), D.ClosedAt(2), 129.3115));
+        filters.Broker.AddClosedTrade(D.Trade(3, "EURUSD", "T03", D.Placed(3), D.ClosedAt(3), 205.9156));
+        if (audUsdNet != 0.0)
+        {
+            filters.Broker.AddClosedTrade(D.Trade(99, "AUDUSD", "BIG", D.Placed(3).AddHours(3.0), D.Placed(3).AddHours(4.0), audUsdNet));
+        }
+
+        PreTradeResult eur = filters.Evaluate("EURUSD");
+
+        Assert.True(eur.IsAllowed, eur.Skip?.Detail);
+        Assert.Equal(51000.0, eur.Order!.VolumeUnits);
+    }
+
     [Fact]
     [Trait("Req", "RSK-017")]
     public void Restart_AfterAWinAndTwoLosses_TheNextOrderHasTheSameVolume()

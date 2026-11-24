@@ -652,7 +652,7 @@ public sealed class PreTradeFilters
         {
             DateTime epochStart = CestClock.StartOfCestDateUtc(_riskParameters.RiskEpochDate);
             IReadOnlyList<LadderEntry> entries = RecoverySizer.EntriesFromBroker(c.Context.Symbol, c.Positions, c.Orders, c.History, epochStart);
-            amount = _recovery.Next(entries, c.Now, c.Account!.Balance, _rewardRisk, c.History);
+            amount = _recovery.Next(entries, c.Now, c.Account!.Balance, _rewardRisk);
         }
         catch (ArgumentException exception)
         {
