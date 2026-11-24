@@ -32,7 +32,7 @@ public class RiskParametersTests
         Assert.False(parameters.OpenRiskCapEnabled);
         Assert.False(parameters.CurrencyCapEnabled);
         Assert.Equal(SizingPlan.Ladder, parameters.SizingPlan);
-        Assert.Equal(100.0, parameters.RecoveryFirstRiskUsd);
+        Assert.Equal(1.0, parameters.RecoveryRunLossPercent);
         Assert.Equal(1.28, parameters.RecoveryMaxRiskPercent);
         Assert.Equal(50.0, RiskParameters.MinFreeMarginPercentOfEquity);
     }

@@ -28,7 +28,7 @@ public static class RecoverySizingData
     /// <summary>The defaults of spec v0.12 with the test epoch: Ladder, 200,000, 2%, caps off, 3,000,000 units.</summary>
     public static RiskParameters Defaults => new() { RiskEpochDate = RiskData.Epoch };
 
-    /// <summary><see cref="Defaults"/> with SizingPlan Recovery (F = 100, cap 1.28%).</summary>
+    /// <summary><see cref="Defaults"/> with SizingPlan Recovery (RecoveryRunLossPercent 1.0, cap 1.28%).</summary>
     public static RiskParameters Recovery => Defaults with { SizingPlan = SizingPlan.Recovery };
 
     /// <summary>Placement time of trade number <paramref name="n"/> (1-based) of a sequence: 2 January plus n - 1 days, 10:00 UTC.</summary>
