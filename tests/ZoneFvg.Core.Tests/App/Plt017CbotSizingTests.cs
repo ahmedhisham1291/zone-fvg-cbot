@@ -69,7 +69,7 @@ public class Plt017CbotSizingTests
     [Trait("Req", "PLT-017")]
     [InlineData("[Parameter(\"InitialCapital\", DefaultValue = 200000.0, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"DailyLossLimitPercent\", DefaultValue = 2.0, Group = \"Risk\")]")]
-    [InlineData("[Parameter(\"MaxVolumeUnits\", DefaultValue = 3000000.0, Group = \"Risk\")]")]
+    [InlineData("[Parameter(\"MaxVolumeUnits\", DefaultValue = 0.0, Group = \"Risk\")]")]
     public void Bot_AccountDefaults_AreThoseOfSpecV012(string declaration)
     {
         Assert.Contains(declaration, BotSource(), StringComparison.Ordinal);
@@ -104,7 +104,7 @@ public class Plt017CbotSizingTests
         foreach (string name in Files)
         {
             string[] lines = ParameterFile(name);
-            string volume = name == "xauusd" ? "MaxVolumeUnits=1000.0" : "MaxVolumeUnits=3000000.0";
+            string volume = "MaxVolumeUnits=0.0";
             string[] expected =
             {
                 "InitialCapital=200000.0", "DailyLossLimitPercent=2.0", volume, "SizingPlan=Ladder", "RecoveryRunLossPercent=1.0", "RecoveryMaxRiskPercent=1.28",
@@ -116,7 +116,8 @@ public class Plt017CbotSizingTests
             }
 
             int key = Array.IndexOf(lines, volume);
-            Assert.Equal("SizingPlan=Ladder", lines[key + 1]);
+            Assert.Equal("LadderEnabled=false", lines[key + 1]);
+            Assert.Equal("SizingPlan=Ladder", lines[key + 2]);
         }
     }
 
