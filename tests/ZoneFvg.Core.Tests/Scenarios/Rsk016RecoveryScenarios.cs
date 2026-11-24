@@ -33,70 +33,61 @@ public class Rsk016RecoveryScenarios
 
     // ------------------------------------------------------------------ RSK-016 sizing
 
+    // RecoveryRunLossPercent 100 makes B1 = 4,060.27 and B2 = 6,090.40, above every cap of these tests.
+    private static RiskParameters Large => D.Recovery with { RecoveryRunLossPercent = 100.0 };
+
     [Fact]
     [Trait("Req", "RSK-016")]
-    public void AfterOneLoss_Risks150_75000Units()
+    public void AfterAWin_P1Risks64_6557_32000UnitsAndRiskMoney64()
     {
-        ExecutionHarness h = WithHistory(D.Recovery, D.NthTrade(1, "EURUSD", -100.0));
+        ExecutionHarness h = WithHistory(D.Recovery, D.NthTrade(1, "EURUSD", 81.2054));
 
         PlaceResult? result = h.EvaluateAndPlace(ExecutionData.Buy());
 
         Assert.Equal(PlaceOutcome.Placed, result!.Outcome);
         PendingOrderInfo order = Assert.Single(h.Broker.GetPendingOrders());
-        Assert.Equal(75000.0, order.VolumeUnits);
-        Assert.Equal("e=1.10000;s=1.09800;t=1.10400;r=150.00;h=f681dff2", order.Comment);
+        Assert.Equal(32000.0, order.VolumeUnits);
+        Assert.Equal("e=1.10000;s=1.09800;t=1.10400;r=64.00;h=f681dff2", order.Comment);
         ScenarioAssert.Global(h.Broker);
     }
 
     [Fact]
     [Trait("Req", "RSK-016")]
-    public void AfterTwoLosses_Risks225_RoundedDownTo112000UnitsAndRiskMoney224()
-    {
-        ExecutionHarness h = WithHistory(D.Recovery, D.NthTrade(1, "EURUSD", -100.0), D.NthTrade(2, "EURUSD", -150.0));
-
-        PlannedOrder order = h.OrderOf(ExecutionData.Buy());
-
-        Assert.Equal(112000.0, order.VolumeUnits);
-        Assert.Equal(224.0, order.RiskMoney, 6);
-    }
-
-    [Fact]
-    [Trait("Req", "RSK-016")]
-    public void FirstTradeOfTheEpoch_Risks100()
+    public void FirstEntryOfTheEpoch_Risks40_6027()
     {
         ExecutionHarness h = D.Harness(D.Recovery);
 
         PlannedOrder order = h.OrderOf(ExecutionData.Buy());
 
-        Assert.Equal(50000.0, order.VolumeUnits);
-        Assert.Equal(100.0, order.RiskMoney, 6);
+        // 40.6027 / 0.002 = 20,301.3 -> 20,000 units.
+        Assert.Equal(20000.0, order.VolumeUnits);
+        Assert.Equal(40.0, order.RiskMoney, 6);
     }
 
     [Fact]
     [Trait("Req", "RSK-016")]
-    public void LongRun_CappedAt128PercentOfTheBalanceRead_NotAboveTheVolumeCap()
+    public void RawAboveTheCap_CappedAt128PercentOfTheBalanceRead_NotAboveTheVolumeCap()
     {
-        ExecutionHarness h = WithHistory(D.Recovery, D.NthTrade(1, "EURUSD", -10000.0));
+        ExecutionHarness h = D.Harness(Large);
 
         PlannedOrder order = h.OrderOf(ExecutionData.Buy());
 
-        // R = 2,560 (raw 5,100): 1,280,000 units, within the default 3,000,000.
+        // R = 2,560 (raw 4,060.27): 1,280,000 units, within the default 3,000,000.
         Assert.Equal(1280000.0, order.VolumeUnits);
         Assert.Equal(2560.0, order.RiskMoney, 6);
     }
 
     [Fact]
     [Trait("Req", "RSK-016")]
-    public void TheDivisor_IsTheInstancesRewardRisk()
+    public void TheMultipliers_FollowTheInstancesRewardRisk()
     {
         var filters = new SymbolFilters(D.Recovery, D.Account(), signal: ExecutionData.SignalDefaults with { RewardRisk = 3.0 });
-        filters.Broker.AddClosedTrade(D.NthTrade(1, "EURUSD", -100.0));
 
         PreTradeResult result = filters.Evaluate("EURUSD");
 
-        // (100 + 3 x 100) / 3 = 133.33: 66,666.7 -> 66,000 units.
+        // RR 3: B1 = 2,000 / 26.966... = 74.1670: 37,083.5 -> 37,000 units.
         Assert.True(result.IsAllowed, result.Skip?.Detail);
-        Assert.Equal(66000.0, result.Order!.VolumeUnits);
+        Assert.Equal(37000.0, result.Order!.VolumeUnits);
     }
 
     [Fact]
@@ -104,7 +95,7 @@ public class Rsk016RecoveryScenarios
     [Trait("Req", "RSK-002")]
     public void RecoveryWithTheSanityCapOnAt055_TheCappedAmountIsSkipped()
     {
-        ExecutionHarness h = WithHistory(D.Recovery with { SanityCapEnabled = true }, D.NthTrade(1, "EURUSD", -10000.0));
+        ExecutionHarness h = D.Harness(Large with { SanityCapEnabled = true });
 
         SkipRecord skip = h.SkipOf(ExecutionData.Buy());
 
@@ -144,41 +135,41 @@ public class Rsk016RecoveryScenarios
     [Trait("Req", "RSK-017")]
     public void SameBrokerDataUnderRecovery_TheOtherSymbolsLossesDoNotCount()
     {
-        // The GBPUSD losses of the ladder data: the EURUSD run is empty, so 100 at the balance of 100,000.
+        // The GBPUSD losses of the ladder data: EURUSD is at p1 with all columns 0. The old account of
+        // 100,000 halves B1: 20.3013, 10,150.7 -> 10,000 units.
         ExecutionHarness h = LadderHarness(ExecutionData.RiskDefaults with { SizingPlan = SizingPlan.Recovery }, losses: true);
 
         PlannedOrder order = h.OrderOf(ExecutionData.Buy());
 
-        Assert.Equal(50000.0, order.VolumeUnits);
+        Assert.Equal(10000.0, order.VolumeUnits);
     }
 
     // ------------------------------------------------------------------ RSK-017 per pair, restart, fail closed
 
     [Fact]
     [Trait("Req", "RSK-017")]
-    public void EachPairOnItsOwn_EurUsdRisks225AndGbpUsd100()
+    public void EachPairOnItsOwn_EurUsdAfterAWinGbpUsdAfterALossAudUsdFresh()
     {
         var filters = new SymbolFilters(D.Recovery, D.Account());
-        filters.Broker.AddClosedTrade(D.Trade(1, "EURUSD", "E1", D.Placed(1), D.ClosedAt(1), -100.0));
-        filters.Broker.AddClosedTrade(D.Trade(2, "GBPUSD", "G1", D.Placed(2), D.ClosedAt(2), -300.0));
-        filters.Broker.AddClosedTrade(D.Trade(3, "EURUSD", "E2", D.Placed(3), D.ClosedAt(3), -150.0));
-        filters.Broker.AddClosedTrade(D.Trade(4, "GBPUSD", "G2", D.Placed(4), D.ClosedAt(4), 200.0));
+        filters.Broker.AddClosedTrade(D.Trade(1, "EURUSD", "E1", D.Placed(1), D.ClosedAt(1), 81.2054));
+        filters.Broker.AddClosedTrade(D.Trade(2, "GBPUSD", "G1", D.Placed(2), D.ClosedAt(2), -40.6027));
 
         PreTradeResult eur = filters.Evaluate("EURUSD");
         PreTradeResult gbp = filters.Evaluate("GBPUSD");
         PreTradeResult aud = filters.Evaluate("AUDUSD");
 
-        Assert.Equal(112000.0, eur.Order!.VolumeUnits);
-        Assert.Equal(50000.0, gbp.Order!.VolumeUnits);
+        // EURUSD p1 with C = 1: 64.6557 -> 32,000; GBPUSD p2: 60.9040 -> 30,000; AUDUSD p1: 40.6027 -> 20,000.
+        Assert.Equal(32000.0, eur.Order!.VolumeUnits);
+        Assert.Equal(30000.0, gbp.Order!.VolumeUnits);
         Assert.Equal("ZFVG|v1|GBPUSD|D-20260114-0400", gbp.Order!.Label);
-        Assert.Equal(50000.0, aud.Order!.VolumeUnits);
+        Assert.Equal(20000.0, aud.Order!.VolumeUnits);
     }
 
     [Fact]
     [Trait("Req", "RSK-017")]
-    public void Restart_AfterTwoLosses_TheThirdOrderHasTheSameVolume()
+    public void Restart_AfterAWinAndTwoLosses_TheNextOrderHasTheSameVolume()
     {
-        ClosedTradeInfo[] history = { D.NthTrade(1, "EURUSD", -104.2), D.NthTrade(2, "EURUSD", -157.35), D.NthTrade(3, "GBPUSD", -99.99) };
+        ClosedTradeInfo[] history = { D.NthTrade(1, "EURUSD", 81.2054), D.NthTrade(2, "EURUSD", -64.6557), D.NthTrade(3, "EURUSD", -60.904), D.NthTrade(4, "GBPUSD", -99.99) };
         ExecutionHarness before = WithHistory(D.Recovery, history);
         PlannedOrder first = before.OrderOf(ExecutionData.Buy());
 
@@ -188,8 +179,8 @@ public class Rsk016RecoveryScenarios
         ExecutionHarness reordered = WithHistory(D.Recovery, Enumerable.Reverse(history).ToArray());
         PlannedOrder other = reordered.OrderOf(ExecutionData.Buy());
 
-        // L = 261.55, R = 230.775: 115,387.5 -> 115,000 units.
-        Assert.Equal(115000.0, first.VolumeUnits);
+        // p3 with E = 0: 91.3561 -> 45,678 -> 45,000 units.
+        Assert.Equal(45000.0, first.VolumeUnits);
         Assert.Equal(first.VolumeUnits, again.VolumeUnits);
         Assert.Equal(first.RiskMoney, again.RiskMoney);
         Assert.Equal(first.Comment, again.Comment);
@@ -225,15 +216,10 @@ public class Rsk016RecoveryScenarios
 
     // ------------------------------------------------------------------ RSK-006 daily budget with Recovery
 
-    private static SymbolFilters AfterTodaysLoss(bool backtest = false, bool earlierRun = true)
+    private static SymbolFilters AfterTodaysLoss(RiskParameters risk, bool backtest = false)
     {
-        // Balance 197,440 after a loss of 2,560 closed today, M = 200,000. With the earlier EURUSD loss of 5,000, L = 7,560.
-        var filters = new SymbolFilters(D.Recovery, D.Account(197440.0), backtest);
-        if (earlierRun)
-        {
-            filters.Broker.AddClosedTrade(D.Trade(1, "EURUSD", "OLD", ExecutionData.At(12, 10, 0), ExecutionData.At(12, 12, 0), -5000.0));
-        }
-
+        // Balance 197,440 after a loss of 2,560 on EURUSD closed today, M = 200,000.
+        var filters = new SymbolFilters(risk, D.Account(197440.0), backtest);
         filters.Broker.AddClosedTrade(D.Trade(2, "EURUSD", "TODAY", ExecutionData.At(14, 7, 0), ExecutionData.At(14, 8, 0), -2560.0));
         return filters;
     }
@@ -243,11 +229,12 @@ public class Rsk016RecoveryScenarios
     [Trait("Req", "RSK-016")]
     public void CappedRecoveryAmountAfterTodaysLoss_RefusedByTheDailyBudget()
     {
-        SymbolFilters filters = AfterTodaysLoss();
+        SymbolFilters filters = AfterTodaysLoss(Large);
 
         PreTradeResult result = filters.Evaluate("EURUSD");
 
-        // R = 1.28% of 197,440 = 2,527.232 -> 1,263,000 units, risk 2,526; used 2,560 + 2,526 = 5,086 above 4,000.
+        // EURUSD p2 (raw 6,090.40) is capped at 1.28% of 197,440 = 2,527.232 -> 1,263,000 units, risk 2,526;
+        // used 2,560 + 2,526 = 5,086 above 4,000.
         Assert.False(result.IsAllowed);
         Assert.Equal(SkipReason.DailyBudgetExceeded, result.Skip!.Reason);
         Assert.Equal(5086.0, result.Skip!.Measured, 6);
@@ -259,7 +246,7 @@ public class Rsk016RecoveryScenarios
     [Trait("Req", "RSK-006")]
     public void CappedRecoveryAmountAfterTodaysLoss_InABacktest_WouldBlockAndIsPlaced()
     {
-        SymbolFilters filters = AfterTodaysLoss(backtest: true);
+        SymbolFilters filters = AfterTodaysLoss(Large, backtest: true);
 
         PreTradeResult result = filters.Evaluate("EURUSD");
 
@@ -272,20 +259,26 @@ public class Rsk016RecoveryScenarios
     [Fact]
     [Trait("Req", "RSK-006")]
     [Trait("Req", "RSK-017")]
-    public void AccountWide_EurUsdLossThenGbpUsd100Allowed_WithAnAudUsdPositionRefused()
+    public void AccountWide_EurUsdLossThenGbpUsdP1Allowed_WithAnAudUsdPositionRefused()
     {
-        SymbolFilters allowed = AfterTodaysLoss(earlierRun: false);
-        SymbolFilters refused = AfterTodaysLoss(earlierRun: false);
+        // GBPUSD with a volume step of 1 unit, so its 40.6027 at p1 is 20,301 units, risk 40.602.
+        SymbolFilters allowed = AfterTodaysLoss(D.Recovery);
+        SymbolFilters refused = AfterTodaysLoss(D.Recovery);
+        foreach (SymbolFilters filters in new[] { allowed, refused })
+        {
+            filters.Broker.SetSymbol(D.Pair("GBPUSD", "GBP") with { VolumeStepUnits = 1.0, VolumeMinUnits = 1.0 });
+        }
+
         refused.Broker.AddPosition("AUDUSD", Side.Buy, 700000.0, 1.1, 1.098, 1.104, D.Label("AUDUSD", "D-20260114-0000"), "e=;s=;t=");
 
         PreTradeResult gbp = allowed.Evaluate("GBPUSD");
         PreTradeResult blocked = refused.Evaluate("GBPUSD");
 
-        // GBPUSD has no run of its own: R = 100, 50,000 units; used 2,560 + 100 = 2,660; with 1,400 more at the AUDUSD stop 4,060.
+        // Used 2,560 + 40.602 = 2,600.602; with 1,400 more at the AUDUSD stop 4,000.602 > 4,000.
         Assert.True(gbp.IsAllowed, gbp.Skip?.Detail);
-        Assert.Equal(50000.0, gbp.Order!.VolumeUnits);
+        Assert.Equal(20301.0, gbp.Order!.VolumeUnits);
         Assert.Equal(SkipReason.DailyBudgetExceeded, blocked.Skip!.Reason);
-        Assert.Equal(4060.0, blocked.Skip!.Measured, 6);
+        Assert.Equal(4000.602, blocked.Skip!.Measured, 6);
     }
 
     private static ExecutionHarness LadderHarness(RiskParameters risk, bool losses)
