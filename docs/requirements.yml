@@ -301,22 +301,27 @@ requirements:
       broker port.
 
   - id: RSK-004
-    wp: WP04
-    spec: "4.2"
+    wp: WP38
+    spec: "4.2, 7"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
-      Open risk cap. The sum of risk at stop of every bot position and
-      pending order on the account, plus the new trade, must not exceed
-      MaxOpenRiskPercent (1.5%) of InitialCapital.
+      Open risk cap. When OpenRiskCapEnabled is true, the sum of risk at stop
+      of every bot position and pending order on the account, plus the new
+      trade, must not exceed MaxOpenRiskPercent (1.5%) of InitialCapital.
+      Changed on 2026-11-24 (owner decision W): OpenRiskCapEnabled defaults
+      to false, and then this check refuses nothing; the open risk is still
+      computed and reported wherever it is reported today.
 
   - id: RSK-005
-    wp: WP04
-    spec: "4.2"
+    wp: WP38
+    spec: "4.2, 7"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
-      Currency exposure cap. Buying a pair is long its base and short its
+      Currency exposure cap, when CurrencyCapEnabled is true (default false
+      from 2026-11-24, owner decision W; when false this check refuses
+      nothing). Buying a pair is long its base and short its
       quote currency. For each of the two currencies of the new trade, on the
       side the new trade takes in it, the number of bot positions and pending
       orders on that side, including the new trade, must not exceed
@@ -494,7 +499,8 @@ requirements:
       RecoveryFirstRiskUsd (100, account currency), RR the instance's
       RewardRisk parameter (2.0) in every entry mode, B the account balance
       from the broker port at placement, and L the money lost in the current
-      losing run (RSK-017). With L = 0 the trade risks F (or the cap, if it
+      losing run of the instance's own symbol (RSK-017; owner decision V of
+      2026-11-24: each pair on its own). With L = 0 the trade risks F (or the cap, if it
       is smaller). A raw amount exactly at the cap is the cap. R is passed to
       the position sizer as the risk amount of RSK-001 (volume = R / (stop
       pips x pip value), rounded down), and every check of RSK-002 to RSK-006
@@ -503,6 +509,8 @@ requirements:
       at a balance of 200,000, risks 100, 150, 225, 337.5, 506.25, 759.375,
       1,139.0625, 1,708.59375, then the cap 2,496.95 (1.28% of 195,074.21875)
       and 1.28% of the balance at each placement after that, until a win.
+      The divisor stays RewardRisk in the Choch model too, whose target may
+      be beyond RR (owner decision Y of 2026-11-24).
       SizingPlan Recovery does not use LadderEnabled, RiskPercent or the
       ladder values (RSK-013) for sizing.
 
@@ -514,8 +522,11 @@ requirements:
     text: >-
       Recovery losing run from broker data (owner decision Q of 2026-11-24,
       with the conventions of RSK-013). Trades are built from broker data as
-      the ladder builds its entries: everything with the same bot label is
-      one trade; it is closed when nothing of it is open or pending, its net
+      the ladder builds its entries, restricted to the instance's symbol
+      (owner decision V of 2026-11-24): only bot positions, pending orders
+      and closed trades whose symbol equals the instance's symbol (ordinal)
+      are read, so trades of other symbols never change L or R.
+      Everything with the same bot label is one trade; it is closed when nothing of it is open or pending, its net
       result is the sum of the net results (profit, commission, swap) of its
       closed parts and its close time the latest of them; trades placed
       before 00:00 CE(S)T of RiskEpochDate are not counted. A win is a closed
@@ -525,8 +536,8 @@ requirements:
       taken in the order close time, then placement time, then label
       (ordinal); L is the sum of the absolute net results of the non-wins
       after the last win in that order, or of all of them when there is no
-      win. Open positions and pending orders, of any instance, do not change
-      L. The amount is a pure function of the positions, pending orders and
+      win. Open positions and pending orders do not change L. The ladder
+      (RSK-013) is not changed by this and stays account-wide. The amount is a pure function of the positions, pending orders and
       history read from the broker at the placement, the parameters and T:
       the same data in any record order, and the same data after a restart,
       give the same R, bit for bit. A record with a time that is not UTC, a
@@ -540,13 +551,15 @@ requirements:
     verify: unit
     status: planned
     text: >-
-      Risk defaults for the 200,000 USD account (owner decisions P, Q, R and
-      S of 2026-11-24). The core's risk parameters default to InitialCapital
+      Risk defaults for the 200,000 USD account (owner decisions P to X of
+      2026-11-24). The core's risk parameters default to InitialCapital
       200,000, DailyLossLimitPercent 2.0, SizingPlan Ladder,
       RecoveryFirstRiskUsd 100, RecoveryMaxRiskPercent 1.28, SanityCapEnabled
-      false and SanityCapPercent 0.55; every other default is unchanged
-      (RiskPercent 0.5, MaxOpenRiskPercent 1.5, MaxDrawdownPercent 8, the
-      FTMO values 5, 10 and 1, MaxVolumeUnits 500,000, the ladder values).
+      false, SanityCapPercent 0.55, OpenRiskCapEnabled false,
+      CurrencyCapEnabled false and MaxVolumeUnits 3,000,000 (owner decisions
+      W and X); every other default is unchanged (RiskPercent 0.5,
+      MaxOpenRiskPercent 1.5, MaxPositionsPerCurrency 2, MaxDrawdownPercent 8,
+      the FTMO values 5, 10 and 1, the ladder values).
       Validation refuses, naming the parameter, a SizingPlan other than
       Ladder or Recovery, a RecoveryFirstRiskUsd that is not a finite number
       greater than 0, and a RecoveryMaxRiskPercent or SanityCapPercent that
@@ -1304,7 +1317,10 @@ requirements:
       its own parameter file, storage, logs and heartbeat address. Its
       parameters equal the forex instances' except MaxSpreadPips 40,
       MinStopPips 800 and MaxVolumeUnits 200 (ounces). The cBot's default
-      parameter values stay the forex values.
+      parameter values stay the forex values. (In the platform's pip of 1
+      USD the two gold values are MaxSpreadPips 0.4 and MinStopPips 8, spec
+      7; from the owner decision X of 2026-11-24 gold's MaxVolumeUnits is
+      1,000 ounces, set in its parameter file by WP38.)
 
   # ---------------------------------------------------------------- SIMULATION
   - id: SIM-001
@@ -1376,9 +1392,10 @@ requirements:
       beside fixed and ladder, with --recovery-first <money> (default 100),
       --recovery-max <percent> (default 1.28) and --reward-risk <R> (default
       2.0). Each trade then risks the amount of RSK-016 computed from the
-      simulated balance at its open and the simulated losing run: the money
-      results of the trades closed at or before its open, in the
-      simulator's close order, a win being a result above zero. A trade's
+      simulated balance at its open and the simulated losing run of its own
+      symbol (owner decision V): the money results of the trades of the same
+      symbol closed at or before its open, in the simulator's close order, a
+      win being a result above zero. A trade's
       money result is its ResultR times its risk. As for the ladder, only
       the two phases (10% and 5%) are run and the report names the sizing
       recovery. Any other --sizing value is refused with a message naming
@@ -1396,8 +1413,13 @@ requirements:
       simulator and the acceptance report, and the --initial-capital option
       of every command, default to 200,000; the daily budget of the combiner
       and the challenge simulator, and the --daily-budget option, default to
-      2.0. The help text shows the new defaults. Given explicitly, the old
-      values 100,000 and 1.5 give the results of before, bit for bit.
+      2.0. The combiner's open-risk cap and currency cap are off by default
+      (owner decision W) and each is on exactly when its option
+      (--max-open-risk, --max-per-currency) is given or its parameter object
+      switches it on; the report then counts its refusals as before, and
+      when it is off the report says so. The help text shows the new
+      defaults. Given explicitly, the old values (100,000, 1.5 and both caps
+      on) give the results of before, bit for bit.
 
   # ---------------------------------------------------------------- BREAKOUT MODE (spec v0.10)
   - id: SIG-022
@@ -2172,11 +2194,12 @@ requirements:
     verify: unit
     status: planned
     text: >-
-      Sizing plan, sanity cap and account defaults in the cBot (owner
-      decisions P, Q, R and S of 2026-11-24). The group "Risk" gains
+      Sizing plan, sanity cap, open-risk and currency caps, size cap and
+      account defaults in the cBot (owner decisions P to X of 2026-11-24). The group "Risk" gains
       SizingPlan "Ladder", RecoveryFirstRiskUsd 100, RecoveryMaxRiskPercent
-      1.28, SanityCapEnabled false and SanityCapPercent 0.55; InitialCapital
-      defaults to 200000 and DailyLossLimitPercent to 2.0. The values are
+      1.28, SanityCapEnabled false, SanityCapPercent 0.55, OpenRiskCapEnabled
+      false and CurrencyCapEnabled false; InitialCapital defaults to 200000,
+      DailyLossLimitPercent to 2.0 and MaxVolumeUnits to 3000000. The values are
       checked at start in every mode and a refusal names the parameter as
       cTrader shows it; the text of SizingPlan is parsed in the core and
       tested there. The parameter hash does not contain the sizing plan or
@@ -2184,5 +2207,5 @@ requirements:
       were. With SizingPlan Recovery the core's start line ends with
       sizing=Recovery; with Ladder the start line is unchanged, byte for
       byte. Every parameter file under deploy/params sets InitialCapital
-      200000.0, DailyLossLimitPercent 2.0 and the five new lines with their
-      defaults; deploy/README.md and docs/runbook.md name the new values.
+      200000.0, DailyLossLimitPercent 2.0, MaxVolumeUnits 3000000.0 (gold
+      1000.0) and the seven new lines with their defaults; deploy/README.md and docs/runbook.md name the new values.

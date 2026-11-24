@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.12 · 24 November 2026 (v0.11 of 23 November 2026, with the owner's decisions of 24 November 2026: a 200,000 USD account, a second sizing plan "Recovery", a 2% daily risk budget and a per-trade sanity cap that can be switched off, section 4)
+Version 0.12 · 24 November 2026 (v0.11 of 23 November 2026, with the owner's decisions of 24 November 2026: a 200,000 USD account, a second sizing plan "Recovery" computed per pair, a 2% daily risk budget, a per-trade sanity cap, open-risk cap and currency cap that are off by default, and a larger size cap, section 4)
 
 ## 0. What changed in v0.2
 
@@ -69,8 +69,12 @@ A review of v0.1 found these gaps. Each is fixed in the section shown.
 | Q. Sizing plan | `SizingPlan` = `Ladder` (default, the behaviour of v0.11 unchanged) or `Recovery` (new, 4.1.1). Recovery: the first trade after a win, or from `RiskEpochDate`, risks `RecoveryFirstRiskUsd` (100 USD); after losses each trade risks (L + RewardRisk x first) / RewardRisk, L being the money lost in the current losing run, so that one 2R win recovers the run plus 2 x first; at most `RecoveryMaxRiskPercent` (1.28%) of balance; a win resets. The owner was told and accepted that continuing at 1.28% fails much more often than restarting (simulation at 40% winners: pass 59%, fail or stop 32% in 500 trades), that a long enough losing run breaks FTMO's 10% limit, and that the 8% kill switch stops trading after about 13 losses in a row | 4.1, 4.1.1, 7, 12.1 |
 | R. Daily risk budget | 2% of initial capital (was 1.5%), in both sizing plans. FTMO's 5% and the emergency guard unchanged | 4.2, 7, 15.4 |
 | S. Per-trade sanity cap | The check "calculated risk above 0.55% of balance" can be switched with `SanityCapEnabled`, **default off** (the owner's explicit choice after being told that it is the last protection against a sizing bug or bad price data). Its percent stays a parameter, `SanityCapPercent` (0.55), for when it is on. The other sanity checks (volume above `MaxVolumeUnits`, stop or target on the wrong side) always apply | 4.3, 7 |
-| T. Unchanged | Kill switch 8%, FTMO emergency guard, open-risk cap 1.5%, currency cap, `MaxVolumeUnits`, the circuit breakers and every other limit | 4.2, 4.3 |
-| U. Simulator | The simulation tools offer `--sizing recovery` with the same rule, and their defaults follow the account: initial capital 200,000, daily budget 2% | 12.1 |
+| T. Unchanged | Kill switch 8%, FTMO emergency guard, the margin check, the circuit breakers and every other limit not named in rows V to X | 4.2, 4.3 |
+| U. Simulator | The simulation tools offer `--sizing recovery` with the same rule, and their defaults follow the account: initial capital 200,000, daily budget 2%, open-risk and currency caps off | 12.1 |
+| V. Each pair on its own (owner's answer of 24 November 2026: "don't check all other trades; calculate separately per pair; this money management per each pair separately") | The Recovery losing run and amount are computed per symbol: only the closed bot trades of the instance's own symbol count. The Ladder (RSK-013) stays account-wide, as before: the owner's words were given for the Recovery money management | 4.1.1 |
+| W. Open-risk and currency caps off | The total open-risk cap (1.5%) and the same-direction currency cap (2) are switched off by default with `OpenRiskCapEnabled` and `CurrencyCapEnabled` (both false); their values stay parameters. Account-wide stay: the 2% daily risk budget (all symbols' open worst case plus today's results), the 8% kill switch and the FTMO emergency guard. The owner accepts that with five independent instances up to 6.4% (5 x 1.28%) could ask to be at risk at once; live the account-wide daily budget refuses every trade that would take the day's worst case beyond 2%, and that keeps a day inside FTMO's 5% | 4.2, 4.3, 7 |
+| X. Size cap raised | `MaxVolumeUnits` defaults to 3,000,000 units (30 lots) for the currency pairs and 1,000 ounces for gold (was 500,000 and 200). The margin check is unchanged | 4.1, 4.3, 7, 15.3 |
+| Y. Recovery divisor | The divisor stays the instance's `RewardRisk` (2.0) in every mode; a Choch win whose target is beyond 2R returns more than planned, accepted | 4.1.1 |
 
 ## 1. Purpose and scope
 
@@ -381,7 +385,7 @@ R  = min( (L + RR x F) / RR ,  Account.Balance x RecoveryMaxRiskPercent / 100 )
 
 - **The losing run.** L is the sum of the absolute net results (profit,
   commission and swap, as the broker booked them, so costs and slippage
-  count) of the bot's closed trades that closed after the latest win, from
+  count) of the bot's closed trades **of the instance's symbol** that closed after the latest win, from
   broker history since `RiskEpochDate`. A win is a closed trade with a net
   result above zero; a break-even trade (net exactly 0) or a losing trade
   continues the run; a win ends it, and the next trade risks F again. With
@@ -398,18 +402,20 @@ R  = min( (L + RR x F) / RR ,  Account.Balance x RecoveryMaxRiskPercent / 100 )
   the whole run plus a normal win. When the cap applies it no longer
   recovers the whole run.
 - **What counts as a trade, and in which order** (the ladder's conventions,
-  RSK-013 and RSK-016): one trade is everything with the same label (a
+  RSK-013 and RSK-017, restricted to the instance's symbol): one trade is everything with the same label (a
   partial fill, its remainder and partial closes belong together); it is
   closed when nothing of it is open or pending, and its result is the sum
   of its closed parts. Trades placed before `RiskEpochDate` are not
   counted. Closed trades are taken in order of close time; at the same
   instant in order of placement time, then label. A trade that closed at
   the same instant as the new trade is placed counts as closed before it.
-- **Several instances at once.** Only closed trades change L. Trades still
-  open or pending, of this or another instance, do not: two trades placed
-  while nothing closes in between risk the same amount, and both of their
-  results then count in the run. The open-risk cap and the daily budget
-  (4.2) still limit what can be open together.
+- **Each pair on its own (owner decision V).** L counts only the closed
+  bot trades of the instance's own symbol; trades of the other symbols
+  never change it. Each of the five instances has its own losing run and
+  its own amount, so several of them can be at the cap at the same time.
+  Only closed trades change L (one position or order per symbol, so
+  normally none of the symbol is open when its next trade is placed). The account-wide daily budget, kill switch and
+  emergency guard (4.2) still apply to all symbols together.
 - **Nothing is remembered.** R is recomputed from broker data at every
   placement, so a restart gives the same amount. If the history cannot be
   read or is invalid, no order is placed.
@@ -422,7 +428,9 @@ R  = min( (L + RR x F) / RR ,  Account.Balance x RecoveryMaxRiskPercent / 100 )
   switch halts after the 13th; FTMO's 10% would be passed by the 15th (14
   with the cap taken as a flat 2,560). Gaps and slippage make each loss
   larger, and the daily budget (2%) lets only one loss of the capped size
-  happen per day.
+  happen per day. These figures are for one pair. With each pair on its
+  own, losing runs on several pairs add up in the account: the kill
+  switch and the daily budget, both account-wide, are what stops them.
 - `SizingPlan` = `Recovery` does not use `LadderEnabled`, `RiskPercent` or
   the ladder values for sizing (RSK-016).
 
@@ -432,7 +440,7 @@ R  = min( (L + RR x F) / RR ,  Account.Balance x RecoveryMaxRiskPercent / 100 )
 |---|---|
 | Risk per trade, Ladder (at most 0.5%) | at most 1,000 USD |
 | Risk per trade, Recovery | 100 USD first, at most 1.28% of balance (2,560 USD at 200,000) |
-| Total open risk cap (1.5%) | 3,000 USD |
+| Total open risk cap (1.5%) | 3,000 USD, only if `OpenRiskCapEnabled` (off by default from v0.12) |
 | Daily risk budget (2%) | 4,000 USD |
 | Drawdown kill switch (8%) | 16,000 USD |
 | 2% monthly target | 4,000 USD |
@@ -441,17 +449,19 @@ R  = min( (L + RR x F) / RR ,  Account.Balance x RecoveryMaxRiskPercent / 100 )
 
 | Stop distance on EURUSD | Size at 1,000 USD risk (0.5%) | Margin at 1:30 (Swing) |
 |---|---|---|
-| 12 pips (smallest allowed) | 833,000 units: above `MaxVolumeUnits` (500,000), skipped | n/a |
-| 20 pips | 500,000 units (5 lots), exactly the cap | About 9% of the account |
+| 12 pips (smallest allowed) | 833,000 units (8.33 lots) | About 15% of the account |
+| 20 pips | 500,000 units (5 lots) | About 9% |
 | 50 pips | 200,000 units (2 lots) | About 4% |
 
-- **The volume cap at 200,000.** `MaxVolumeUnits` (500,000 units, 5 lots;
-  gold 200 ounces) is unchanged (owner decision T). A forex trade can
-  therefore risk at most 500,000 x stop pips x 0.0001 USD: 1,000 USD at a
-  20-pip stop, 2,560 USD only at a stop of 51.2 pips or more. Larger
-  Recovery amounts on shorter stops are skipped as `VolumeAboveCap`, and
-  the run continues with the next trade. Gold: 200 ounces x the stop in
-  USD, so 2,560 USD needs a stop of 12.80 USD or more.
+- **The volume cap at 200,000 (owner decision X).** `MaxVolumeUnits` is
+  3,000,000 units (30 lots) for the currency pairs and 1,000 ounces for
+  gold. A forex trade can risk at most 3,000,000 x stop pips x 0.0001 USD:
+  3,600 USD at the smallest stop of 12 pips, so a Recovery amount of
+  2,560 USD fits at every allowed stop. The margin check binds first for
+  large positions: 2,560 USD on a 12-pip EURUSD stop is 2,133,000 units,
+  a margin of about 77,000 USD at 1:30 (about 38% of the account), which
+  passes alone but not beside another large position. Gold: 1,000 ounces x
+  the stop in USD, so 2,560 USD fits at stops of 2.56 USD and more.
 - **Leverage.** The Swing account type has 1:30 leverage. The smallest allowed stop was raised from 8 to 12 pips so that three simultaneous trades still fit inside the margin check. This also narrows the range of position sizes, which suits FTMO's rule on consistent sizing. The Recovery plan sizes trades very differently by design.
 - **Fills.** These sizes are normal for major pairs, but partial fills on limit orders and slippage on stops become more likely than with small sizes. Both are logged per trade and stress-tested in section 12.1.
 - **Backtests** use a 200,000 USD starting balance (100,000 before v0.12) so sizes and commissions are realistic.
@@ -464,8 +474,8 @@ R  = min( (L + RR x F) / RR ,  Account.Balance x RecoveryMaxRiskPercent / 100 )
 
 | Limit | Default | How it is calculated | Effect |
 |---|---|---|---|
-| Total open risk | 1.5% | Stop distance x volume of every bot position and pending order | At most three trades at risk at 0.5% each; with Recovery one trade of 1.28% leaves room for 0.22% |
-| Same-direction exposure per currency | 2 | Buying EURUSD counts as long EUR and short USD. For each currency, at most two bot positions or orders on the same side | Limits correlated exposure, for example long EURUSD, GBPUSD and AUDUSD together |
+| Total open risk | Off (`OpenRiskCapEnabled` = false from v0.12); `MaxOpenRiskPercent` 1.5% when on | Stop distance x volume of every bot position and pending order | When on: at most three trades at risk at 0.5% each |
+| Same-direction exposure per currency | Off (`CurrencyCapEnabled` = false from v0.12); `MaxPositionsPerCurrency` 2 when on | Buying EURUSD counts as long EUR and short USD. For each currency, at most two bot positions or orders on the same side | When on: limits correlated exposure, for example long EURUSD, GBPUSD and AUDUSD together |
 | Daily risk budget | 2% of initial capital (4,000 USD at 200,000; 1.5% before v0.12) | Measured the way FTMO measures its daily limit: from the balance at 00:00 CE(S)T. A new trade is allowed only if equity would still be within 4,000 USD of that balance even if every open stop, including the new one, were hit (commission included) | No new entries until the next CE(S)T day; pending orders cancelled |
 | Drawdown kill switch | 8% | Highest closing balance since `RiskEpochDate` (from history) minus current equity | Halt (section 8.5). Resumes only when you set a new `RiskEpochDate` |
 | FTMO emergency guard | Equity within 1% of initial capital (2,000 USD) of either FTMO floor | Daily: equity at or below the 00:00 CE(S)T balance minus 8,000 USD. Overall: equity at or below 182,000 USD | Close all positions, cancel orders, Halt. The only case where the bot closes trades for risk reasons |
@@ -486,35 +496,36 @@ Protection against code errors rather than market risk.
 | Order requests per instance per day | 100 | Halt. Five instances stay far below FTMO's 2,000-a-day limit |
 | Unhandled errors per hour | 5 | Halt |
 | Calculated risk above `SanityCapPercent` (0.55%) of balance | Off (`SanityCapEnabled` = false, owner decision of 24 November 2026) | When on: skip and alert |
-| Volume above `MaxVolumeUnits` | Per symbol: 500,000 units for the forex pairs, 200 for gold (ounces) | Skip and alert |
+| Volume above `MaxVolumeUnits` | Per symbol: 3,000,000 units for the forex pairs, 1,000 for gold (ounces); 500,000 and 200 before v0.12 | Skip and alert |
 | Stop or target on the wrong side of entry | n/a | Skip and alert |
 
-**With the per-trade sanity cap off (the default from v0.12).** The cap was
-the last check tied to the current balance alone. What still bounds a
-single trade, as the code stands (RSK-002, RSK-004, RSK-006, PreTradeFilters):
+**What bounds a single trade (defaults of v0.12: sanity cap, open-risk cap
+and currency cap off).** As the code stands (RSK-002, RSK-006,
+PreTradeFilters), with the owner decisions S, W and X:
 
-- **Open-risk cap (4.2), live and in backtests:** the new trade's risk at
-  its stop plus that of every open bot position and pending order must not
-  exceed 1.5% of initial capital (3,000 USD at 200,000). For one trade
-  alone this is the tightest money limit, tighter than the daily budget.
-- **Daily risk budget (4.2), live only:** the new trade's risk at its stop
-  plus its commission, plus today's realised loss and the worst case of
-  everything open, must not exceed 2% of initial capital (4,000 USD). In a
-  backtest it only writes "would block" (8.5, decision C) and bounds
-  nothing.
-- **`MaxVolumeUnits` and the broker's largest volume, live and in
-  backtests:** a trade above either is skipped. This is the only bound that
-  does not use the symbol's pip size and pip value.
-- **Margin check:** free margin after the trade at least 50% of equity.
+- **Live:** the account-wide **daily risk budget** (4.2): the new trade's
+  risk at its stop plus its commission, plus today's realised loss and the
+  worst case of every open bot position and pending order of all symbols,
+  must not exceed 2% of initial capital (4,000 USD). For a trade on an
+  empty day this is 4,000 USD; the budget also caps everything open
+  together at 2% plus today's realised profit. Then **`MaxVolumeUnits`**
+  (3,000,000 units; gold 1,000 ounces) and the broker's largest volume,
+  and the **margin check** (free margin after the trade at least 50% of
+  equity). The **sanity cap** only if `SanityCapEnabled` is on.
+- **In backtests** the daily budget only writes "would block" (8.5,
+  decision C) and bounds nothing, so a trade is bounded only by
+  `MaxVolumeUnits`, the broker's largest volume and the margin check (and
+  the sanity cap if on), and the five instances can be at risk together
+  beyond 2% (up to 6.4% with Recovery at its cap). The simulation tools
+  apply the daily budget afterwards.
 
-The sanity cap, the open-risk cap and the daily budget all compute money
-from the same stop price, pip size and pip value. Bad price data or a
-wrong pip value from the broker would deceive all three alike, so the
-sanity cap never protected against that by itself; what it added was a
-limit of 0.55% of the current balance, below the 1.5% and 2% of initial
-capital above. None of these limits covers a loss beyond the stop (a gap
-or slippage); the kill switch and the emergency guard act afterwards.
-With `SanityCapEnabled` = true and the Recovery plan, every Recovery amount
+`MaxVolumeUnits` and the broker's volume limit are the only bounds that do
+not use the symbol's pip size and pip value. The sanity cap and the daily
+budget compute money from the same stop price, pip size and pip value, so
+bad price data or a wrong pip value from the broker would deceive both
+alike. None of these limits covers a loss beyond the stop (a gap or
+slippage); the kill switch and the emergency guard act afterwards. With
+`SanityCapEnabled` = true and the Recovery plan, every Recovery amount
 above `SanityCapPercent` of balance is skipped (1,100 USD at 200,000 with
 0.55%), so the percent has to be at least `RecoveryMaxRiskPercent` for the
 plan to work as the owner described.
@@ -685,8 +696,10 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | SizingPlan (new in 0.12) | Ladder | How the risk of a new trade is set: `Ladder` (RSK-013, unchanged) or `Recovery` (4.1.1) | Both are backtested |
 | RecoveryFirstRiskUsd (new in 0.12) | 100 | Recovery: risk of the first trade after a win or from `RiskEpochDate`, in account currency | Fixed |
 | RecoveryMaxRiskPercent (new in 0.12) | 1.28 | Recovery: largest risk of one trade, in percent of balance | Fixed |
-| MaxOpenRiskPercent | 1.5 | Total open risk | Fixed |
-| MaxPositionsPerCurrency | 2 | Correlation cap | Fixed |
+| MaxOpenRiskPercent | 1.5 | Total open risk, when `OpenRiskCapEnabled` | Fixed |
+| OpenRiskCapEnabled (new in 0.12) | false | Total open-risk cap on or off (4.2) | Fixed |
+| MaxPositionsPerCurrency | 2 | Correlation cap, when `CurrencyCapEnabled` | Fixed |
+| CurrencyCapEnabled (new in 0.12) | false | Same-direction currency cap on or off (4.2) | Fixed |
 | DailyLossLimitPercent | 2 (1.5 before v0.12) | Daily stop | Fixed |
 | MaxDrawdownPercent | 8 | Kill switch | Fixed |
 | InitialCapital (new in 0.6) | 200,000 (100,000 before v0.12) | Base for FTMO percentages; in a backtest it must equal the starting capital | Fixed |
@@ -697,7 +710,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | RiskEpochDate (new) | First live day; empty in a backtest means the backtest's first day (added 23 November 2026) | Start date for drawdown measurement | Set manually live |
 | MaxEntriesPerSymbolPerDay (new) | 2 | Circuit breaker | Fixed |
 | MaxEntriesPerDay (new) | 6 | Circuit breaker | Fixed |
-| MaxVolumeUnits (new) | 500,000 (5 lots); gold 200 (ounces) | Size sanity cap; always on | Per symbol |
+| MaxVolumeUnits (new) | 3,000,000 (30 lots); gold 1,000 (ounces); 500,000 and 200 before v0.12 | Size sanity cap; always on | Per symbol |
 | SanityCapEnabled (new in 0.12) | false | The check "calculated risk above SanityCapPercent of balance" (4.3) on or off | Fixed |
 | SanityCapPercent (new in 0.12) | 0.55 | Its limit when it is on | Fixed |
 | SessionStartUtc / SessionEndUtc | 07:00 / 17:00; 00:00 / 24:00 for Choch (v0.11: 24:00 accepted as the end, not in Breakout mode) | Trading window | Fixed |
@@ -1099,11 +1112,9 @@ Every quarter, re-run the backtest including the latest data and compare live re
 2. Will this account be used only by the bot?
 3. Index CFDs (for example US500 and US100) for the Breakout mode (v0.10). They are not part of v0.10: the bot accepts only symbols that start with six letters, and an index needs its own news currency, exposure cap, stop and spread values. To add them, the developer needs the symbol line the cBot prints at start on your FTMO cTrader account for each index (name, digits, tick size, lot size, volume steps, commission, sessions).
 4. Which acceptance marks does a mode pass that runs on one symbol (SessionRange on gold, 13.1)? The search measured it once on the holdout already, so the holdout of 12.1 is no longer unused for this rule: the remaining clean evidence is a forward test on the Free Trial or a demo account.
-5. `MaxVolumeUnits` on the 200,000 USD account (v0.12). It stays at 500,000 units (gold 200 ounces), as decided on 24 November 2026. At that cap a forex trade risks at most 1,000 USD on a 20-pip stop, so many Ladder trades of 0.5% and most Recovery trades above about 1,000 USD on forex stops under 51 pips are skipped as `VolumeAboveCap` (4.1). Should the cap be raised for the new account (and, if so, what does the margin check of 4.1 then allow)?
-6. Recovery: the divisor of 4.1.1 is the instance's `RewardRisk` parameter (2.0) in every entry mode. In the Choch model the target comes from chart levels and is at least `MinRewardRisk`, so a win can return more than RR x R. Accepted as written (proposal of the plan of 24 November 2026), or should the divisor be a separate parameter?
 
 
-**Resolved:** the CHoCH entry model's proposal values of 3.9 and 7 (accepted by the owner on 23 November 2026), account (FTMO 2-Step, Swing, cTrader, 200,000 USD from 24 November 2026, before that 100,000 USD bought and not started), sizing plan, daily budget and per-trade sanity cap (owner decisions of 24 November 2026, v0.12), symbols (four majors, plus gold from v0.9), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
+**Resolved:** the CHoCH entry model's proposal values of 3.9 and 7 (accepted by the owner on 23 November 2026), account (FTMO 2-Step, Swing, cTrader, 200,000 USD from 24 November 2026, before that 100,000 USD bought and not started), sizing plan, daily budget, per-trade sanity cap, each pair on its own, open-risk and currency caps off, `MaxVolumeUnits` 3,000,000 and gold 1,000, and the Recovery divisor `RewardRisk` (owner decisions of 24 November 2026, v0.12), symbols (four majors, plus gold from v0.9), timeframes (D1 / H4 / M15), stop placement (beyond the whole zone), account limits (1.5% daily, 8% kill switch), news (two free feeds), hosting (laptop first, then a rented VPS), alerts (Telegram).
 
 ## 15. FTMO account
 
@@ -1162,7 +1173,7 @@ This is the account you hold, and it is the right fit for this bot:
 3. **Swing, because of weekends.** Standard requires being flat before the weekend. If the server is offline at Friday close, that is a rule breach on Standard and only a market risk on Swing.
 4. **It must be chosen at purchase.** A Standard account cannot become Swing later.
 
-**The cost of Swing** is 1:30 leverage. The bot is adjusted for it: smallest stop 12 pips and a 5-lot size cap (section 4.1).
+**The cost of Swing** is 1:30 leverage. The bot is adjusted for it: smallest stop 12 pips and a size cap, 5 lots until v0.12 and 30 lots from it (section 4.1).
 
 The bot still closes positions on Friday evening and avoids entries around news. On Swing these are trading choices, not rules whose failure ends the account.
 
@@ -1185,7 +1196,7 @@ Amounts for the 200,000 USD account (v0.12). Every amount is a percent of initia
 
 - There is no time limit, so a slow pass is allowed. The +4R a month is a hope, not a measurement.
 - Raising risk shortens the wait and raises the chance of hitting a floor. The challenge simulation (12.1, step 9) puts numbers on that trade-off before any fee is paid.
-- If risk per trade changes, the open-risk cap and daily risk budget scale with it and must still sit well inside FTMO's 5% (10,000 USD). In the Recovery plan the risk per trade changes with every loss by design; the targets in R above do not apply to it, and the challenge simulation with `--sizing recovery` (12.1, step 9) gives its pass and fail rates.
+- If risk per trade changes, the daily risk budget (and the open-risk cap, when it is switched on) scale with it and must still sit well inside FTMO's 5% (10,000 USD). In the Recovery plan the risk per trade changes with every loss by design; the targets in R above do not apply to it, and the challenge simulation with `--sizing recovery` (12.1, step 9) gives its pass and fail rates.
 
 ### 15.6 Staging with FTMO
 

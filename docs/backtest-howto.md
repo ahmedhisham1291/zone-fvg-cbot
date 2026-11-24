@@ -121,7 +121,8 @@ step 1).
      mode only: in Breakout mode the bot keeps no zones and no gaps, so
      nothing is drawn.
    - **Gold (XAUUSD) only:** MaxSpreadPips 0.4, MinStopPips 8,
-     MaxVolumeUnits 200. Everything else as for the forex pairs. FTMO's
+     MaxVolumeUnits 1000 (from 24 November 2026; 200 before; the forex
+     default is 3000000 from WP38 on, 500000 before). Everything else as for the forex pairs. FTMO's
      cTrader reports a gold pip of 1 USD (spec 7), so 0.4 means a spread of
      0.40 USD and 8 means a stop of 8 USD. (Until 23 November 2026 this
      guide said 40 and 800, values written for a pip of 0.01 USD. The gold
@@ -222,7 +223,10 @@ step 1).
 All commands run in Terminal in the `zone-fvg-cbot-main` folder. Each
 command first merges the files it gets by time and removes the trades the
 account limits would have refused (spec 12.1 step 7). `--seed 1` makes a
-result repeatable; keep it the same.
+result repeatable; keep it the same. From WP38 on the open-risk cap and
+the currency cap are off by default, as in the bot (spec 4.2, v0.12); the
+daily budget of 2% is applied. To see what the old caps would have done,
+add `--max-open-risk 1.5 --max-per-currency 2`.
 
 Run each command once per mode: once with the `...-breakout-dev.csv` files
 (as shown) and once with the `...-zonefvg-dev.csv` files. Never mix the files
@@ -365,12 +369,11 @@ step 4.
     `RangeMinWidthAtr` 0.5, `RangeStopAtr` 1.0. Leave `InitialCapital`
     (200000), `RiskEpochDate` (empty) and `NewsEnabled` (true) as in step 6.
     The news filter is then off for this run, as in the search (the `start`
-    line shows `news=disabled`). You may also set `MaxVolumeUnits` to 200,
-    as in the gold file. With the ladder it changes nothing here: with a
-    stop of at least 8 USD, a trade of at most 0.5% reaches 200 ounces only
-    above about 320,000 USD of equity. With the Recovery plan (Part 7) a
-    trade of 2,560 USD reaches 200 ounces at stops under 12.80 USD and is
-    then skipped.
+    line shows `news=disabled`). Set `MaxVolumeUnits` to 1000, as in the
+    gold file (the cBot's default is the forex value). With a stop of at
+    least 8 USD, a trade of at most 0.5% reaches 1,000 ounces only above
+    about 1,600,000 USD of equity, and a Recovery trade of 2,560 USD fits
+    at any stop of 2.56 USD or more.
 17. Backtest settings (cog icon, as in step 7):
     - **Data:** **m1 bars from server**, as in your earlier gold backtests.
       This setting should give results near the second line of figures in
@@ -527,8 +530,13 @@ Spec 4.1.1 (v0.12, your decision of 24 November 2026): the first trade
 after a win risks 100 USD; after losses each trade risks (money lost since
 the last win + 2 x 100) / 2, so one 2R win recovers the run plus 200; from
 the 9th trade of a losing run every trade risks 1.28% of the balance until
-a win. The daily budget is 2% (4,000 USD) and the per-trade sanity cap is
-off by default, in both plans. Check that the cBot has the parameter
+a win. Each pair has its own losing run: a loss on EURUSD does not raise
+the next GBPUSD trade. The daily budget is 2% (4,000 USD) over all pairs
+together, and the per-trade sanity cap, the open-risk cap and the
+currency cap are off by default, in both plans. Because the run is per
+pair, a cTrader backtest of one symbol sizes its trades exactly as the
+live instance would (apart from the daily budget, which a backtest only
+logs). Check that the cBot has the parameter
 `SizingPlan` in the group **Risk** before you start.
 
 The sizing plan changes the money, not which trades the strategy takes.
@@ -552,19 +560,21 @@ Two ways to see what Recovery would have done:
     from Part 2:
     - **SizingPlan:** `Recovery` (exactly so).
     - Leave `RecoveryFirstRiskUsd` (100), `RecoveryMaxRiskPercent` (1.28),
-      `SanityCapEnabled` (false), `DailyLossLimitPercent` (2) and
-      `InitialCapital` (200000) at their defaults; Starting capital 200000.
+      `SanityCapEnabled` (false), `OpenRiskCapEnabled` (false),
+      `CurrencyCapEnabled` (false), `DailyLossLimitPercent` (2),
+      `MaxVolumeUnits` (3000000; gold 1000) and `InitialCapital` (200000)
+      at their defaults; Starting capital 200000.
     Put the plan into the file names, for example
     `eurusd-breakout-recovery-dev.csv`. The `start` line of the Log ends
     with `sizing=Recovery`; check it. The parameter `hash` in that line is
     the same as with `Ladder`: the plan does not change it.
 33. **What to look at.** The order comment of each trade shows the risk
     money. After a loss the next trade's risk must grow as in spec 4.1.1;
-    after a win it must be 100 again. Many skips with `VolumeAboveCap`
-    mean the size cap of 500,000 units (gold 200 ounces) stopped a large
-    Recovery trade: at a 20-pip stop the cap allows 1,000 USD, and 2,560 USD
-    needs a stop of 51.2 pips. Such a trade is not placed and the run
-    goes on with the next one (spec 4.1 and 14, question 5). In a backtest
+    after a win it must be 100 again, on the same pair. With the size cap of
+    3,000,000 units (gold 1,000 ounces) a Recovery trade of 2,560 USD fits
+    at every allowed stop; a skip with `FreeMarginTooLow` means the margin
+    check stopped a large position (spec 4.1). A skipped trade is not
+    placed and the run goes on with the next one. In a backtest
     the daily budget only writes "would block" (Part 2); the `combine` and
     `ftmo` commands apply it afterwards.
 34. **Run both plans through `combine` and `accept`** (Part 3) with the
