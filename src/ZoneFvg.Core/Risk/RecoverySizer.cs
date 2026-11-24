@@ -8,8 +8,7 @@ namespace ZoneFvg.Core.Risk;
 /// <summary>
 /// The Recovery sizing plan with step columns (RSK-016, RSK-017, spec 4.1.1, owner decisions V, Y
 /// and Z of 2026-11-24): the risk money of the next entry of one symbol as a pure function of that
-/// symbol's bot entries since RiskEpochDate, the placement time, the balance, the account's closed
-/// trades and RewardRisk. The only field is the validated parameter set; the columns are rebuilt
+/// symbol's bot entries since RiskEpochDate, the placement time, the balance and RewardRisk. The only field is the validated parameter set; the columns are rebuilt
 /// from the full entry list at every call.
 /// </summary>
 /// <remarks>
@@ -19,10 +18,9 @@ namespace ZoneFvg.Core.Risk;
 /// <para>The entries are the ladder's entries (<see cref="LadderSizer.EntriesFromBroker"/>,
 /// <see cref="LadderEntry"/>) of the instance's symbol only (<see cref="EntriesFromBroker"/>), and
 /// they are replayed in the ladder's event order; the ladder itself stays account-wide.</para>
-/// <para>The cap of a past entry, which decides the freeze, uses the balance at its placement:
-/// the balance read now minus the net result of every account trade closed after that instant
-/// (summed in the order close time, position id, net), as the risk engine rebuilds balances
-/// (RSK-007).</para>
+/// <para>The freeze of a past entry is judged against the fixed reference InitialCapital x
+/// RecoveryMaxRiskPercent / 100 (orchestrating session, 2026-11-24), so the replay needs no past
+/// balance and no other symbol's trade; the current balance only caps the new entry's R.</para>
 /// </remarks>
 public sealed class RecoverySizer
 {
@@ -93,7 +91,8 @@ public sealed class RecoverySizer
     /// <exception cref="ArgumentException">RewardRisk or InitialCapital is not a finite number greater than zero.</exception>
     public RecoveryState StartState(double rewardRisk)
     {
-        return RecoveryState.Start(BaseAmounts(rewardRisk).ToArray(), _parameters.LadderGrowth, _parameters.RecoveryMaxRiskPercent);
+        double freezeLimit = _parameters.InitialCapital * _parameters.RecoveryMaxRiskPercent / 100.0;
+        return RecoveryState.Start(BaseAmounts(rewardRisk).ToArray(), _parameters.LadderGrowth, _parameters.RecoveryMaxRiskPercent, freezeLimit);
     }
 
     /// <summary>
@@ -142,13 +141,11 @@ public sealed class RecoverySizer
     /// <param name="placedUtc">Placement time of the next entry, kind UTC: the broker's server time.</param>
     /// <param name="balance">The account balance from the broker port at the placement.</param>
     /// <param name="rewardRisk">The instance's RewardRisk (owner decision Y).</param>
-    /// <param name="accountHistory">Every closed trade of the account (all symbols, bot or not) since at least the epoch start, to rebuild the balance at past placements.</param>
     /// <returns>The sizing of the next entry.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    /// <exception cref="ArgumentException">An entry or a closed trade is null or invalid, two entries share a key, a time is not UTC, an entry was placed or closed after <paramref name="placedUtc"/>, or the balance, RewardRisk or InitialCapital is not a finite number greater than zero.</exception>
-    public RecoveryDecision Next(IReadOnlyList<LadderEntry> entries, DateTime placedUtc, double balance, double rewardRisk, IReadOnlyList<ClosedTradeInfo> accountHistory)
+    /// <exception cref="ArgumentException">An entry is null or invalid, two entries share a key, a time is not UTC, an entry was placed or closed after <paramref name="placedUtc"/>, or the balance, RewardRisk or InitialCapital is not a finite number greater than zero.</exception>
+    public RecoveryDecision Next(IReadOnlyList<LadderEntry> entries, DateTime placedUtc, double balance, double rewardRisk)
     {
-        ArgumentNullException.ThrowIfNull(accountHistory);
         LadderEntry[] ordered = Relabel(() => LadderSizer.Ordered(entries));
         Require(placedUtc.Kind == DateTimeKind.Utc, "the placement time of the new entry is not UTC");
         foreach (LadderEntry entry in ordered)
@@ -159,7 +156,6 @@ public sealed class RecoverySizer
         }
 
         Require(double.IsFinite(balance) && balance > 0.0, "the balance is not a finite number greater than zero");
-        (DateTime Close, double Net)[] closes = Closes(accountHistory);
         RecoveryState state = StartState(rewardRisk);
         var positions = new int[ordered.Length];
         foreach (LadderSizer.BookEvent e in LadderSizer.SortedEvents(ordered))
@@ -170,42 +166,13 @@ public sealed class RecoverySizer
             }
             else
             {
-                state = state.Place(e.TimeUtc, BalanceAt(balance, closes, e.TimeUtc), out RecoveryDecision placed);
+                // The balance only caps R of a past entry, which is not used; the freeze does not depend on it.
+                state = state.Place(e.TimeUtc, balance, out RecoveryDecision placed);
                 positions[e.Index] = placed.Position;
             }
         }
 
         return state.Preview(balance);
-    }
-
-    private static (DateTime Close, double Net)[] Closes(IReadOnlyList<ClosedTradeInfo> history)
-    {
-        foreach (ClosedTradeInfo trade in history)
-        {
-            Require(trade != null, "a closed trade of the account is null");
-            Require(trade!.CloseTimeUtc.Kind == DateTimeKind.Utc, "the close time of a closed trade of the account is not UTC");
-            Require(double.IsFinite(trade.NetProfit), "the net result of a closed trade of the account is not a finite number");
-        }
-
-        // Fixed summation order, so the broker's order of the records cannot change the last bits.
-        return history
-            .OrderBy(trade => trade.CloseTimeUtc)
-            .ThenBy(trade => trade.PositionId)
-            .ThenBy(trade => trade.NetProfit)
-            .Select(trade => (trade.CloseTimeUtc, trade.NetProfit))
-            .ToArray();
-    }
-
-    private static double BalanceAt(double balance, (DateTime Close, double Net)[] closes, DateTime timeUtc)
-    {
-        // A close at the instant of a placement came before it (RSK-017), so only later closes are taken back.
-        double later = 0.0;
-        foreach ((DateTime close, double net) in closes)
-        {
-            later += close > timeUtc ? net : 0.0;
-        }
-
-        return balance - later;
     }
 
     private static bool Same(string? a, string b)
