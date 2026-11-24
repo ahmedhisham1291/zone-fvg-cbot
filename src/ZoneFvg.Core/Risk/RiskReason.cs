@@ -24,7 +24,7 @@ public enum RiskReason
     /// <summary>The volume is above MaxVolumeUnits (RSK-002).</summary>
     VolumeAboveCap,
 
-    /// <summary>The computed risk is above 0.55% of balance (RSK-002).</summary>
+    /// <summary>The computed risk is above SanityCapPercent (default 0.55) of balance, checked only with SanityCapEnabled (RSK-002).</summary>
     RiskAboveSanityCap,
 
     /// <summary>The snapshot's history does not reach back far enough to compute the limits (RSK-007, RSK-008).</summary>

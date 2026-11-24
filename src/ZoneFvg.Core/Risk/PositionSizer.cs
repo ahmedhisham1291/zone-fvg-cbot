@@ -27,8 +27,8 @@ public sealed class PositionSizer
     /// <summary>
     /// Sizes a trade (RSK-001) and applies the sanity caps (RSK-002), in this order, stopping at
     /// the first failure: input check (fail closed), stop on the loss side of entry, target on
-    /// the profit side of entry, minimum volume, MaxVolumeUnits, computed risk at most 0.55% of
-    /// balance.
+    /// the profit side of entry, minimum volume, MaxVolumeUnits, and, only when SanityCapEnabled is
+    /// true, computed risk at most SanityCapPercent of balance (RSK-002, RSK-018).
     /// </summary>
     /// <remarks>
     /// riskAmount = balance x RiskPercent / 100; volume = riskAmount / (stopPips x pip value per
@@ -102,10 +102,14 @@ public sealed class PositionSizer
         }
 
         double riskMoney = volume * stopPips * symbol.PipValuePerUnit;
-        double sanityCap = account.Balance * RiskParameters.MaxComputedRiskPercent / 100.0;
-        if (PriceMath.GreaterThan(riskMoney, sanityCap, PriceMath.DefaultTolerance))
+        if (_parameters.SanityCapEnabled)
         {
-            return SizingResult.Skipped(RiskReason.RiskAboveSanityCap, riskAmount, stopPips, riskMoney, sanityCap, "risk " + Text(riskMoney) + " above 0.55% of balance " + Text(sanityCap));
+            // RSK-002: only when switched on (owner decision S of 2026-11-24), against SanityCapPercent.
+            double sanityCap = account.Balance * _parameters.SanityCapPercent / 100.0;
+            if (PriceMath.GreaterThan(riskMoney, sanityCap, PriceMath.DefaultTolerance))
+            {
+                return SizingResult.Skipped(RiskReason.RiskAboveSanityCap, riskAmount, stopPips, riskMoney, sanityCap, "risk " + Text(riskMoney) + " above " + Text(_parameters.SanityCapPercent) + "% of balance " + Text(sanityCap));
+            }
         }
 
         return SizingResult.Allowed(volume, riskMoney, riskAmount, stopPips);

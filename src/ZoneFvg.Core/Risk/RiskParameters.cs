@@ -15,12 +15,6 @@ namespace ZoneFvg.Core.Risk;
 public sealed record RiskParameters
 {
     /// <summary>
-    /// Largest computed risk of one trade, in percent of balance, before the trade is skipped
-    /// (RSK-002, spec 4.3). Fixed by the spec; not a parameter.
-    /// </summary>
-    public const double MaxComputedRiskPercent = 0.55;
-
-    /// <summary>
     /// Smallest free margin after a trade, in percent of equity (RSK-003, spec 4.1). Fixed by the
     /// spec; not a parameter.
     /// </summary>
@@ -35,14 +29,14 @@ public sealed record RiskParameters
     /// <summary>Most bot positions and pending orders on the same side of one currency (RSK-005). Default 2.</summary>
     public int MaxPositionsPerCurrency { get; init; } = 2;
 
-    /// <summary>Daily risk budget in percent of <see cref="InitialCapital"/> (RSK-006). Default 1.5.</summary>
-    public double DailyLossLimitPercent { get; init; } = 1.5;
+    /// <summary>Daily risk budget in percent of <see cref="InitialCapital"/> (RSK-006, RSK-018). Default 2.0 (owner decision R of 2026-11-24; 1.5 before).</summary>
+    public double DailyLossLimitPercent { get; init; } = 2.0;
 
     /// <summary>Drawdown from the peak balance at which the kill switch halts, in percent (RSK-008). Default 8.</summary>
     public double MaxDrawdownPercent { get; init; } = 8.0;
 
-    /// <summary>Initial capital, the base of the FTMO percentages (RSK-004, RSK-006, RSK-009). Default 100,000.</summary>
-    public double InitialCapital { get; init; } = 100000.0;
+    /// <summary>Initial capital, the base of the FTMO percentages (RSK-004, RSK-006, RSK-009, RSK-018). Default 200,000 (owner decision P of 2026-11-24; 100,000 before).</summary>
+    public double InitialCapital { get; init; } = 200000.0;
 
     /// <summary>FTMO maximum daily loss in percent of <see cref="InitialCapital"/> (RSK-009). Default 5.</summary>
     public double FtmoDailyLossPercent { get; init; } = 5.0;
@@ -75,8 +69,53 @@ public sealed record RiskParameters
     /// <summary>Most unhandled errors per instance in one hour (RSK-010, spec 4.3). Default 5.</summary>
     public int MaxErrorsPerHour { get; init; } = 5;
 
-    /// <summary>Largest volume of one trade in units (RSK-002). Default 500,000 (5 lots).</summary>
-    public double MaxVolumeUnits { get; init; } = 500000.0;
+    /// <summary>Largest volume of one trade in units (RSK-002, RSK-018). Default 3,000,000 (30 lots; owner decision X of 2026-11-24, 500,000 before).</summary>
+    public double MaxVolumeUnits { get; init; } = 3000000.0;
+
+    /// <summary>
+    /// The check "computed risk above <see cref="SanityCapPercent"/> of balance" on or off (RSK-002,
+    /// RSK-018, spec 4.3). Default false (owner decision S of 2026-11-24). The other sanity checks
+    /// of RSK-002 always apply.
+    /// </summary>
+    public bool SanityCapEnabled { get; init; }
+
+    /// <summary>
+    /// Largest computed risk of one trade, in percent of balance, when <see cref="SanityCapEnabled"/>
+    /// is true (RSK-002, RSK-018). Default 0.55.
+    /// </summary>
+    public double SanityCapPercent { get; init; } = 0.55;
+
+    /// <summary>
+    /// The total open-risk cap of <see cref="MaxOpenRiskPercent"/> on or off (RSK-004, RSK-018, spec
+    /// 4.2). Default false (owner decision W of 2026-11-24). The open risk is computed and reported
+    /// either way.
+    /// </summary>
+    public bool OpenRiskCapEnabled { get; init; }
+
+    /// <summary>
+    /// The same-direction currency cap of <see cref="MaxPositionsPerCurrency"/> on or off (RSK-005,
+    /// RSK-015, RSK-018, spec 4.2). Default false (owner decision W of 2026-11-24).
+    /// </summary>
+    public bool CurrencyCapEnabled { get; init; }
+
+    /// <summary>
+    /// How the risk of a new trade is set (RSK-016, RSK-018, spec 4.1): <c>Ladder</c>
+    /// (RSK-013, or the fixed RiskPercent with LadderEnabled false) or <c>Recovery</c>
+    /// (spec 4.1.1). Default Ladder.
+    /// </summary>
+    public SizingPlan SizingPlan { get; init; } = SizingPlan.Ladder;
+
+    /// <summary>
+    /// Recovery plan: risk money of the first trade after a win or from RiskEpochDate, in the
+    /// account currency (RSK-016, RSK-018). Default 100.
+    /// </summary>
+    public double RecoveryFirstRiskUsd { get; init; } = 100.0;
+
+    /// <summary>
+    /// Recovery plan: largest risk of one trade in percent of the balance at placement (RSK-016,
+    /// RSK-018). Default 1.28.
+    /// </summary>
+    public double RecoveryMaxRiskPercent { get; init; } = 1.28;
 
     /// <summary>
     /// Ladder sizing on or off (RSK-013, spec 4.1). When true the risk percent of each new entry
@@ -146,6 +185,8 @@ public sealed record RiskParameters
             throw OutOfRange(nameof(MaxVolumeUnits), "must be a finite number greater than zero", Text(MaxVolumeUnits));
         }
 
+        // RSK-018: checked after every value that existed before, so their refusals are unchanged.
+        RequirePercent(SanityCapPercent, nameof(SanityCapPercent));
         ValidateSizing();
     }
 
@@ -154,7 +195,9 @@ public sealed record RiskParameters
     /// this order: RiskPercent, LadderDealRiskPercent and MaxRiskPercentPerTrade greater than 0
     /// and at most 100, LadderGrowth a finite number of at least 1, LadderFirstWeight greater than
     /// 0 and at most 1 / 3.375, so that the four parts (3.375 x w1 together) never exceed the
-    /// deal. Called by <see cref="Validate"/>.
+    /// deal; then (RSK-018) SizingPlan Ladder or Recovery, RecoveryFirstRiskUsd a finite number
+    /// greater than 0, RecoveryMaxRiskPercent greater than 0 and at most 100. Called by
+    /// <see cref="Validate"/>.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range. The exception's parameter name is the name of the parameter.</exception>
     public void ValidateSizing()
@@ -172,6 +215,17 @@ public sealed record RiskParameters
         }
 
         RequirePercent(MaxRiskPercentPerTrade, nameof(MaxRiskPercentPerTrade));
+        if (SizingPlan != SizingPlan.Ladder && SizingPlan != SizingPlan.Recovery)
+        {
+            throw OutOfRange(nameof(SizingPlan), "must be Ladder or Recovery", ((int)SizingPlan).ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (!double.IsFinite(RecoveryFirstRiskUsd) || RecoveryFirstRiskUsd <= 0.0)
+        {
+            throw OutOfRange(nameof(RecoveryFirstRiskUsd), "must be a finite number greater than zero", Text(RecoveryFirstRiskUsd));
+        }
+
+        RequirePercent(RecoveryMaxRiskPercent, nameof(RecoveryMaxRiskPercent));
     }
 
     private static void RequirePercent(double value, string name)

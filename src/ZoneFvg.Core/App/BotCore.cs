@@ -39,6 +39,8 @@ namespace ZoneFvg.Core.App;
 /// ZoneFvg mode: the signal engine, the replay of recovery, the pre-trade filters and the parameter hash
 /// use the Choch parameters, the start line ends with <c>mode=ZoneFvg model=Choch</c>, and the daily zone
 /// counts name the window end <c>no-choch</c>.</para>
+/// <para>With SizingPlan Recovery (RSK-018, PLT-017) the start line ends with <c>sizing=Recovery</c>,
+/// after the mode and model fields; with Ladder it is unchanged.</para>
 /// </remarks>
 public sealed class BotCore
 {
@@ -353,6 +355,12 @@ public sealed class BotCore
             // REC-020: two more fields in the Choch model; the line of the Fvg model is unchanged.
             start.Add(("mode", "ZoneFvg"));
             start.Add(("model", "Choch"));
+        }
+
+        if (_risk.SizingPlan == SizingPlan.Recovery)
+        {
+            // RSK-018, PLT-017: one more field at the very end in the Recovery plan; the Ladder line is unchanged.
+            start.Add(("sizing", "Recovery"));
         }
 
         Write("start", start.ToArray());
