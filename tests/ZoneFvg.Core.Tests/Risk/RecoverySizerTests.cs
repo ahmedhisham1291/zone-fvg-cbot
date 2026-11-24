@@ -9,7 +9,8 @@ namespace ZoneFvg.Core.Tests;
 /// <summary>
 /// RSK-016 and RSK-017 on the pure sizer (spec v0.13, owner decision Z): eight base amounts that sum
 /// to 1% of InitialCapital, step columns C to J per symbol raised by wins without skipping a column,
-/// a reset after eight non-wins in a row, the 1.28% cap and the freeze. Defaults: InitialCapital
+/// a reset after eight non-wins in a row, the 1.28% cap of the balance and the freeze, judged against
+/// 1.28% of InitialCapital so that no other symbol can change it. Defaults: InitialCapital
 /// 200,000, RR 2, LadderGrowth 1.5924, balance 200,000 at every placement, no other account trade.
 /// Four-decimal values compared to 1e-4.
 /// </summary>
@@ -21,9 +22,9 @@ public class RecoverySizerTests
 
     private static readonly RecoverySizer Sizer = new(D.Recovery);
 
-    private static RecoveryDecision Next(IReadOnlyList<LadderEntry> entries, RecoverySizer? sizer = null, double balance = D.Capital, DateTime? at = null, IReadOnlyList<ClosedTradeInfo>? account = null)
+    private static RecoveryDecision Next(IReadOnlyList<LadderEntry> entries, RecoverySizer? sizer = null, double balance = D.Capital, DateTime? at = null)
     {
-        return (sizer ?? Sizer).Next(entries, at ?? ExecutionData.Now, balance, RewardRisk, account ?? Array.Empty<ClosedTradeInfo>());
+        return (sizer ?? Sizer).Next(entries, at ?? ExecutionData.Now, balance, RewardRisk);
     }
 
     /// <summary>
@@ -236,6 +237,9 @@ public class RecoverySizerTests
 
         Assert.Equal(25.6, decision.RiskMoney, 6);
         Assert.True(decision.Capped);
+
+        // 40.6027 is far below the freeze limit 1.28% x 200,000 = 2,560: capped by the balance, not frozen.
+        Assert.False(decision.StepsFrozen);
     }
 
     [Fact]
@@ -268,39 +272,62 @@ public class RecoverySizerTests
 
     [Fact]
     [Trait("Req", "RSK-016")]
-    public void Next_RawEqualToTheCap_DoesNotFreeze()
+    public void Next_RawEqualToTheFreezeLimit_DoesNotFreeze()
     {
+        // RecoveryMaxRiskPercent chosen so that InitialCapital x percent / 100 equals B1 (1e-9 tolerance).
         double b1 = Sizer.BaseAmounts(RewardRisk)[0];
-        double balance = b1 / 0.0128;
+        var sizer = new RecoverySizer(D.Recovery with { RecoveryMaxRiskPercent = b1 / 2000.0 });
 
-        RecoveryDecision atCap = Next(Array.Empty<LadderEntry>(), balance: balance);
-        var entries = new List<LadderEntry> { D.Nth(1, 2.0 * b1) };
-        RecoveryDecision next = Next(entries, balance: balance);
+        RecoveryDecision atLimit = Next(Array.Empty<LadderEntry>(), sizer);
+        RecoveryDecision next = Next(new[] { D.Nth(1, 2.0 * b1) }, sizer);
 
-        Assert.Equal(atCap.CapAmount, atCap.RawAmount, 9);
-        Assert.False(atCap.Capped);
-        Assert.False(atCap.StepsFrozen);
+        Assert.Equal(atLimit.CapAmount, atLimit.RawAmount, 9);
+        Assert.False(atLimit.Capped);
+        Assert.False(atLimit.StepsFrozen);
         Assert.Equal(Columns(1), next.Columns);
     }
 
     [Fact]
     [Trait("Req", "RSK-016")]
-    [Trait("Req", "RSK-017")]
-    public void Next_TheCapOfAPastEntry_UsesTheBalanceAtItsPlacement()
+    public void Next_TheFreezeIsJudgedAgainstInitialCapitalNotTheBalance()
     {
-        // Cap 0.05%: at 200,000 the third p1 (raw 102.9578) is above the cap of 100 and freezes. If the
-        // balance was 300,000 then (100,000 lost on another symbol after it), its cap was 150: no freeze, C = 3.
+        // Cap 0.05%: freeze limit 100 on InitialCapital 200,000. At a balance of 300,000 the new entry may risk
+        // up to 150, but the third p1 (raw 102.9578) still freezes: C stays 2 and the next p1 risks 102.9578.
         var sizer = new RecoverySizer(D.Recovery with { RecoveryMaxRiskPercent = 0.05 });
-        (List<LadderEntry> entries, _) = Play("WW", sizer);
-        entries.Add(D.Nth(3, 2.0 * 102.9578));
-        var laterLoss = new[] { D.Trade(99, "AUDUSD", "BIG", D.Placed(3).AddHours(3.0), D.Placed(3).AddHours(4.0), -100000.0) };
+        var entries = new List<LadderEntry> { D.Nth(1, 81.2054), D.Nth(2, 129.3115), D.Nth(3, 205.9156) };
 
-        RecoveryDecision frozen = Next(entries, sizer);
-        RecoveryDecision notFrozen = Next(entries, sizer, account: laterLoss);
+        RecoveryDecision next = Next(entries, sizer, balance: 300000.0);
 
-        Assert.Equal(Columns(2), frozen.Columns);
-        Assert.Equal(Columns(3), notFrozen.Columns);
-        Assert.Equal(100.0, notFrozen.RiskMoney, 6);
+        Assert.Equal(Columns(2), next.Columns);
+        Assert.True(next.StepsFrozen);
+        Assert.False(next.Capped);
+        Assert.Equal(102.9578, next.RiskMoney, 4);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-016")]
+    [Trait("Req", "RSK-017")]
+    public void Next_AnotherSymbolsLossAfterAPastEntry_DoesNotChangeTheFreezeOrTheColumns()
+    {
+        // Cap 0.05%: the third EURUSD p1 (raw 102.9578) is above the freeze limit of 100 and freezes, C stays 2.
+        // An AUDUSD loss of 100,000 after it, in the same broker history, changes nothing for EURUSD.
+        var sizer = new RecoverySizer(D.Recovery with { RecoveryMaxRiskPercent = 0.05 });
+        (List<LadderEntry> played, _) = Play("WW", sizer);
+        var history = new List<ClosedTradeInfo>
+        {
+            D.Trade(1, "EURUSD", "T01", D.Placed(1), D.ClosedAt(1), played[0].NetResult),
+            D.Trade(2, "EURUSD", "T02", D.Placed(2), D.ClosedAt(2), played[1].NetResult),
+            D.Trade(3, "EURUSD", "T03", D.Placed(3), D.ClosedAt(3), 2.0 * 102.9578),
+        };
+        var withAud = new List<ClosedTradeInfo>(history) { D.Trade(99, "AUDUSD", "BIG", D.Placed(3).AddHours(3.0), D.Placed(3).AddHours(4.0), -100000.0) };
+
+        RecoveryDecision alone = Next(FromBroker("EURUSD", history), sizer);
+        RecoveryDecision beside = Next(FromBroker("EURUSD", withAud), sizer);
+
+        Assert.Equal(Columns(2), alone.Columns);
+        Assert.Equal(alone.Columns, beside.Columns);
+        Assert.Equal(alone.RiskMoney, beside.RiskMoney);
+        Assert.True(beside.StepsFrozen);
     }
 
     [Fact]
@@ -344,7 +371,7 @@ public class RecoverySizerTests
     [InlineData(D.Capital, double.NaN)]
     public void Next_BalanceOrRewardRiskNotUsable_FailsClosed(double balance, double rewardRisk)
     {
-        var exception = Assert.Throws<ArgumentException>(() => Sizer.Next(Array.Empty<LadderEntry>(), ExecutionData.Now, balance, rewardRisk, Array.Empty<ClosedTradeInfo>()));
+        var exception = Assert.Throws<ArgumentException>(() => Sizer.Next(Array.Empty<LadderEntry>(), ExecutionData.Now, balance, rewardRisk));
 
         Assert.StartsWith("Recovery sizing (RSK-017): ", exception.Message, StringComparison.Ordinal);
     }
@@ -550,9 +577,9 @@ public class RecoverySizerTests
         List<ClosedTradeInfo> reversed = Enumerable.Reverse(history).ToList();
         var shuffled = new[] { history[3], history[0], history[4], history[2], history[1] };
 
-        RecoveryDecision a = Next(FromBroker("EURUSD", history), account: history);
-        RecoveryDecision b = Next(FromBroker("EURUSD", reversed), account: reversed);
-        RecoveryDecision c = Next(FromBroker("EURUSD", shuffled), account: shuffled);
+        RecoveryDecision a = Next(FromBroker("EURUSD", history));
+        RecoveryDecision b = Next(FromBroker("EURUSD", reversed));
+        RecoveryDecision c = Next(FromBroker("EURUSD", shuffled));
 
         Assert.Equal(a.RiskMoney, b.RiskMoney);
         Assert.Equal(a.RiskMoney, c.RiskMoney);
@@ -569,20 +596,7 @@ public class RecoverySizerTests
         Assert.Throws<ArgumentException>(() => Next(new[] { new LadderEntry("ZFVG|v1|EURUSD|O", D.Placed(2), null, 0.0) }, at: D.Placed(1)));
         Assert.Throws<ArgumentException>(() => Next(new[] { D.Nth(1, -40.0) }, at: DateTime.SpecifyKind(ExecutionData.Now, DateTimeKind.Unspecified)));
         Assert.Throws<ArgumentException>(() => Next(new[] { D.Nth(1, double.NaN) }));
-    }
-
-    [Fact]
-    [Trait("Req", "RSK-017")]
-    public void Next_InvalidAccountHistory_FailsClosed()
-    {
-        ClosedTradeInfo nan = D.Trade(1, "GBPUSD", "A", D.Placed(1), D.ClosedAt(1), double.NaN);
-        ClosedTradeInfo local = D.Trade(2, "GBPUSD", "B", D.Placed(2), DateTime.SpecifyKind(D.ClosedAt(2), DateTimeKind.Local), -1.0);
-
-        Assert.Throws<ArgumentException>(() => Next(Array.Empty<LadderEntry>(), account: new[] { nan }));
-        Assert.Throws<ArgumentException>(() => Next(Array.Empty<LadderEntry>(), account: new[] { local }));
-        Assert.Throws<ArgumentException>(() => Next(Array.Empty<LadderEntry>(), account: new ClosedTradeInfo[] { null! }));
-        Assert.Throws<ArgumentNullException>(() => Sizer.Next(Array.Empty<LadderEntry>(), ExecutionData.Now, D.Capital, 2.0, null!));
-        Assert.Throws<ArgumentNullException>(() => Sizer.Next(null!, ExecutionData.Now, D.Capital, 2.0, Array.Empty<ClosedTradeInfo>()));
+        Assert.Throws<ArgumentNullException>(() => Sizer.Next(null!, ExecutionData.Now, D.Capital, 2.0));
     }
 
     [Fact]
