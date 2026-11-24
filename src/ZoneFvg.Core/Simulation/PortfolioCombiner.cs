@@ -353,7 +353,10 @@ public sealed class PortfolioResult
         text.Append("# Combined portfolio (SIM-002)\n\n");
         text.Append("Assumptions:\n\n");
         text.Append("- The logs are a sample of the past: past trade distributions may not repeat.\n");
-        text.Append("- Money is taken as logged. Each trade is checked when it opens against the kept trades still open, with the caps of RSK-004, RSK-005 and RSK-006 in that order; a refused trade is left out. A cap shown as off refuses nothing.\n");
+        text.Append("- Money is taken as logged. Each trade is checked when it opens against the kept trades still open, with the caps of RSK-004, RSK-005 and RSK-006 in that order; a refused trade is left out.");
+
+        // SIM-007: the sentence only when a cap is off, so the report with both caps on is the old one, byte for byte.
+        text.Append(Parameters.OpenRiskCapEnabled && Parameters.CurrencyCapEnabled ? "\n" : " A cap shown as off refuses nothing.\n");
         text.Append("- The balance changes only when a trade closes; open-trade swings are not in the logs, so the drawdown is measured on closed balances.\n\n");
         text.Append("| Measure | Value |\n");
         text.Append("|---|---|\n");

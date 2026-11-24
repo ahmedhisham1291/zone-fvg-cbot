@@ -52,7 +52,7 @@ Friday close still runs).
 | `StopLossRepaired` | A missing stop was set again from the trade's comment | Check in the app that the stop is where planned. Find out who or what removed it |
 | `DailyLimit` | The daily risk budget (2% of initial capital, 4,000 USD on 200,000, measured from 00:00 Prague balance, all symbols together) is used up. Pending orders cancelled; no entries until the next Prague day | Nothing. Read the daily summary next morning |
 | `KillSwitch` | Drawdown from the highest closing balance since `RiskEpochDate` reached 8%. The bot is **Halted** until you set a new `RiskEpochDate` (spec 4.2, 8.5) | Do not resume the same day. Review the trades with the developer. Resume only by section 5, after a decision |
-| `EmergencyGuard` | Equity came within 1,000 USD of an FTMO floor. The bot closed all positions, cancelled orders and **Halted** (spec 4.2) | Check in the app that everything is closed. Stop all containers (`docker compose stop`) until reviewed with the developer. Resume by section 5 |
+| `EmergencyGuard` | Equity came within 2,000 USD (1% of the 200,000 initial capital) of an FTMO floor. The bot closed all positions, cancelled orders and **Halted** (spec 4.2) | Check in the app that everything is closed. Stop all containers (`docker compose stop`) until reviewed with the developer. Resume by section 5 |
 | `CircuitBreaker` | Too many entries or order requests (spec 4.3). The request limit halts the instance until you restart it | Send the log to the developer before restarting. Restart one symbol with `docker compose restart <symbol>` only after the cause is understood |
 | `ErrorStorm` | 5 or more unhandled errors in an hour; Halted until the next Prague day or a restart (spec 8.5) | Send the log of the last hour (`docker compose logs --since 1h <symbol>`) to the developer. Do not restart in a loop |
 | `NewsFeedDown` | A calendar download failed or was rejected; the earlier good data is kept | Nothing at first. If it lasts more than a day, check that the Forex Factory export address still works in a browser |
@@ -102,7 +102,7 @@ Uptime 1.00:00:00, restarts 0
 | Trades, net, net R | Trades closed that Prague day, money after commission and swap, result in R. "R known for" counts trades whose plan was found | Net R far below -3 in one day should not happen (daily budget); tell the developer |
 | Balance, equity | At summary time | Equity much lower than balance means open trades are losing |
 | Drawdown | From the highest closing balance since `RiskEpochDate` | Kill switch at 8% |
-| Room to FTMO floors | Distance from equity to the FTMO daily floor (00:00 Prague balance minus 5%) and overall floor (90% of initial capital) | Emergency guard acts at 1,000 USD room |
+| Room to FTMO floors | Distance from equity to the FTMO daily floor (00:00 Prague balance minus 5%) and overall floor (90% of initial capital) | Emergency guard acts at 2,000 USD room (1% of the 200,000 initial capital) |
 | Target progress | Profit against `ProfitTargetPercent` | |
 | Skips | Signals not taken, by reason | `SpreadTooWide` or `NewsCalendarUnavailable` every day means a setting or the feed needs a look |
 | Calendar | News data status: `Available` or `Unavailable` | `Unavailable` for more than a day: see `CalendarUnavailable` |
