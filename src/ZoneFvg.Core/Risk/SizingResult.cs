@@ -50,7 +50,7 @@ public sealed class SizingResult
     public string Detail { get; }
 
     /// <summary>
-    /// True when the skip is one of the sanity caps of RSK-002 (risk above 0.55%, volume above
+    /// True when the skip is one of the sanity caps of RSK-002 (risk above SanityCapPercent when on, volume above
     /// MaxVolumeUnits, stop or target on the wrong side), for which spec 4.3 requires an alert.
     /// </summary>
     public bool AlertRequired

@@ -95,8 +95,9 @@ public sealed class RiskEngine
     /// <summary>
     /// Checks a new trade against the account limits, in this order, and returns the first
     /// failure: input check, history and symbol data (fail closed), free margin (RSK-003), open
-    /// risk (RSK-004), currency exposure (RSK-005), daily risk budget (RSK-006), entries per
-    /// symbol and per account in the CE(S)T day (RSK-010).
+    /// risk (RSK-004, only with OpenRiskCapEnabled), currency exposure (RSK-005, only with
+    /// CurrencyCapEnabled), daily risk budget (RSK-006), entries per symbol and per account in the
+    /// CE(S)T day (RSK-010).
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="trade">The sized trade with the broker's margin estimate.</param>
@@ -129,8 +130,18 @@ public sealed class RiskEngine
 
         RiskCheckResult? failure = CheckInputs(snapshot, trade);
         failure ??= CheckMargin(snapshot, trade);
-        failure ??= CheckOpenRisk(snapshot, trade);
-        failure ??= CheckCurrencyExposure(snapshot, trade);
+        if (_parameters.OpenRiskCapEnabled)
+        {
+            // RSK-004: only when switched on (owner decision W of 2026-11-24); the open risk is still reported by OpenRiskAtStop.
+            failure ??= CheckOpenRisk(snapshot, trade);
+        }
+
+        if (_parameters.CurrencyCapEnabled)
+        {
+            // RSK-005, RSK-015: only when switched on (owner decision W of 2026-11-24).
+            failure ??= CheckCurrencyExposure(snapshot, trade);
+        }
+
         if (dailyBudget)
         {
             failure ??= CheckDailyBudget(snapshot, trade);
@@ -177,7 +188,7 @@ public sealed class RiskEngine
     /// M - (FtmoDailyLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100, or at or below
     /// InitialCapital - (FtmoMaxLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100
     /// (which equals InitialCapital x (1 - (FtmoMaxLossPercent - FtmoGuardBufferPercent) / 100)).
-    /// With defaults: M - 4,000 and 91,000. When the history does not reach back far enough to
+    /// With defaults: M - 8,000 and 182,000 on 200,000 (RSK-009, RSK-018). When the history does not reach back far enough to
     /// compute M, only the second (static) floor is checked and the daily floor is reported as
     /// unknown; new trades are refused in that case by <see cref="CheckNewTrade"/>.
     /// </summary>
