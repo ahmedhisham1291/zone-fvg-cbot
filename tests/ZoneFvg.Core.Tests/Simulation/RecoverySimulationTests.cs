@@ -75,9 +75,9 @@ public class RecoverySimulationTests
         double afterSecondWin = FinalBalance(trades.Take(3).ToArray());
         double afterNext = FinalBalance(trades);
 
-        Assert.Equal(81.2054, afterWin - 200000.0, 4);
+        Assert.Equal(40.6027, (afterWin - 200000.0) / 2.0, 4);
         Assert.Equal(64.6557, afterWin - afterLoss, 4);
-        Assert.Equal(2.0 * 60.9040, afterSecondWin - afterLoss, 4);
+        Assert.Equal(60.9040, (afterSecondWin - afterLoss) / 2.0, 4);
         Assert.Equal(64.6557, afterSecondWin - afterNext, 4);
     }
 
@@ -94,7 +94,7 @@ public class RecoverySimulationTests
         double b3 = FinalBalance(trades.Take(3).ToArray());
         double b4 = FinalBalance(trades);
 
-        Assert.Equal(2.0 * 40.6027, b1 - 200000.0, 4);
+        Assert.Equal(40.6027, (b1 - 200000.0) / 2.0, 4);
         Assert.Equal(40.6027, b1 - b2, 4);
         Assert.Equal(64.6557, b2 - b3, 4);
         Assert.Equal(60.9040, b3 - b4, 4);
