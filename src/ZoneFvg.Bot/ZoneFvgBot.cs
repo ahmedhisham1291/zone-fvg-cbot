@@ -239,16 +239,16 @@ namespace cAlgo.Robots
         [Parameter("MaxPositionsPerCurrency", DefaultValue = 2, Group = "Risk")]
         public int MaxPositionsPerCurrency { get; set; }
 
-        /// <summary>Daily stop in percent (RSK-006).</summary>
-        [Parameter("DailyLossLimitPercent", DefaultValue = 1.5, Group = "Risk")]
+        /// <summary>Daily risk budget in percent of InitialCapital (RSK-006, PLT-017). Default 2.0 from spec v0.12.</summary>
+        [Parameter("DailyLossLimitPercent", DefaultValue = 2.0, Group = "Risk")]
         public double DailyLossLimitPercent { get; set; }
 
         /// <summary>Kill switch drawdown in percent (RSK-008).</summary>
         [Parameter("MaxDrawdownPercent", DefaultValue = 8.0, Group = "Risk")]
         public double MaxDrawdownPercent { get; set; }
 
-        /// <summary>Base for the FTMO percentages (RSK-004).</summary>
-        [Parameter("InitialCapital", DefaultValue = 100000.0, Group = "Risk")]
+        /// <summary>Base for the FTMO percentages (RSK-004, PLT-017). Default 200,000 from spec v0.12.</summary>
+        [Parameter("InitialCapital", DefaultValue = 200000.0, Group = "Risk")]
         public double InitialCapital { get; set; }
 
         /// <summary>Day boundary zone. Fixed: Europe/Prague, computed by the core's CestClock (RSK-012).</summary>
@@ -291,8 +291,8 @@ namespace cAlgo.Robots
         [Parameter("MaxEntriesPerDay", DefaultValue = 6, Group = "Risk")]
         public int MaxEntriesPerDay { get; set; }
 
-        /// <summary>Size sanity cap in units (RSK-002).</summary>
-        [Parameter("MaxVolumeUnits", DefaultValue = 500000.0, Group = "Risk")]
+        /// <summary>Size sanity cap in units (RSK-002, PLT-017). Default 3,000,000 from spec v0.12; gold 1,000 in its parameter file.</summary>
+        [Parameter("MaxVolumeUnits", DefaultValue = 3000000.0, Group = "Risk")]
         public double MaxVolumeUnits { get; set; }
 
         /// <summary>Ladder sizing on; when off the fixed RiskPercent is used (RSK-013).</summary>
@@ -314,6 +314,34 @@ namespace cAlgo.Robots
         /// <summary>Largest ladder risk of one entry in percent (RSK-013).</summary>
         [Parameter("MaxRiskPercentPerTrade", DefaultValue = 0.5, Group = "Risk")]
         public double MaxRiskPercentPerTrade { get; set; }
+
+        /// <summary>How the risk of a new trade is set: Ladder or Recovery (RSK-016, RSK-018, PLT-017); read by the core's SizingPlanText.</summary>
+        [Parameter("SizingPlan", DefaultValue = "Ladder", Group = "Risk")]
+        public string SizingPlan { get; set; } = "Ladder";
+
+        /// <summary>Recovery plan: risk of the first trade after a win, in account currency (RSK-016, PLT-017).</summary>
+        [Parameter("RecoveryFirstRiskUsd", DefaultValue = 100.0, Group = "Risk")]
+        public double RecoveryFirstRiskUsd { get; set; }
+
+        /// <summary>Recovery plan: largest risk of one trade in percent of balance (RSK-016, PLT-017).</summary>
+        [Parameter("RecoveryMaxRiskPercent", DefaultValue = 1.28, Group = "Risk")]
+        public double RecoveryMaxRiskPercent { get; set; }
+
+        /// <summary>The per-trade sanity cap on or off (RSK-002, PLT-017). Default off (owner decision S of 2026-11-24).</summary>
+        [Parameter("SanityCapEnabled", DefaultValue = false, Group = "Risk")]
+        public bool SanityCapEnabled { get; set; }
+
+        /// <summary>The per-trade sanity cap in percent of balance, when on (RSK-002, PLT-017).</summary>
+        [Parameter("SanityCapPercent", DefaultValue = 0.55, Group = "Risk")]
+        public double SanityCapPercent { get; set; }
+
+        /// <summary>The total open-risk cap on or off (RSK-004, PLT-017). Default off (owner decision W of 2026-11-24).</summary>
+        [Parameter("OpenRiskCapEnabled", DefaultValue = false, Group = "Risk")]
+        public bool OpenRiskCapEnabled { get; set; }
+
+        /// <summary>The same-direction currency cap on or off (RSK-005, PLT-017). Default off (owner decision W of 2026-11-24).</summary>
+        [Parameter("CurrencyCapEnabled", DefaultValue = false, Group = "Risk")]
+        public bool CurrencyCapEnabled { get; set; }
 
         /// <summary>News filter on or off (NWS-001).</summary>
         [Parameter("NewsEnabled", DefaultValue = true, Group = "News")]
@@ -768,6 +796,15 @@ namespace cAlgo.Robots
                 LadderGrowth = LadderGrowth,
                 LadderFirstWeight = LadderFirstWeight,
                 MaxRiskPercentPerTrade = MaxRiskPercentPerTrade,
+
+                // PLT-017: the text of SizingPlan is read in the core; a refusal names the parameter.
+                SizingPlan = SizingPlanText.Parse(SizingPlan),
+                RecoveryFirstRiskUsd = RecoveryFirstRiskUsd,
+                RecoveryMaxRiskPercent = RecoveryMaxRiskPercent,
+                SanityCapEnabled = SanityCapEnabled,
+                SanityCapPercent = SanityCapPercent,
+                OpenRiskCapEnabled = OpenRiskCapEnabled,
+                CurrencyCapEnabled = CurrencyCapEnabled,
             };
         }
 

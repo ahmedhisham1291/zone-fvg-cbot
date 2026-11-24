@@ -513,8 +513,8 @@ public sealed record ChallengePath(ChallengeOutcome Outcome, int CalendarDays, i
 /// </summary>
 public sealed record FtmoChallengeParameters
 {
-    /// <summary>Initial capital (spec 15.2). Default 100,000.</summary>
-    public double InitialCapital { get; init; } = 100000.0;
+    /// <summary>Initial capital (spec 15.2, SIM-007). Default 200,000 (100,000 before spec v0.12).</summary>
+    public double InitialCapital { get; init; } = 200000.0;
 
     /// <summary>Risk per trade in percent of the balance at the open (RSK-001, spec 15.5). Default 0.5.</summary>
     public double RiskPercent { get; init; } = 0.5;
@@ -531,8 +531,8 @@ public sealed record FtmoChallengeParameters
     /// <summary>Minimum trading days per phase (spec 15.2). Default 4.</summary>
     public int MinTradingDays { get; init; } = 4;
 
-    /// <summary>The bot's daily risk budget in percent of initial capital at <see cref="RiskPercent"/> (RSK-006, spec 15.4). Default 1.5.</summary>
-    public double DailyBudgetPercent { get; init; } = 1.5;
+    /// <summary>The bot's daily risk budget in percent of initial capital at <see cref="RiskPercent"/> (RSK-006, spec 15.4, SIM-007). Default 2.0 (1.5 before spec v0.12).</summary>
+    public double DailyBudgetPercent { get; init; } = 2.0;
 
     /// <summary>The bot's drawdown kill switch in percent of the peak balance (RSK-008, spec 15.4). Default 8.</summary>
     public double KillSwitchPercent { get; init; } = 8.0;

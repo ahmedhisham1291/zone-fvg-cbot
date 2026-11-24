@@ -214,11 +214,20 @@ write into the five files:
   file carries the values of the judged run and nothing else differs.
 - Never copy the backtest-only values into a live file. `NewsEnabled`,
   `InitialCapital` and `DrawObjects` stay at their defaults (news on,
-  100000, no drawings), and `RiskEpochDate` is the date step 10.3 names,
+  200000 from spec v0.12, no drawings), and `RiskEpochDate` is the date step 10.3 names,
   not the backtest's start date. The parameter hash does not cover the news
   and risk values, so it cannot catch this mistake.
 - Every other value stays at its default, except the values that step 10.3
-  and "Gold (XAUUSD)" below tell you to set.
+  and "Gold (XAUUSD)" below tell you to set. The risk defaults of spec v0.12
+  (owner decisions of 2026-11-24): `InitialCapital=200000.0`,
+  `DailyLossLimitPercent=2.0`, `MaxVolumeUnits=3000000.0` (gold 1000.0),
+  `SizingPlan=Ladder`, `RecoveryFirstRiskUsd=100.0`,
+  `RecoveryMaxRiskPercent=1.28`, and the per-trade sanity cap, the open-risk
+  cap and the currency cap off (`SanityCapEnabled=false` with
+  `SanityCapPercent=0.55`, `OpenRiskCapEnabled=false`,
+  `CurrencyCapEnabled=false`). `SizingPlan=Recovery` is set only when the
+  owner chooses that plan after its backtest
+  ([`docs/backtest-howto.md`](../docs/backtest-howto.md), Part 7).
 
 The laptop stage, the fault tests and the soak test run with these files
 (spec 12.3 and 13.1), not with the example values.
@@ -734,7 +743,7 @@ parameter file is a copy of the forex file with exactly these differences:
 |---|---|---|---|
 | `MaxSpreadPips` | 1.5 | 0.4 | FTMO's cTrader reports a gold pip of 1 USD (spec 7), so 0.4 is a spread of 0.40 USD |
 | `MinStopPips` | 12.0 | 8.0 | 8.00 USD per ounce, in the same 1 USD pip |
-| `MaxVolumeUnits` | 500000.0 | 200.0 | Gold volume is in ounces |
+| `MaxVolumeUnits` | 3000000.0 | 1000.0 | Gold volume is in ounces (500000.0 and 200.0 before spec v0.12, owner decision X) |
 | `HeartbeatUrl` | one check per symbol | its own check | So an alert names gold |
 
 If the accepted settings differ between symbols (section "Entry mode"),

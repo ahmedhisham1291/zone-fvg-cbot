@@ -20,10 +20,11 @@ namespace ZoneFvg.Core.Simulation;
 /// the risk engine; the first cap that refuses it is counted and the trade is left out of the
 /// combined list, the equity curve and later checks:</para>
 /// <list type="number">
-/// <item>RSK-004: the risk_money of the open trades plus the new one must not exceed
-/// MaxOpenRiskPercent of InitialCapital.</item>
-/// <item>RSK-005: for the base and the quote currency of the new trade, on the side it takes in
-/// each, at most MaxPositionsPerCurrency trades including the new one.</item>
+/// <item>RSK-004, only with OpenRiskCapEnabled (SIM-007): the risk_money of the open trades plus
+/// the new one must not exceed MaxOpenRiskPercent of InitialCapital.</item>
+/// <item>RSK-005, only with CurrencyCapEnabled (SIM-007): for the base and the quote currency of
+/// the new trade, on the side it takes in each, at most MaxPositionsPerCurrency trades including
+/// the new one.</item>
 /// <item>RSK-006: M - W must not exceed DailyLossLimitPercent of InitialCapital, where M is the
 /// balance at 00:00 CE(S)T and W the balance plus, for each open trade and the new one,
 /// -risk_money + commission (commission counts, swap does not; architecture section 10). After a
@@ -127,12 +128,12 @@ public static class PortfolioCombiner
         }
 
         double capital = parameters.InitialCapital;
-        if (PriceMath.GreaterThan(openRisk, capital * parameters.MaxOpenRiskPercent / 100.0, PriceMath.DefaultTolerance))
+        if (parameters.OpenRiskCapEnabled && PriceMath.GreaterThan(openRisk, capital * parameters.MaxOpenRiskPercent / 100.0, PriceMath.DefaultTolerance))
         {
             return PortfolioCap.OpenRisk;
         }
 
-        if (baseCount > parameters.MaxPositionsPerCurrency || quoteCount > parameters.MaxPositionsPerCurrency)
+        if (parameters.CurrencyCapEnabled && (baseCount > parameters.MaxPositionsPerCurrency || quoteCount > parameters.MaxPositionsPerCurrency))
         {
             return PortfolioCap.CurrencyExposure;
         }
@@ -221,17 +222,23 @@ public sealed record EquityPoint(DateTime TimeUtc, double Balance);
 /// </summary>
 public sealed record PortfolioParameters
 {
-    /// <summary>Initial capital: the starting balance and the base of the caps (RSK-004, RSK-006). Default 100,000.</summary>
-    public double InitialCapital { get; init; } = 100000.0;
+    /// <summary>Initial capital: the starting balance and the base of the caps (RSK-004, RSK-006, SIM-007). Default 200,000 (100,000 before spec v0.12).</summary>
+    public double InitialCapital { get; init; } = 200000.0;
 
-    /// <summary>Total open risk cap in percent of <see cref="InitialCapital"/> (RSK-004). Default 1.5.</summary>
+    /// <summary>Total open risk cap in percent of <see cref="InitialCapital"/> (RSK-004), when <see cref="OpenRiskCapEnabled"/>. Default 1.5.</summary>
     public double MaxOpenRiskPercent { get; init; } = 1.5;
 
-    /// <summary>Most trades on the same side of one currency (RSK-005). Default 2.</summary>
+    /// <summary>The open-risk cap on or off (RSK-004, SIM-007, owner decision W of 2026-11-24). Default false.</summary>
+    public bool OpenRiskCapEnabled { get; init; }
+
+    /// <summary>Most trades on the same side of one currency (RSK-005), when <see cref="CurrencyCapEnabled"/>. Default 2.</summary>
     public int MaxPositionsPerCurrency { get; init; } = 2;
 
-    /// <summary>Daily risk budget in percent of <see cref="InitialCapital"/> (RSK-006). Default 1.5.</summary>
-    public double DailyLossLimitPercent { get; init; } = 1.5;
+    /// <summary>The currency cap on or off (RSK-005, SIM-007, owner decision W of 2026-11-24). Default false.</summary>
+    public bool CurrencyCapEnabled { get; init; }
+
+    /// <summary>Daily risk budget in percent of <see cref="InitialCapital"/> (RSK-006, SIM-007). Default 2.0 (1.5 before spec v0.12).</summary>
+    public double DailyLossLimitPercent { get; init; } = 2.0;
 
     /// <summary>Checks every value (SIM-002).</summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range; the parameter name is the property name.</exception>
@@ -346,14 +353,15 @@ public sealed class PortfolioResult
         text.Append("# Combined portfolio (SIM-002)\n\n");
         text.Append("Assumptions:\n\n");
         text.Append("- The logs are a sample of the past: past trade distributions may not repeat.\n");
-        text.Append("- Money is taken as logged. Each trade is checked when it opens against the kept trades still open, with the caps of RSK-004, RSK-005 and RSK-006 in that order; a refused trade is left out.\n");
+        text.Append("- Money is taken as logged. Each trade is checked when it opens against the kept trades still open, with the caps of RSK-004, RSK-005 and RSK-006 in that order; a refused trade is left out. A cap shown as off refuses nothing.\n");
         text.Append("- The balance changes only when a trade closes; open-trade swings are not in the logs, so the drawdown is measured on closed balances.\n\n");
         text.Append("| Measure | Value |\n");
         text.Append("|---|---|\n");
         text.Append("| Trades in the logs | ").Append(SimText.Int(InputTradeCount)).Append(" |\n");
         text.Append("| Trades kept | ").Append(SimText.Int(Trades.Count)).Append(" |\n");
-        text.Append("| Skipped by open risk cap (RSK-004) | ").Append(SimText.Int(SkippedCount(PortfolioCap.OpenRisk))).Append(" |\n");
-        text.Append("| Skipped by currency exposure cap (RSK-005) | ").Append(SimText.Int(SkippedCount(PortfolioCap.CurrencyExposure))).Append(" |\n");
+        // SIM-007: a cap that is switched off refuses nothing, and the report says so.
+        text.Append("| Skipped by open risk cap (RSK-004) | ").Append(Parameters.OpenRiskCapEnabled ? SimText.Int(SkippedCount(PortfolioCap.OpenRisk)) : "off").Append(" |\n");
+        text.Append("| Skipped by currency exposure cap (RSK-005) | ").Append(Parameters.CurrencyCapEnabled ? SimText.Int(SkippedCount(PortfolioCap.CurrencyExposure)) : "off").Append(" |\n");
         text.Append("| Skipped by daily risk budget (RSK-006) | ").Append(SimText.Int(SkippedCount(PortfolioCap.DailyBudget))).Append(" |\n");
         text.Append("| Initial capital | ").Append(SimText.F2(Parameters.InitialCapital)).Append(" |\n");
         text.Append("| Final balance | ").Append(SimText.F2(FinalBalance)).Append(" |\n");

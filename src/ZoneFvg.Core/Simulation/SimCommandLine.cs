@@ -15,7 +15,8 @@ namespace ZoneFvg.Core.Simulation;
 /// </summary>
 /// <remarks>
 /// Every command except <c>extract</c> first combines the trade logs it is given with <see cref="PortfolioCombiner"/>
-/// and the default caps. Combining a list that is already combined changes nothing, because each
+/// and the default caps (SIM-007: the daily budget of 2% on 200,000; the open-risk and currency caps
+/// only when their option is given). Combining a list that is already combined changes nothing, because each
 /// kept trade was checked against exactly the trades that are kept again.
 /// </remarks>
 public static class SimCommandLine
@@ -198,12 +199,12 @@ public static class SimCommandLine
     {
         return new FtmoChallengeParameters
         {
-            InitialCapital = options.Number("--initial-capital", 100000.0),
+            InitialCapital = options.Number("--initial-capital", 200000.0),
             RiskPercent = options.Number("--risk", 0.5),
             DailyLossPercent = options.Number("--daily-loss", 5.0),
             MaxLossPercent = options.Number("--max-loss", 10.0),
             MinTradingDays = options.Int("--min-days", 4),
-            DailyBudgetPercent = options.Number("--daily-budget", 1.5),
+            DailyBudgetPercent = options.Number("--daily-budget", 2.0),
             KillSwitchPercent = options.Number("--kill-switch", 8.0),
             Runs = options.Int("--runs", 5000),
             Ladder = Sizing(options),
@@ -263,12 +264,15 @@ public static class SimCommandLine
 
         internal PortfolioResult Combine(IReadOnlyList<IReadOnlyList<TradeRecord>> logs)
         {
+            // SIM-007: the open-risk and currency caps are off unless their option is given.
             var parameters = new PortfolioParameters
             {
-                InitialCapital = Options.Number("--initial-capital", 100000.0),
+                InitialCapital = Options.Number("--initial-capital", 200000.0),
                 MaxOpenRiskPercent = Options.Number("--max-open-risk", 1.5),
+                OpenRiskCapEnabled = Options.Single("--max-open-risk") != null,
                 MaxPositionsPerCurrency = Options.Int("--max-per-currency", 2),
-                DailyLossLimitPercent = Options.Number("--daily-budget", 1.5),
+                CurrencyCapEnabled = Options.Single("--max-per-currency") != null,
+                DailyLossLimitPercent = Options.Number("--daily-budget", 2.0),
             };
             return PortfolioCombiner.Combine(logs, parameters);
         }
@@ -422,10 +426,10 @@ public static class SimCommandLine
 
         internal static CommandSpec? Find(string name)
         {
-            const string caps = "  --initial-capital <n>   Initial capital (default 100000)\n"
-                + "  --max-open-risk <pct>   Open risk cap, RSK-004 (default 1.5)\n"
-                + "  --max-per-currency <n>  Same-side trades per currency, RSK-005 (default 2)\n"
-                + "  --daily-budget <pct>    Daily risk budget, RSK-006 (default 1.5)\n";
+            const string caps = "  --initial-capital <n>   Initial capital (default 200000)\n"
+                + "  --max-open-risk <pct>   Open risk cap, RSK-004: off unless given (for example 1.5)\n"
+                + "  --max-per-currency <n>  Same-side trades per currency, RSK-005: off unless given (for example 2)\n"
+                + "  --daily-budget <pct>    Daily risk budget, RSK-006 (default 2)\n";
             const string ftmo = "  --risk <pct>            Risk per trade at which --daily-budget applies (default 0.5)\n"
                 + "  --daily-loss <pct>      FTMO maximum daily loss (default 5)\n"
                 + "  --max-loss <pct>        FTMO maximum loss (default 10)\n"
