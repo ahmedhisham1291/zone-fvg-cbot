@@ -1,4 +1,4 @@
-# Numbered requirements extracted from docs/spec.md (v0.10).
+# Numbered requirements extracted from docs/spec.md (v0.12).
 #
 # Rules for this file
 # - The text of a requirement changes only in a pull request that carries the
@@ -272,14 +272,23 @@ requirements:
       trade is skipped. Volume is never rounded up.
 
   - id: RSK-002
-    wp: WP06
-    spec: "4.3"
+    wp: WP38
+    spec: "4.3, 7"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       Sanity caps. A trade is skipped (reason logged, alert raised) if its
-      computed risk exceeds 0.55% of balance, its volume exceeds
-      MaxVolumeUnits, or its stop or target is on the wrong side of entry.
+      volume exceeds MaxVolumeUnits, or its stop or target is on the wrong
+      side of entry; these checks always apply. Changed on 2026-11-24
+      (owner decision S): the check "computed risk above SanityCapPercent
+      (default 0.55) of balance" applies only when SanityCapEnabled is true,
+      and SanityCapEnabled defaults to false. When it is on, a computed risk
+      exactly at the limit is allowed and one above it (beyond the 1e-9
+      tolerance of PriceMath) is skipped with RiskAboveSanityCap, as
+      before; the computed risk is that of the rounded volume. When it is
+      off no trade is skipped for its risk percent by this check, and every
+      other check of RSK-001, RSK-003 to RSK-006 and RSK-010 runs
+      unchanged. The order of the checks is unchanged.
 
   - id: RSK-003
     wp: WP06
@@ -315,15 +324,16 @@ requirements:
       not checked.
 
   - id: RSK-006
-    wp: WP07
+    wp: WP38
     spec: "4.2, 15.4"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       Daily risk budget. Let M be the balance at 00:00 CE(S)T of the current
       day and W the worst-case equity if every open bot position and pending
       order, including the new trade, were closed at its stop. A new trade is
-      allowed only if M - W <= DailyLossLimitPercent (1.5%) of InitialCapital.
+      allowed only if M - W <= DailyLossLimitPercent (2%; 1.5% until the
+      owner decision R of 2026-11-24) of InitialCapital, in both sizing plans.
       When the budget is exhausted, pending entry orders are cancelled and no
       entries are allowed until the next CE(S)T day.
 
@@ -350,15 +360,17 @@ requirements:
       Recomputing after a restart yields the same decision.
 
   - id: RSK-009
-    wp: WP04
+    wp: WP38
     spec: "4.2, 15.4"
     verify: unit
-    status: implemented
+    status: planned
     text: >-
       FTMO emergency guard. If equity <= M - (FtmoDailyLossPercent -
       FtmoGuardBufferPercent)% of InitialCapital, or equity <= InitialCapital x
       (1 - (FtmoMaxLossPercent - FtmoGuardBufferPercent)/100), the decision is
-      CloseAllAndHalt. With defaults: M - 4,000 and 91,000 on 100,000. If M
+      CloseAllAndHalt. With defaults: M - 8,000 and 182,000 on 200,000
+      (owner decision P of 2026-11-24; M - 4,000 and 91,000 on 100,000
+      before). If M
       cannot be computed because broker data is missing or invalid, the guard
       still applies the second condition from equity and InitialCapital alone.
 
@@ -468,6 +480,79 @@ requirements:
       USD, so gold counts towards the USD limit together with the forex
       pairs. The base and quote come from the broker's symbol data, as for
       the forex pairs.
+
+  # ---------------------------------------------------------------- SIZING PLANS (spec v0.12, owner decisions of 2026-11-24)
+  - id: RSK-016
+    wp: WP38
+    spec: "4.1, 4.1.1, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Recovery sizing amount (owner decision Q of 2026-11-24). With
+      SizingPlan Recovery the risk money of a new trade is R = min((L + RR x
+      F) / RR, B x RecoveryMaxRiskPercent / 100), where F is
+      RecoveryFirstRiskUsd (100, account currency), RR the instance's
+      RewardRisk parameter (2.0) in every entry mode, B the account balance
+      from the broker port at placement, and L the money lost in the current
+      losing run (RSK-017). With L = 0 the trade risks F (or the cap, if it
+      is smaller). A raw amount exactly at the cap is the cap. R is passed to
+      the position sizer as the risk amount of RSK-001 (volume = R / (stop
+      pips x pip value), rounded down), and every check of RSK-002 to RSK-006
+      and RSK-010 applies after it. R is not rounded before sizing. With the
+      defaults, a run of trades that each lose exactly their risk, starting
+      at a balance of 200,000, risks 100, 150, 225, 337.5, 506.25, 759.375,
+      1,139.0625, 1,708.59375, then the cap 2,496.95 (1.28% of 195,074.21875)
+      and 1.28% of the balance at each placement after that, until a win.
+      SizingPlan Recovery does not use LadderEnabled, RiskPercent or the
+      ladder values (RSK-013) for sizing.
+
+  - id: RSK-017
+    wp: WP38
+    spec: "4.1.1, 8.1"
+    verify: unit
+    status: planned
+    text: >-
+      Recovery losing run from broker data (owner decision Q of 2026-11-24,
+      with the conventions of RSK-013). Trades are built from broker data as
+      the ladder builds its entries: everything with the same bot label is
+      one trade; it is closed when nothing of it is open or pending, its net
+      result is the sum of the net results (profit, commission, swap) of its
+      closed parts and its close time the latest of them; trades placed
+      before 00:00 CE(S)T of RiskEpochDate are not counted. A win is a closed
+      trade with a net result above zero (1e-9 tolerance); every other
+      closed trade, break-even included, is a non-win. For a trade placed at
+      server time T, the closed trades with a close time at or before T are
+      taken in the order close time, then placement time, then label
+      (ordinal); L is the sum of the absolute net results of the non-wins
+      after the last win in that order, or of all of them when there is no
+      win. Open positions and pending orders, of any instance, do not change
+      L. The amount is a pure function of the positions, pending orders and
+      history read from the broker at the placement, the parameters and T:
+      the same data in any record order, and the same data after a restart,
+      give the same R, bit for bit. A record with a time that is not UTC, a
+      result that is not finite, an event after T, or history that cannot be
+      read fails closed: no order is placed and the skip reason is
+      BrokerDataInvalid, as for the ladder.
+
+  - id: RSK-018
+    wp: WP38
+    spec: "4.1, 4.2, 4.3, 7, 15"
+    verify: unit
+    status: planned
+    text: >-
+      Risk defaults for the 200,000 USD account (owner decisions P, Q, R and
+      S of 2026-11-24). The core's risk parameters default to InitialCapital
+      200,000, DailyLossLimitPercent 2.0, SizingPlan Ladder,
+      RecoveryFirstRiskUsd 100, RecoveryMaxRiskPercent 1.28, SanityCapEnabled
+      false and SanityCapPercent 0.55; every other default is unchanged
+      (RiskPercent 0.5, MaxOpenRiskPercent 1.5, MaxDrawdownPercent 8, the
+      FTMO values 5, 10 and 1, MaxVolumeUnits 500,000, the ladder values).
+      Validation refuses, naming the parameter, a SizingPlan other than
+      Ladder or Recovery, a RecoveryFirstRiskUsd that is not a finite number
+      greater than 0, and a RecoveryMaxRiskPercent or SanityCapPercent that
+      is not greater than 0 and at most 100. With SizingPlan Ladder every
+      sizing decision, journal line and the parameter hash are exactly as
+      before this change, for the same parameters and broker data.
 
   # ---------------------------------------------------------------- NEWS
   - id: NWS-001
@@ -1280,6 +1365,40 @@ requirements:
       threshold applies to both segments: 3 of 4 for the four forex pairs,
       4 of 5 with gold.
 
+  - id: SIM-006
+    wp: WP38
+    spec: "4.1.1, 12.1"
+    verify: unit
+    status: planned
+    text: >-
+      Recovery sizing in the challenge simulator (owner decision U of
+      2026-11-24). The commands ftmo and accept accept --sizing recovery
+      beside fixed and ladder, with --recovery-first <money> (default 100),
+      --recovery-max <percent> (default 1.28) and --reward-risk <R> (default
+      2.0). Each trade then risks the amount of RSK-016 computed from the
+      simulated balance at its open and the simulated losing run: the money
+      results of the trades closed at or before its open, in the
+      simulator's close order, a win being a result above zero. A trade's
+      money result is its ResultR times its risk. As for the ladder, only
+      the two phases (10% and 5%) are run and the report names the sizing
+      recovery. Any other --sizing value is refused with a message naming
+      the three values. With the defaults and every trade losing 1R from
+      200,000 the simulated risks are those of RSK-016.
+
+  - id: SIM-007
+    wp: WP38
+    spec: "12.1, 15"
+    verify: unit
+    status: planned
+    text: >-
+      Simulation defaults for the 200,000 USD account (owner decisions P and
+      R of 2026-11-24). The initial capital of the combiner, the challenge
+      simulator and the acceptance report, and the --initial-capital option
+      of every command, default to 200,000; the daily budget of the combiner
+      and the challenge simulator, and the --daily-budget option, default to
+      2.0. The help text shows the new defaults. Given explicitly, the old
+      values 100,000 and 1.5 give the results of before, bit for bit.
+
   # ---------------------------------------------------------------- BREAKOUT MODE (spec v0.10)
   - id: SIG-022
     wp: WP25
@@ -2045,3 +2164,25 @@ requirements:
       modes unchanged). The parameter files under deploy/params gain the
       eight lines with their defaults; docs/backtest-howto.md describes the
       backtest of both models side by side.
+
+  # ---------------------------------------------------------------- SIZING PLANS IN THE CBOT (spec v0.12)
+  - id: PLT-017
+    wp: WP38
+    spec: "4.1, 4.3, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Sizing plan, sanity cap and account defaults in the cBot (owner
+      decisions P, Q, R and S of 2026-11-24). The group "Risk" gains
+      SizingPlan "Ladder", RecoveryFirstRiskUsd 100, RecoveryMaxRiskPercent
+      1.28, SanityCapEnabled false and SanityCapPercent 0.55; InitialCapital
+      defaults to 200000 and DailyLossLimitPercent to 2.0. The values are
+      checked at start in every mode and a refusal names the parameter as
+      cTrader shows it; the text of SizingPlan is parsed in the core and
+      tested there. The parameter hash does not contain the sizing plan or
+      any risk value, so the hashes of every mode and model stay what they
+      were. With SizingPlan Recovery the core's start line ends with
+      sizing=Recovery; with Ladder the start line is unchanged, byte for
+      byte. Every parameter file under deploy/params sets InitialCapital
+      200000.0, DailyLossLimitPercent 2.0 and the five new lines with their
+      defaults; deploy/README.md and docs/runbook.md name the new values.
