@@ -1,0 +1,8 @@
+# Local lab data and output (row AI: data is never committed)
+lab-data/
+data/*/
+out/
+runs/
+__pycache__/
+*.pyc
+*.part
