@@ -125,6 +125,11 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.stage == 'data'
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      # Dukascopy throttles bursts: requests at a time (at most 4) and the pause of each worker
+      # after a request, in seconds.
+      LAB_WORKERS: '4'
+      LAB_PAUSE: '0'
     strategy:
       fail-fast: false
       matrix:
@@ -150,14 +155,24 @@ jobs:
           TO_MONTH: ${{ needs.inputs.outputs.to_month }}
         run: >-
           python3 -I lab/data/dukascopy.py --symbols "$SYMBOL" --from "$FROM"
-          --to-month "$TO_MONTH" --out lab-data
+          --to-month "$TO_MONTH" --workers "$LAB_WORKERS" --pause "$LAB_PAUSE" --out lab-data
 
       - name: Save the data cache
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: success() && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: lab-data/${{ matrix.symbol }}
           key: lab-m1-v1-${{ matrix.symbol }}-${{ needs.inputs.outputs.to_month }}
+
+      # A stopped download keeps its finished months (the symbol's manifest is rewritten after
+      # every month); they are saved under a key of this run, which the restore prefix finds, so
+      # the next run continues from there.
+      - name: Save the finished months of a stopped download
+        if: failure() && hashFiles(format('lab-data/{0}/manifest.csv', matrix.symbol)) != ''
+        uses: actions/cache/save@v6
+        with:
+          path: lab-data/${{ matrix.symbol }}
+          key: lab-m1-v1-${{ matrix.symbol }}-${{ needs.inputs.outputs.to_month }}-partial-${{ github.run_id }}-${{ github.run_attempt }}
 
       # Manifests only: never the data (row AI).
       - name: Upload the symbol's manifests
