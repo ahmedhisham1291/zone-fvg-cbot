@@ -39,9 +39,13 @@ confirms or corrects this section.
   the plausible range (EURUSD 0.8-1.4, GBPUSD 1.0-1.8, AUDUSD 0.5-0.9,
   USDJPY 80-200, XAUUSD 1,000-10,000); volume finite and not negative. Any
   failure stops the run naming the file and the record.
-- Requests: at most 4 at a time, User-Agent `zone-fvg-lab`, 30 s timeout,
-  retries after 2, 4, 8, 16 and 32 s on a timeout, a connection error, 429 or
-  5xx; any other status stops the run.
+- Requests: at most 4 at a time (`--workers`, 1 to 4, default 4), each
+  worker waiting `--pause` seconds after each request (default 0), User-Agent
+  `zone-fvg-lab`, 30 s timeout, retries after 2, 4, 8, 16 and 32 s on a
+  timeout, a connection error, 429 or 5xx, each retry printed; any other
+  status, or a sixth failure, stops the run.
+- The symbol's manifests are rewritten after every month, so a run that
+  stops keeps its finished months, and the next run continues from there.
 - Join, in this order: a minute from Friday 17:00 to Sunday 17:00 New York is
   dropped as `dropped_weekend`; a minute with only one side as
   `dropped_one_side`; a minute whose bid volume is 0 as `dropped_zero_volume`.
