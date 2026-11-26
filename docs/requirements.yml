@@ -1,4 +1,4 @@
-# Numbered requirements extracted from docs/spec.md (v0.14).
+# Numbered requirements extracted from docs/spec.md (v0.15).
 #
 # Rules for this file
 # - The text of a requirement changes only in a pull request that carries the
@@ -2335,3 +2335,353 @@ requirements:
       docs/backtest-howto.md say that a backtest needs no parameter typed
       by hand except LadderEnabled, and how to choose Breakout, SessionRange
       or the Fvg model.
+
+  # ---------------------------------------------------------------- OFFLINE BACKTEST LAB (spec v0.15, 12.5, owner request of 2026-11-26)
+  - id: PLT-019
+    wp: WP40
+    spec: "12.5"
+    verify: manual
+    status: planned
+    text: >-
+      Lab workflow (owner-approved protected path .github/workflows/lab.yml,
+      row AQ). Started by hand (workflow_dispatch) with the inputs stage
+      (data, single, sweep, holdout), grid, selection, shards (default 20,
+      at most 20), stress (default false) and report_issue (optional); also
+      runs the lab's own checks (Python unit tests, build, tests, format and
+      coverage of ZoneFvg.Lab) on pull requests that change lab/**,
+      src/ZoneFvg.Lab/** or the workflow. Permissions contents read, and
+      issues write only in the job that posts a report. No secret is used.
+      Every job has a timeout (data 120 minutes, a sweep shard 330, every
+      other job 60). The downloaded and converted data is kept only in the
+      Actions cache, never committed and never uploaded as an artifact; the
+      artifacts hold manifests, trade logs, run records and reports. The
+      existing workflows are not changed. Proven by the first recorded run
+      of each stage in docs/test-records/WP40-lab.md.
+
+  - id: LAB-001
+    wp: WP40
+    spec: "12.5"
+    verify: manual
+    status: planned
+    text: >-
+      Data download (row AI). A Python 3 program under lab/data/ using only
+      the standard library downloads, for EURUSD, GBPUSD, USDJPY, AUDUSD
+      and XAUUSD and every day from 2019-03-01 to the end of the last
+      complete month, Dukascopy's daily one-minute BID and ASK candle files
+      (LZMA, 24-byte big-endian records: seconds from 00:00 UTC, four
+      integer prices, a float volume; point 0.00001 for the pairs quoted in
+      USD, 0.001 for USDJPY and XAUUSD; the URL layout and the price order
+      are confirmed on the first real files and written in lab/data/README.md).
+      At most 4 requests at a time, a generic User-Agent, 30 s timeout, up
+      to 5 retries with back-off on errors, 429 and 5xx; 404 or an empty
+      file is a day without data. Every record is checked (time a whole
+      minute below 86,400 s and increasing, low <= min(open, close),
+      high >= max(open, close), price within the symbol's plausible range:
+      EURUSD 0.8-1.4, GBPUSD 1.0-1.8, AUDUSD 0.5-0.9, USDJPY 80-200,
+      XAUUSD 1,000-10,000), and any failure stops the run naming file and
+      record. A minute is written when both its bid and ask candles exist
+      and the bid volume is above 0, and not between Friday 17:00 and
+      Sunday 17:00 New York. Output per symbol and month: a gzip file with
+      mtime 0 of the CSV header
+      time_utc,bid_open,bid_high,bid_low,bid_close,ask_open,ask_high,ask_low,ask_close,volume,
+      times yyyy-MM-ddTHH:mmZ, prices with the symbol's digits. A manifest
+      lists per symbol and month the minutes kept, dropped by each rule,
+      the weekdays without data (25 December and 1 January excepted), the
+      first and last minute and the file's SHA-256, and per raw file its
+      SHA-256; the data id is the SHA-256 of the manifest. A month with
+      more than 2 weekdays without data fails the run. A month already in
+      the cache with a matching checksum is not downloaded again. The
+      Python unit tests run in the lab workflow without network access.
+
+  - id: LAB-002
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Minute data reader (C#). Reads the monthly files of LAB-001 for one
+      symbol and a time range, checks the header, every row (invariant
+      culture, times whole minutes in UTC strictly increasing across
+      months, bid and ask OHLC consistent as in LAB-001, ask close not
+      below bid close) and the manifest checksum of each file, and refuses
+      the whole input at the first problem with the file, row and column.
+      Returns immutable minute records in time order.
+
+  - id: LAB-003
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Bars from minutes. M15, H4 and D1 bars are built from the bid
+      candles: M15 periods start on UTC quarter hours; D1 periods start at
+      17:00 New York (NewYorkClock.TradingDayStartUtc of the trading date);
+      H4 periods start at that time plus 0, 4, 8, 12, 16 and 20 hours. A
+      bar's open time is its period start; open is the first kept minute's
+      open, close the last kept minute's close, high and low the extremes.
+      A period without a kept minute has no bar, and a period that is not
+      complete at the end of the input has no bar. Across a change of New
+      York summer time a D1 or H4 period has the length its two start
+      times give.
+
+  - id: LAB-004
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Simulated broker (rows AK). Implements IBroker from the minute
+      candles. Buy orders and the exits of sell positions use the ask,
+      sell orders and the exits of buy positions the bid. A limit fills
+      when the minute reaches its price and fills at its price; a stop
+      entry fills at the larger (buy) or smaller (sell) of its price and
+      the minute's open, plus slippage. A stop loss fills at its price or,
+      when the minute opens beyond it, at the open, minus slippage; a
+      take profit fills at its price. When the stop loss and the take
+      profit are both reached in one minute the stop loss is taken; in the
+      minute of the fill only the stop loss is checked. Orders whose
+      expiry is at or before the minute's start are removed before it is
+      processed. History records carry commission (both sides), net
+      profit, balance after close, volume, closing price and exit reason.
+      Between minutes the current prices are the open of the minute being
+      processed; while the market has no candle IsMarketOpen is false and
+      orders and closes are refused with a reason. Symbol facts and
+      sessions come from lab/symbols.json; requests that violate the
+      symbol's volume or tick grid are refused as cTrader would.
+
+  - id: LAB-005
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Costs (row AJ), from lab/costs.json: commission per side in USD per
+      million USD of notional (pairs 30) or as a fraction of notional
+      (gold 0.000007), converted with SymbolCostMath and reported to the
+      core as RoundTripCommissionPerUnit; spread floor per symbol (EURUSD
+      0.00003, GBPUSD 0.00006, AUDUSD 0.00004, USDJPY 0.005, XAUUSD 0.30),
+      applied as ask = max(ask, bid + floor) for each of open, high, low
+      and close, the floor being 3 times as large from 16:55 to 18:10 New
+      York;
+      slippage on stop entries and stop losses (pairs 0.00001, USDJPY
+      0.001, XAUUSD 0.05). With stress, spread floor and commission are
+      multiplied by 1.5 and slippage gets the extra of 12.1 step 6 (pairs
+      0.00005, USDJPY 0.005, XAUUSD 0.15); the spread of the data is then
+      also widened by 1.5. Swap is 0 unless the file gives it, and the run
+      record says which.
+
+  - id: LAB-006
+    wp: WP40
+    spec: "12.5"
+    verify: scenario
+    status: planned
+    text: >-
+      Replay through the bot's core. The lab constructs BotCore with
+      isBacktest true, WriteTradeLog true and BacktestHaltsLogOnly true,
+      runs StartChecks with the simulated account (balance = InitialCapital),
+      calls OnStart with the history of every bar closed at the start
+      time, then runs the minute clock of spec 12.5 (move time and expire,
+      deliver closed bars in (close time, D1, H4, M15) order, OnTimer,
+      resolve the minute, OnTradeEvent after each fill, close or expiry),
+      every minute from start to end including closed-market minutes. IBarHistory
+      serves the bars closed at the broker's time for recovery. At the end
+      open positions are closed at the last price with reason EndOfRun and
+      pending orders cancelled, followed by OnTradeEvent. The trade log is
+      made from the journal with BacktestLogExtract and must read back with
+      TradeLogCsv. Any exception the core lets out, or a journal error
+      line counted by RSK-010, is reported in the run record; the run
+      fails if the trade log cannot be extracted.
+
+  - id: LAB-007
+    wp: WP40
+    spec: "12.5, 7, 7.1"
+    verify: unit
+    status: planned
+    text: >-
+      Parameters as in the cBot. The lab reads a key=value file in the
+      format of deploy/params (the five .cbotset.example files are the
+      base), applies overrides Key=Value, and builds BotParameters the way
+      ZoneFvgBot.BuildParameters does, through the same core functions
+      (SymbolProfile.Resolve, ChochText, SessionRangeText,
+      SizingPlanText, BacktestDefaults); RiskEpochDate is empty (the
+      backtest's first day). An unknown key, a missing key or a value that
+      does not parse is refused naming the key. A test reads the cBot
+      source and checks that the set of [Parameter] names equals the
+      lab's set and that each cBot DefaultValue equals the lab's default;
+      a test checks that the five example files with no override give the
+      parameter hash printed by the core for those values.
+
+  - id: LAB-008
+    wp: WP40
+    spec: "12.5"
+    verify: scenario
+    status: planned
+    text: >-
+      Determinism and run record. Two runs with the same data, parameters,
+      cost file and build give byte-identical trade logs and run records;
+      elapsed time is printed to the console only. The run record (JSON,
+      keys in a fixed order, invariant numbers) holds the data id, the
+      parameter file text checksum, the parameter hash, the cost file
+      checksum, the symbol, the range, and the counts of minutes, bars per
+      timeframe, signals, skips by reason, orders placed, fills, closes by
+      reason, data-gap blocks and core exceptions.
+
+  - id: LAB-009
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Grid file and sweep. A grid file under lab/grids/ names the rule
+      (LAB-SEL-1), the symbols, the base file per symbol and one or more
+      blocks of Key=v1|v2|... lists; each block is the full product of its
+      lists in file order, numbered from 1 across blocks. More than 48
+      combinations, a duplicate combination, an unknown key or a value the
+      parameter reader of LAB-007 refuses: the whole file is refused. The
+      sweep splits the (symbol, combination) runs over n shards by a fixed
+      rule (run k goes to shard k mod n), runs the development range
+      (2019-03-01 to 2024-10-31 23:59 UTC, trades counted from 2020-01-01)
+      and writes per run the trade log and the run record named by symbol
+      and combination number.
+
+  - id: LAB-010
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Measures, per symbol and pooled over a set of symbols, for trades
+      whose open time is inside the segment: trades, trades per month
+      (months of the segment), win rate (result_r > 0), average R, profit
+      factor (sum of positive R / absolute sum of negative R; reported as
+      infinite without a loss), maximum drawdown in R (cumulative R by
+      close time from its running peak, starting at 0), worst losing run
+      (most consecutive trades with result_r <= 0 by close time), R per
+      calendar month (UTC month of the close), share of positive months
+      (months of the segment without a trade count as not positive), and
+      R per calendar year.
+
+  - id: LAB-011
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Selection rule LAB-SEL-1 (proposal), on development trades only:
+      symbol s counts for combination c with at least 30 trades and a
+      profit factor of at least 1.10; c is eligible with at least 2
+      counting symbols, at least 150 trades pooled over them, pooled
+      profit factor at least 1.20, pooled average at least +0.10R and
+      pooled R above 0 in at least 3 of the years 2020 to 2024; score =
+      pooled R per month / max(pooled maximum drawdown in R, 1);
+      neighbours of c are the combinations of its block that differ in
+      exactly one key by one position in that key's list (boolean lists
+      too); c is on a plateau when it has no neighbour or the median of its
+      neighbours' scores (each computed the same way, eligible or not, 0
+      for a neighbour without counting symbols) is at least half its own;
+      the eligible combination on a plateau with the highest score is
+      chosen, ties by the lower number. Without one the result is "No
+      combination passes on the development data". The output names every
+      combination's eligibility with the failed marks.
+
+  - id: LAB-012
+    wp: WP40
+    spec: "12.5, 12.1"
+    verify: unit
+    status: planned
+    text: >-
+      Holdout once. The holdout stage takes a selection file under
+      lab/selection/ (rule, grid file checksum, combination number, its
+      parameter texts and hash per counting symbol, data id of the sweep)
+      and refuses it when it records a holdout run already, when the grid
+      file's checksum differs, or when the data's months up to 2024-10
+      differ from the sweep's manifest. It runs each counting symbol from
+      2019-03-01 to the end of the last complete month and counts only
+      trades opened on or after 2024-11-01; it also checks that the trades
+      before 2024-11-01 equal the sweep's for that combination (trades
+      still open on 2024-10-31 excepted) and reports any difference. Months
+      after the month of the first holdout run, on later runs, are
+      reported separately as forward months.
+
+  - id: LAB-013
+    wp: WP40
+    spec: "12.5, 15"
+    verify: unit
+    status: planned
+    text: >-
+      Money-management comparison, for the chosen combination's combined
+      trade logs, development and holdout separately: plans fixed 0.25,
+      0.5, 0.75 and 1.0%, Ladder (RSK-013 defaults), Recovery (RSK-016
+      defaults), brake on fixed 0.5% and on fixed 1.0% (SIM-008 defaults);
+      for each the account replay of SIM-009 (mean and median monthly
+      return, share of positive months, worst month, maximum drawdown, the
+      date of any halt or breach) and the challenge simulation of SIM-004
+      on 200,000 USD (Challenge 10% and Verification 5%: pass, breach and
+      neither rates, median days to pass; the product of the two pass
+      rates as an estimate of both) with 5,000 runs, seed 20261126, daily
+      budget 2.0% in every cell. Also the risk per trade that the
+      development R per month would need for 1% a month (1 / R per month,
+      in percent) and the development maximum drawdown at that risk
+      (drawdown in R times that risk).
+
+  - id: LAB-014
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Report. A Markdown report with, in this order: the plain answer to
+      the target of row AP (one of: "On the holdout, <plan> reached
+      <x>% a month with a maximum drawdown of <y>% and a Challenge breach
+      rate of <z>%." for each plan with a mean of at least 1.0%, a maximum
+      drawdown under 10% and a breach rate of at most 10%, or exactly "No
+      configuration and sizing plan reached 1% a month on the holdout.");
+      the data id, code commit, costs and stress flag; the limits of spec
+      12.5 and the statement that the holdout is not unused (row AN); the
+      grid, the number of combinations tried in this grid and in every
+      earlier grid under lab/grids/; every combination's development
+      measures and eligibility; the selection; the holdout measures of the
+      chosen combination only; the SIM-005 acceptance report for it; the
+      table of LAB-013. Before a holdout run the report says "Holdout not
+      run". Uploaded as an artifact with the chosen combination's trade
+      logs, written to the job summary, printed in the job log between
+      the lines -----BEGIN LAB REPORT----- and -----END LAB REPORT-----,
+      and, when report_issue is given, posted as a comment on that issue
+      (cut at 60,000 characters with a line saying so).
+
+  - id: SIM-008
+    wp: WP40
+    spec: "12.5, 12.1"
+    verify: unit
+    status: planned
+    text: >-
+      Drawdown brake in the simulator only (row AO; not a cBot setting).
+      With the brake on, a trade opened while the closed balance is at
+      least BrakeAtPercent (default 3.0) below the highest closed balance
+      of the path (peak - balance >= BrakeAtPercent / 100 x peak, within
+      1e-9 relative) risks BrakeFactor (default 0.5) times the plan's
+      percent. Fixed sizing only: with --sizing ladder or recovery the
+      options --brake-at and --brake-factor are refused with a message
+      naming SIM-008. The options are accepted by the commands ftmo and
+      accept and by the account replay of SIM-009; the brake is on exactly
+      when --brake-at is given. Without it every result is the same as
+      before, bit for bit. The report names the brake and its values.
+
+  - id: SIM-009
+    wp: WP40
+    spec: "12.5"
+    verify: unit
+    status: planned
+    text: >-
+      Account replay for monthly returns. One path from 00:00 CE(S)T of
+      the first day of a given segment through every later trade of the
+      combined list up to the segment's end, with the sizing and the bot
+      limits of the challenge simulator (daily budget, kill switch,
+      optional brake) and its FTMO floors, but without a profit target. A
+      floor breach ends the path; a halt stops new trades. Output: per
+      calendar month (CE(S)T date of the month's first and last day) the
+      start and end balance and the return in percent, and the mean and
+      median monthly return, share of positive months, worst month,
+      maximum drawdown of the closed balance from its peak in percent,
+      and the date and cause of a breach or halt. Available as the command
+      sim replay with --from and --to dates.
