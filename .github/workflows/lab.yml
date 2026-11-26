@@ -128,8 +128,8 @@ jobs:
     env:
       # Dukascopy throttles bursts: requests at a time (at most 4) and the pause of each worker
       # after a request, in seconds.
-      LAB_WORKERS: '4'
-      LAB_PAUSE: '0'
+      LAB_WORKERS: '1'
+      LAB_PAUSE: '1'
     strategy:
       fail-fast: false
       matrix:
