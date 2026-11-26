@@ -40,15 +40,21 @@ public static class ParameterHash
     /// ChochStopAtDistal, ChochTargetBufferAtr, ChochMinStopPips and MinRewardRisk in the same
     /// formats; without them nothing is appended, so the hash of the Fvg model does not change.
     /// SessionEndUtc 24:00 (EXE-029) is written <c>1.00:00:00</c>.
+    /// With a symbol profile (EXE-032, spec 7.1) an automatic MaxSpreadPips, MinStopPips or
+    /// ChochMinStopPips is written in its usual place as <c>auto:</c>, the profile's value and its
+    /// unit (for example <c>auto:0.4USD</c> for gold, <c>auto:1.5pips</c> for a currency pair) in place
+    /// of the number, so the hash does not depend on the pip size the broker reports. Nothing is
+    /// appended. Values set by hand, profile None and a null profile are written as before.
     /// </summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
     /// <param name="breakout">Breakout parameters in Breakout mode, or null in the other modes.</param>
     /// <param name="sessionRange">Session range parameters in SessionRange mode, or null in the other modes.</param>
     /// <param name="choch">Choch parameters in the Choch model, or null in the other models and modes.</param>
+    /// <param name="symbolProfile">The symbol profile of the instance (EXE-032), or null.</param>
     /// <returns>The canonical text.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
-    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null)
+    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null)
     {
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(execution);
@@ -74,8 +80,8 @@ public static class ParameterHash
         Add(text, "SessionEndUtc", execution.SessionEndUtc);
         Add(text, "FridayNoEntryUtc", execution.FridayNoEntryUtc);
         Add(text, "FridayCloseUtc", execution.FridayCloseUtc);
-        Add(text, "MaxSpreadPips", execution.MaxSpreadPips);
-        Add(text, "MinStopPips", execution.MinStopPips);
+        AddProfiled(text, SymbolProfileValues.MaxSpreadPips, execution.MaxSpreadPips, symbolProfile);
+        AddProfiled(text, SymbolProfileValues.MinStopPips, execution.MinStopPips, symbolProfile);
         Add(text, "MaxStopAtr", execution.MaxStopAtr);
         Add(text, "CostToRiskMax", execution.CostToRiskMax);
         Add(text, "MinFvgSpreadMult", execution.MinFvgSpreadMult);
@@ -119,7 +125,7 @@ public static class ParameterHash
             Add(text, "ChochUseBias", choch.ChochUseBias ? "true" : "false");
             Add(text, "ChochStopAtDistal", choch.ChochStopAtDistal ? "true" : "false");
             Add(text, "ChochTargetBufferAtr", choch.ChochTargetBufferAtr);
-            Add(text, "ChochMinStopPips", choch.ChochMinStopPips);
+            AddProfiled(text, SymbolProfileValues.ChochMinStopPips, choch.ChochMinStopPips, symbolProfile);
             Add(text, "MinRewardRisk", choch.MinRewardRisk);
         }
 
@@ -132,11 +138,12 @@ public static class ParameterHash
     /// <param name="breakout">Breakout parameters in Breakout mode, or null in the other modes.</param>
     /// <param name="sessionRange">Session range parameters in SessionRange mode, or null in the other modes.</param>
     /// <param name="choch">Choch parameters in the Choch model, or null in the other models and modes (REC-020).</param>
+    /// <param name="symbolProfile">The symbol profile of the instance (EXE-032), or null.</param>
     /// <returns>8 lowercase hex characters.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
-    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null)
+    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null)
     {
-        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout, sessionRange, choch)));
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout, sessionRange, choch, symbolProfile)));
         var hex = new StringBuilder(Length);
         for (int i = 0; i < Length / 2; i++)
         {
@@ -149,6 +156,19 @@ public static class ParameterHash
     private static void Add(StringBuilder text, string name, string value)
     {
         text.Append(name).Append('=').Append(value).Append(';');
+    }
+
+    // EXE-032: an automatic value as its profile text, any other value as the number.
+    private static void AddProfiled(StringBuilder text, string name, double value, SymbolProfileResult? symbolProfile)
+    {
+        string? automatic = symbolProfile?.HashText(name);
+        if (automatic == null)
+        {
+            Add(text, name, value);
+            return;
+        }
+
+        Add(text, name, automatic);
     }
 
     private static void Add(StringBuilder text, string name, int value)

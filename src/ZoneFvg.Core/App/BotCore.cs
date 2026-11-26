@@ -92,6 +92,9 @@ public sealed class BotCore
     private readonly TimeSpan _fridayCloseUtc;
     private readonly RiskParameters _risk;
     private readonly string _parameterHash;
+
+    // EXE-032: the symbol profile of the instance, or null; written at the end of the start line.
+    private readonly SymbolProfileResult? _symbolProfile;
     private readonly NewsService _news;
     private readonly RequestCounter _requests;
     private readonly ErrorCounter _errors;
@@ -184,19 +187,20 @@ public sealed class BotCore
         _sessionRange = parameters.SessionRange;
         _choch = parameters.Choch is not null;
         _zoneCounts = new ZoneOutcomeCounts(_choch);
-        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout, parameters.SessionRange, parameters.Choch);
+        _symbolProfile = parameters.SymbolProfile;
+        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile);
         _news = CreateNews(parameters, store, http, isBacktest);
         _requests = new RequestCounter(parameters.Risk);
         _errors = new ErrorCounter(parameters.Risk);
         _events = new CoreEvents(this);
-        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch);
+        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile);
         _orders = new OrderManager(broker, _requests, _events, _haltsLogOnly);
         _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events);
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
         _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
         var tradeEvents = new CoreTradeEvents(this);
         _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, tradeEvents);
-        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch);
+        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile);
     }
 
     /// <summary>The current state (REC-001).</summary>
@@ -361,6 +365,12 @@ public sealed class BotCore
         {
             // RSK-018, PLT-017: one more field at the very end in the Recovery plan; the Ladder line is unchanged.
             start.Add(("sizing", "Recovery"));
+        }
+
+        if (_symbolProfile is not null)
+        {
+            // EXE-032: the profile and the effective values at the very end; without a profile the line is unchanged.
+            start.AddRange(ProfileFields(_symbolProfile));
         }
 
         Write("start", start.ToArray());
@@ -1570,5 +1580,46 @@ public sealed class BotCore
             string text = "position " + Text(trade.PositionId) + " closed, net " + trade.NetProfit.ToString("0.00", CultureInfo.InvariantCulture);
             _core.Alert(AlertKind.TradeClosed, text, atUtc);
         }
+    }
+
+    // EXE-032: profile, pip size, the four effective values and the automatic ones by their cTrader names.
+    private static IEnumerable<(string Key, string? Value)> ProfileFields(SymbolProfileResult profile)
+    {
+        var automatic = new List<string>();
+        if (profile.MaxSpreadPipsAuto)
+        {
+            automatic.Add(SymbolProfileValues.MaxSpreadPips);
+        }
+
+        if (profile.MinStopPipsAuto)
+        {
+            automatic.Add(SymbolProfileValues.MinStopPips);
+        }
+
+        if (profile.ChochMinStopPipsAuto)
+        {
+            automatic.Add(SymbolProfileValues.ChochMinStopPips);
+        }
+
+        if (profile.MaxVolumeUnitsAuto)
+        {
+            automatic.Add(SymbolProfileValues.MaxVolumeUnits);
+        }
+
+        return new (string Key, string? Value)[]
+        {
+            ("profile", profile.Profile.ToString()),
+            ("pipSize", Number(profile.PipSize)),
+            ("maxSpreadPips", Number(profile.MaxSpreadPips)),
+            ("minStopPips", Number(profile.MinStopPips)),
+            ("chochMinStopPips", Number(profile.ChochMinStopPips)),
+            ("maxVolumeUnits", Number(profile.MaxVolumeUnits)),
+            ("auto", automatic.Count == 0 ? "none" : string.Join(",", automatic)),
+        };
+    }
+
+    private static string Number(double value)
+    {
+        return value.ToString("R", CultureInfo.InvariantCulture);
     }
 }

@@ -98,9 +98,10 @@ public sealed class PreTradeFilters
     /// Choch parameters in the Choch model, or null (the default) otherwise; validated here. They
     /// give ChochMinStopPips and MinRewardRisk (EXE-028) and are part of the parameter hash (REC-020).
     /// </param>
+    /// <param name="symbolProfile">The symbol profile (EXE-032), or null (the default); used only for the parameter hash.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null)
+    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(signalParameters);
@@ -119,7 +120,7 @@ public sealed class PreTradeFilters
         _events = events ?? throw new ArgumentNullException(nameof(events));
         choch?.Validate();
         _choch = choch;
-        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout, sessionRange, choch);
+        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout, sessionRange, choch, symbolProfile);
         _dailyBudgetRecordOnly = dailyBudgetRecordOnly;
     }
 

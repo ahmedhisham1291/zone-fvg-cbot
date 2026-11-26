@@ -1948,7 +1948,7 @@ requirements:
     wp: WP39
     spec: "3.8, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       SessionRange in the cBot. EntryMode accepts SessionRange. The group
       "Entry mode" gains RangeStartNy "19:00", RangeEndNy "03:00",
@@ -2196,7 +2196,7 @@ requirements:
     wp: WP39
     spec: "3.9, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Choch in the cBot. A new parameter group "Entry model" holds EntryModel
       "Choch" (spec v0.14, PLT-018; "Fvg" until then), RequireSweep false,
@@ -2219,7 +2219,7 @@ requirements:
     wp: WP39
     spec: "4.1, 4.3, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Sizing plan, sanity cap, open-risk and currency caps, size cap and
       account defaults in the cBot (owner decisions P to Z of 2026-11-24). The group "Risk" gains
@@ -2245,7 +2245,7 @@ requirements:
     wp: WP39
     spec: "7, 7.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Automatic symbol profile (owner request of 2026-11-24, row AC). A
       pure core function takes the symbol's name, base and quote asset
@@ -2270,7 +2270,7 @@ requirements:
     wp: WP39
     spec: "7.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Values set by hand are checked against the profile (owner request of
       2026-11-24, row AD). A value other than 0 is used as given when it
@@ -2291,7 +2291,7 @@ requirements:
     wp: WP39
     spec: "7.1, 13.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Start line and parameter hash with the profile (owner request of
       2026-11-24, row AE). BotParameters gains an optional record of the
@@ -2315,7 +2315,7 @@ requirements:
     wp: WP39
     spec: "2, 3.9, 4.1, 7, 7.1, 12.1"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Defaults of the owner request of 2026-11-24 in the cBot (rows AA, AB,
       AC and AG). Defaults: EntryMode "ZoneFvg", EntryModel "Choch",

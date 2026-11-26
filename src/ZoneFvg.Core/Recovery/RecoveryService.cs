@@ -103,6 +103,7 @@ public sealed class RecoveryService
     /// the engine of the replay (<see cref="SignalEngine.WithChoch"/>) and its warm-up, and are part
     /// of the parameter hash.
     /// </param>
+    /// <param name="symbolProfile">The symbol profile (EXE-032), or null (the default); used only for the parameter hash.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">The symbol is empty, or more than one of breakout, session range and Choch parameters is set (SIG-034, SIG-035).</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
@@ -122,7 +123,8 @@ public sealed class RecoveryService
         bool haltsRecordOnly = false,
         BreakoutParameters? breakout = null,
         SessionRangeParameters? sessionRange = null,
-        ChochParameters? choch = null)
+        ChochParameters? choch = null,
+        SymbolProfileResult? symbolProfile = null)
     {
         ArgumentNullException.ThrowIfNull(signalParameters);
         ArgumentNullException.ThrowIfNull(executionParameters);
@@ -158,7 +160,7 @@ public sealed class RecoveryService
         _marketHolidays = marketHolidays ?? Array.Empty<MonthDay>();
         _haltsRecordOnly = haltsRecordOnly;
         _warmup = WarmupCalculator.For(signalParameters, breakout, sessionRange, choch);
-        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout, sessionRange, choch);
+        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout, sessionRange, choch, symbolProfile);
         _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
         _guard = new AccountGuard(symbol, riskParameters, broker);
         _safety = new SafetyActions(symbol, executionParameters, broker, counter, events);

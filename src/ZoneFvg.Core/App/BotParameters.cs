@@ -91,6 +91,15 @@ public sealed record BotParameters
     public ChochParameters? Choch { get; init; }
 
     /// <summary>
+    /// EXE-032 (spec 7.1): the symbol profile the adapter resolved at start, with the effective values
+    /// of MaxSpreadPips, MinStopPips, ChochMinStopPips and MaxVolumeUnits and which were automatic.
+    /// Null (the default): no profile; the start line and the parameter hash are as before.
+    /// <see cref="Validate"/> refuses it when its effective values differ from those in
+    /// <see cref="Execution"/>, <see cref="Choch"/> (when set) and <see cref="Risk"/>.
+    /// </summary>
+    public SymbolProfileResult? SymbolProfile { get; init; }
+
+    /// <summary>
     /// The entry mode (REC-017, SIG-034): <see cref="EntryMode.Breakout"/> when <see cref="Breakout"/>
     /// is set, otherwise <see cref="EntryMode.SessionRange"/> when <see cref="SessionRange"/> is set,
     /// otherwise <see cref="EntryMode.ZoneFvg"/>.
@@ -138,6 +147,7 @@ public sealed record BotParameters
         ValidateBreakout();
         ValidateSessionRange();
         ValidateChoch();
+        ValidateSymbolProfile();
         MonthDay.ParseList(MarketHolidays);
         if (!isBacktest && News.NewsEnabled && string.IsNullOrWhiteSpace(NewsFeedUrl))
         {
@@ -177,6 +187,34 @@ public sealed record BotParameters
         }
 
         SessionRange.Validate();
+    }
+
+    // EXE-032: the profile's effective values are the values the core uses; the adapter passes the same doubles.
+    private void ValidateSymbolProfile()
+    {
+        if (SymbolProfile is null)
+        {
+            return;
+        }
+
+        Agree(SymbolProfileValues.MaxSpreadPips, SymbolProfile.MaxSpreadPips, Execution.MaxSpreadPips);
+        Agree(SymbolProfileValues.MinStopPips, SymbolProfile.MinStopPips, Execution.MinStopPips);
+        if (Choch is not null)
+        {
+            Agree(SymbolProfileValues.ChochMinStopPips, SymbolProfile.ChochMinStopPips, Choch.ChochMinStopPips);
+        }
+
+        Agree(SymbolProfileValues.MaxVolumeUnits, SymbolProfile.MaxVolumeUnits, Risk.MaxVolumeUnits);
+    }
+
+    private static void Agree(string name, double profile, double used)
+    {
+        if (!profile.Equals(used))
+        {
+            throw new ArgumentException(
+                "SymbolProfile." + name + " " + Text(profile) + " must equal the " + name + " the core uses, " + Text(used) + " (EXE-032).",
+                nameof(SymbolProfile));
+        }
     }
 
     // SIG-035: the Choch model belongs to ZoneFvg mode; its values validate themselves.

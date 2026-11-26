@@ -47,7 +47,7 @@ Friday close still runs).
 | `TradeOpened` / `TradeClosed` | A position opened or closed | Nothing. Compare now and then with the cTrader app |
 | `OrderRejected` | The broker clearly refused an entry order (bad volume, market closed, no money). Not retried (spec 5.3) | One now and then: nothing. Repeated: send the log lines to the developer |
 | `OrderProblem` | An order did not match after placement, was not found, or a cancel or close failed | Open the cTrader app. Check that every bot position has a stop and target and that no pending order is duplicated. Cancel a duplicate by hand after stopping that symbol (`docker compose stop <symbol>`). Send the log to the developer |
-| `SanityCap` | A trade was refused: volume above `MaxVolumeUnits` (3,000,000 units; gold 1,000 ounces), stop or target on the wrong side, or, only if `SanityCapEnabled` is on (off by default), risk above `SanityCapPercent` (0.55%) of balance (spec 4.3). The open-risk cap and the currency cap are off by default too (`OpenRiskCapEnabled`, `CurrencyCapEnabled`) | Nothing to do now; no order was sent. Send the log to the developer: it means a calculation looked wrong |
+| `SanityCap` | A trade was refused: volume above `MaxVolumeUnits` (automatic by default: 3,000,000 units; gold 1,000 ounces; spec 7.1), stop or target on the wrong side, or, only if `SanityCapEnabled` is on (off by default), risk above `SanityCapPercent` (0.55%) of balance (spec 4.3). The open-risk cap and the currency cap are off by default too (`OpenRiskCapEnabled`, `CurrencyCapEnabled`) | Nothing to do now; no order was sent. Send the log to the developer: it means a calculation looked wrong |
 | `StopLossMissing` | A bot position has no stop loss, or it was closed because the stop could not be set | **Urgent.** Open the cTrader app now. If the position is still open without a stop, set the stop yourself from the planned stop in the alert or close the position. No new entries are placed while any bot position lacks a stop |
 | `StopLossRepaired` | A missing stop was set again from the trade's comment | Check in the app that the stop is where planned. Find out who or what removed it |
 | `DailyLimit` | The daily risk budget (2% of initial capital, 4,000 USD on 200,000, measured from 00:00 Prague balance, all symbols together) is used up. Pending orders cancelled; no entries until the next Prague day | Nothing. Read the daily summary next morning |
@@ -156,6 +156,18 @@ parameter panel, start it.
 `EntryMode` is a parameter too: change it, like any other parameter, only
 when the bot is flat on that symbol (`deploy/README.md`, section "Entry
 mode").
+
+**Defaults from spec v0.14 (owner request of 2026-11-24).** A backtest needs no
+parameter typed by hand except `LadderEnabled` (`false`, the default: a fixed
+0.5% per trade; `true`: the ladder). The defaults are ZoneFvg with the Choch
+model, all day, with the D1 trend filter, and `MaxSpreadPips`, `MinStopPips`,
+`ChochMinStopPips` and `MaxVolumeUnits` at `0`, automatic from the symbol
+(spec 7.1; the `start` line ends with `profile=... pipSize=...` and the
+values). If one of the four is typed by hand and does not fit the symbol, the
+bot refuses to start with a Log line `refused to start: invalid parameter:
+...` that names the parameter, the pip size and the automatic value: set it
+back to 0. Live, `RiskEpochDate`, the Telegram values, the heartbeat address
+and the news feed address are still set in the parameter files.
 
 Do not change `EntryMode` while the instance has an order or a position.
 This matters most for SessionRange (spec 3.8): its position is closed at
