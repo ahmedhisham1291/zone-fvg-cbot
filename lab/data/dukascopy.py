@@ -96,9 +96,10 @@ def urllib_opener(url: str, timeout: float):
         raise TransientError(str(error)) from error
 
 
-def fetch(url: str, opener, sleep):
+def fetch(url: str, opener, sleep, log=None):
     """Body of the file, b"" for an empty file, None for 404. Retries 429, 5xx and connection
-    errors after 2, 4, 8, 16 and 32 s; any other status, or a sixth failure, raises DataError."""
+    errors after 2, 4, 8, 16 and 32 s; any other status, or a sixth failure, raises DataError.
+    Each retry is reported through log."""
     attempt = 0
     while True:
         try:
@@ -115,6 +116,8 @@ def fetch(url: str, opener, sleep):
             problem = f"HTTP {status}"
         if attempt >= len(RETRY_DELAYS):
             raise DataError(f"{url}: {problem} after {attempt + 1} attempts")
+        if log is not None:
+            log(f"retry {attempt + 1} in {RETRY_DELAYS[attempt]} s: {url}: {problem}")
         sleep(RETRY_DELAYS[attempt])
         attempt += 1
 
@@ -305,14 +308,17 @@ def _days_of_month(year, month):
         day += timedelta(days=1)
 
 
-def _download_day(symbol, side, day, opener, sleep):
+def _download_day(symbol, side, day, opener, sleep, pause, log):
     url = url_for(symbol, side, day)
-    return side, day, url, fetch(url, opener, sleep)
+    body = fetch(url, opener, sleep, log)
+    if pause > 0:
+        sleep(pause)
+    return side, day, url, body
 
 
-def _build_month(spec, year, month, opener, sleep, pool):
+def _build_month(spec, year, month, opener, sleep, pool, pause, log):
     days = list(_days_of_month(year, month))
-    tasks = [(spec.name, side, day, opener, sleep) for day in days for side in SIDES]
+    tasks = [(spec.name, side, day, opener, sleep, pause, log) for day in days for side in SIDES]
     results = list(pool.map(lambda t: _download_day(*t), tasks))
     bodies = {(side, day): (url, body) for side, day, url, body in results}
     counts = new_counts()
@@ -345,10 +351,13 @@ def _build_month(spec, year, month, opener, sleep, pool):
     return data, row, raw_rows
 
 
-def build_symbol(symbol, first_day, last_month, out_dir, opener, sleep, workers=MAX_WORKERS, log=print):
+def build_symbol(symbol, first_day, last_month, out_dir, opener, sleep, workers=MAX_WORKERS, log=print,
+                 pause=0.0):
     """Download and convert every month of one symbol; months already in out_dir whose file
     matches the recorded checksum are reused without a request. Returns the manifest rows and
-    the raw manifest rows, in month order, and writes the symbol's own manifests."""
+    the raw manifest rows, in month order. The symbol's own manifests are rewritten after every
+    month, so a run that stops keeps the finished months for the next run. Each worker waits
+    pause seconds after each request."""
     spec = SYMBOLS[symbol]
     folder = os.path.join(out_dir, symbol)
     old_rows = {r["month"]: r for r in read_csv(os.path.join(folder, "manifest.csv"))}
@@ -366,10 +375,11 @@ def build_symbol(symbol, first_day, last_month, out_dir, opener, sleep, workers=
                 raw_rows.extend({f: r[f] for f in RAW_FIELDS} for r in old_raw[label])
                 log(f"{symbol} {label}: in cache, checksum matches")
                 continue
-            data, row, raw = _build_month(spec, year, month, opener, sleep, pool)
+            data, row, raw = _build_month(spec, year, month, opener, sleep, pool, pause, log)
             write_atomic(path, data)
             rows.append(row)
             raw_rows.extend(raw)
+            _write_symbol_manifests(folder, rows, raw_rows, old_rows, old_raw)
             log(f"{symbol} {label}: {row['minutes_kept']} minutes kept, weekend {row['dropped_weekend']}, "
                 f"one side {row['dropped_one_side']}, zero volume {row['dropped_zero_volume']}, "
                 f"ask below bid {row['ask_below_bid']}, weekdays without data "
@@ -377,6 +387,16 @@ def build_symbol(symbol, first_day, last_month, out_dir, opener, sleep, workers=
     write_atomic(os.path.join(folder, "manifest.csv"), csv_bytes(MANIFEST_FIELDS, rows))
     write_atomic(os.path.join(folder, "raw-manifest.csv"), csv_bytes(RAW_FIELDS, raw_rows))
     return rows, raw_rows
+
+
+def _write_symbol_manifests(folder, rows, raw_rows, old_rows, old_raw):
+    """Intermediate manifests: the months done in this run plus the older months not reached yet."""
+    done = {r["month"] for r in rows}
+    later = sorted(m for m in old_rows if m not in done and m in old_raw)
+    all_rows = rows + [{f: old_rows[m][f] for f in MANIFEST_FIELDS} for m in later]
+    all_raw = raw_rows + [{f: r[f] for f in RAW_FIELDS} for m in later for r in old_raw[m]]
+    write_atomic(os.path.join(folder, "manifest.csv"), csv_bytes(MANIFEST_FIELDS, all_rows))
+    write_atomic(os.path.join(folder, "raw-manifest.csv"), csv_bytes(RAW_FIELDS, all_raw))
 
 
 def write_manifests(out_dir, symbols):
@@ -414,6 +434,8 @@ def _parse_args(argv):
     parser.add_argument("--to-month", default=None, help="last month yyyy-mm (default: the month before "
                                                          "the current UTC month)")
     parser.add_argument("--out", required=True, help="output folder")
+    parser.add_argument("--workers", type=int, default=MAX_WORKERS, help="requests at a time, 1 to 4")
+    parser.add_argument("--pause", type=float, default=0.0, help="seconds each worker waits after a request")
     parser.add_argument("--merge-only", action="store_true",
                         help="only merge the symbols' manifests already in --out; no request")
     return parser.parse_args(argv)
@@ -426,6 +448,10 @@ def run(args, opener, sleep, now, log):
         raise DataError(f"unknown symbol(s) {','.join(unknown) or '(none given)'}; known: {','.join(SYMBOLS)}")
     if len(set(symbols)) != len(symbols):
         raise DataError("a symbol is named twice in --symbols")
+    if not 1 <= args.workers <= MAX_WORKERS:
+        raise DataError(f"--workers {args.workers} must be from 1 to {MAX_WORKERS}")
+    if not 0 <= args.pause <= 60:
+        raise DataError(f"--pause {args.pause} must be from 0 to 60 seconds")
     if not args.merge_only:
         try:
             first = datetime.strptime(args.first, "%Y-%m-%d").date()
@@ -441,7 +467,8 @@ def run(args, opener, sleep, now, log):
         if last < (first.year, first.month):
             raise DataError(f"--to-month {last[0]:04d}-{last[1]:02d} is before --from {args.first}")
         for symbol in symbols:
-            build_symbol(symbol, first, last, args.out, opener, sleep, log=log)
+            build_symbol(symbol, first, last, args.out, opener, sleep, workers=args.workers, log=log,
+                         pause=args.pause)
     data_id = write_manifests(args.out, symbols)
     log(f"data id {data_id}")
 

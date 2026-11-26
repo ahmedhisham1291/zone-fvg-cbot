@@ -203,6 +203,14 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(sleep.delays, [])
 
 
+    def test_fetch_reports_each_retry(self):
+        server, lines = FakeServer(), []
+        server.statuses[self.URL] = [503, 200]
+        server.bodies[self.URL] = b"ok"
+        dk.fetch(self.URL, server, NoSleep(), log=lines.append)
+        self.assertEqual(lines, [f"retry 1 in 2 s: {self.URL}: HTTP 503"])
+
+
 class JoinTests(unittest.TestCase):
     def join(self, day, bid, ask):
         counts = dk.new_counts()
@@ -383,6 +391,23 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(raw4, raw1)
 
 
+    def test_build_pause_waits_after_every_request(self):
+        sleep = NoSleep()
+        dk.build_symbol("EURUSD", date(2021, 2, 1), (2021, 2), self.out, FakeServer(default=weekday_noon), sleep,
+                        workers=1, log=lambda s: None, pause=0.5)
+        self.assertEqual(sleep.delays, [0.5] * 56)
+
+    def test_build_failure_keeps_finished_months_for_the_next_run(self):
+        server = FakeServer(default=weekday_noon)
+        server.statuses[dk.url_for("EURUSD", "BID", date(2021, 3, 1))] = [403]
+        with self.assertRaises(dk.DataError):
+            self.build(server, last=(2021, 3))
+        again = FakeServer(default=weekday_noon)
+        rows, _ = self.build(again, last=(2021, 3))
+        self.assertEqual([r["month"] for r in rows], ["2021-02", "2021-03"])
+        self.assertEqual(len(again.calls), 62, "only March is requested again")
+
+
 class CommandLineTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -422,6 +447,12 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(server.calls, [])
         self.assertTrue(lines[-1].startswith("data id "))
+
+    def test_main_refuses_workers_outside_one_to_four(self):
+        code, lines = self.run_main(["--symbols", "EURUSD", "--from", "2021-02-01", "--to-month", "2021-02",
+                                     "--workers", "5", "--out", self.out])
+        self.assertEqual(code, 1)
+        self.assertIn("--workers", lines[-1])
 
     def test_main_refuses_unknown_symbol(self):
         code, lines = self.run_main(["--symbols", "EURCHF", "--from", "2021-02-01", "--to-month", "2021-02",
