@@ -32,7 +32,7 @@ public class SignalEngineOvernightTests
     [Trait("Req", "SIG-043")]
     public void OnBarClosed_OvernightMode_OneBuySignalPerMondayToThursdayEvening()
     {
-        var engine = new SignalEngine(new SignalParameters(), new OvernightParameters());
+        var engine = SignalEngine.WithOvernight(new SignalParameters(), new OvernightParameters());
 
         List<Signal> signals = Run(engine, OvernightBotData.Bars(), OvernightBotData.Utc(2026, 3, 1, 0, 0));
 
@@ -63,7 +63,7 @@ public class SignalEngineOvernightTests
     [Trait("Req", "SIG-043")]
     public void OnBarClosed_BeforeTheEngineIsReady_NoSignal()
     {
-        var engine = new SignalEngine(new SignalParameters(), new OvernightParameters());
+        var engine = SignalEngine.WithOvernight(new SignalParameters(), new OvernightParameters());
 
         List<Signal> signals = Run(engine, OvernightBotData.Bars(), DateTime.MinValue);
 
@@ -75,7 +75,7 @@ public class SignalEngineOvernightTests
     [Trait("Req", "SIG-043")]
     public void OnBarClosed_ReplayFlag_IsCopied()
     {
-        var engine = new SignalEngine(new SignalParameters(), new OvernightParameters());
+        var engine = SignalEngine.WithOvernight(new SignalParameters(), new OvernightParameters());
         var signals = new List<Signal>();
         foreach (FeedBar item in OvernightBotData.Bars().Feed)
         {
@@ -90,10 +90,10 @@ public class SignalEngineOvernightTests
     [Trait("Req", "SIG-043")]
     public void Engine_OvernightMode_WarmupOfTheDefaultsAndRefusedWithAnotherMode()
     {
-        var engine = new SignalEngine(new SignalParameters(), new OvernightParameters());
+        var engine = SignalEngine.WithOvernight(new SignalParameters(), new OvernightParameters());
 
         Assert.Equal(WarmupCalculator.For(new SignalParameters()), engine.WarmupBars);
-        Assert.Throws<ArgumentNullException>(() => new SignalEngine(new SignalParameters(), (OvernightParameters)null!));
+        Assert.Throws<ArgumentNullException>(() => SignalEngine.WithOvernight(new SignalParameters(), null!));
         Assert.Throws<ArgumentException>(() => WarmupCalculator.For(new SignalParameters(), null, new SessionRangeParameters(), null, new OvernightParameters()));
         Assert.Throws<ArgumentException>(() => WarmupCalculator.For(new SignalParameters(), new BreakoutParameters(), null, null, new OvernightParameters()));
         Assert.Throws<ArgumentException>(() => WarmupCalculator.For(new SignalParameters(), null, null, new ChochParameters(), new OvernightParameters()));
@@ -106,7 +106,7 @@ public class SignalEngineOvernightTests
     {
         BarSet all = OvernightBotData.Bars();
         var bars = new BarSet(all.D1, Array.Empty<Bar>(), all.M15);
-        var engine = new SignalEngine(new SignalParameters(), new OvernightParameters());
+        var engine = SignalEngine.WithOvernight(new SignalParameters(), new OvernightParameters());
 
         // H4 is never ready, so the engine gives no signal at all (fail closed).
         Assert.Empty(Run(engine, bars, DateTime.MinValue));

@@ -127,15 +127,19 @@ public sealed class SignalEngine
 
     /// <summary>
     /// Creates an engine in Overnight mode with no bars (SIG-020, SIG-043): not ready, Neutral bias,
-    /// no zones, with an <see cref="OvernightTracker"/> of these parameters.
+    /// no zones, with an <see cref="OvernightTracker"/> of these parameters. A factory rather than a
+    /// constructor, so that the existing calls <c>new SignalEngine(parameters, null)</c> keep meaning
+    /// ZoneFvg mode.
     /// </summary>
     /// <param name="parameters">The signal parameters. They are validated first.</param>
     /// <param name="overnight">The Overnight parameters. They are validated by the tracker.</param>
+    /// <returns>The engine.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> or <paramref name="overnight"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public SignalEngine(SignalParameters parameters, OvernightParameters overnight)
-        : this(parameters, null, null, TimeSpan.Zero, null, overnight ?? throw new ArgumentNullException(nameof(overnight)))
+    public static SignalEngine WithOvernight(SignalParameters parameters, OvernightParameters overnight)
     {
+        ArgumentNullException.ThrowIfNull(overnight);
+        return new SignalEngine(parameters, null, null, TimeSpan.Zero, null, overnight);
     }
 
 

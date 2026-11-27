@@ -388,7 +388,7 @@ public sealed class RecoveryService
 
         if (_overnight is not null)
         {
-            return new SignalEngine(_signalParameters, _overnight);
+            return SignalEngine.WithOvernight(_signalParameters, _overnight);
         }
 
         return _sessionRange is null
