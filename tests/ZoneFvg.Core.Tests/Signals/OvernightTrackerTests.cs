@@ -41,7 +41,7 @@ public class OvernightTrackerTests
 
     private static OvernightSetup Only(IEnumerable<OvernightSetup?> answers)
     {
-        return Assert.Single(answers.Where(answer => answer is not null))!;
+        return Assert.Single(answers, answer => answer is not null)!;
     }
 
     // ------------------------------------------------------------------ the evaluation bar and the levels
