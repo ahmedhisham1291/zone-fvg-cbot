@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.16 · 27 November 2026 (owner request of 27 November 2026: SessionRange on gold becomes the default setup, with a fixed 0.75% risk per trade and a drawdown brake, rows AS to AX. v0.15 of 26 November 2026, owner request of 26 November 2026: an offline backtest lab that runs the bot's own core over about six years of downloaded history in CI, searches entry settings and compares money-management plans against a target of about 1% a month, section 12.5, rows AH to AR; the trading rules do not change. v0.14 of 24 November 2026, v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
+Version 0.17 · 27 November 2026 (owner request of 27 November 2026, "Yup do this": SessionRange decides its direction from the D1 EMA(20) against the D1 EMA(50), row AY. v0.16 of the same day: SessionRange on gold becomes the default setup, with a fixed 0.75% risk per trade and a drawdown brake, rows AS to AX. v0.15 of 26 November 2026, owner request of 26 November 2026: an offline backtest lab that runs the bot's own core over about six years of downloaded history in CI, searches entry settings and compares money-management plans against a target of about 1% a month, section 12.5, rows AH to AR; the trading rules do not change. v0.14 of 24 November 2026, v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
 
 ## 0. What changed in v0.2
 
@@ -126,6 +126,14 @@ Evidence: on gold the Asian range break with the D1 trend (the rule of 3.8) made
 | AV. What the brake does not change | The daily budget, the kill switch, the emergency floor, the open-risk and currency caps (when on) and the sanity cap (when on) are checked as before, after the brake. The open-risk sum of a bot position counts, as before, the full sizing-rule risk of balance x `RiskPercent` (conservative). The parameter hash does not contain risk values, so every hash stays what it was | 4.2, 4.3, 13.1 |
 | AW. Parameter files | The five files under `deploy/params/` carry `EntryMode=SessionRange`, `EntryModel=Fvg`, `RiskPercent=0.75`, `DrawdownBrakePercent=3.0` and `DrawdownBrakeFactor=0.5`. Only the XAUUSD file is meant to be run; the currency-pair files stay as examples of the format | 7, 10.2 |
 | AX. Open question 4 answered, and the way to live | The owner chose SessionRange on gold for use (27 November 2026). It goes live through the gates already written, not around them: the stop-order record of PLT-011 and the live gold spread check (architecture section 10, rows of 2026-11-22 and 2026-11-23) on a demo or FTMO Free Trial account, then the Challenge. **Proposal of the orchestrating session**, the owner's to accept or waive: two to four weeks on the Free Trial with these files before the first trade on the Challenge account. When the Challenge is started stays the owner's decision (15.7) | 13.4, 14, 15.7 |
+
+**Changes in v0.17 (owner request of 27 November 2026, "Yup do this", answering the orchestrating session's proposal of the same day)**
+
+Evidence (the search's simulation on the owner's FTMO gold bars, May 2020 to November 2026, rules of 3.8): with the direction from close against EMA(50), +68.3R, largest drawdown 9.2R, 2020 −7.2R, worst month −5.0R, longest losing run 9; with the direction from EMA(20) against EMA(50), +66.5R, largest drawdown 5.6R, 2020 +0.8R, worst month −3.0R, longest losing run 6; development years +0.48R a month (drawdown 5.6R) against +0.46R (9.2R), holdout +1.67R against +1.80R; with costs +50% +62.2R. The filter was chosen after the holdout had been seen, so the holdout is not clean evidence for it; the forward test is (row AX).
+
+| Topic | Decision | Section |
+|---|---|---|
+| AY. Direction of SessionRange | New SessionRange parameter `RangeTrendFastEma` (cBot default **20**; 0 = off, the rule of v0.16). With a value above 0 the setup's side comes from the last closed D1 bar: buy when D1 EMA(`RangeTrendFastEma`) is above D1 EMA(`BiasEmaPeriod`, 50), sell when it is below, no setup when they are equal. The close against EMA(50) (3.1) is then not used by this mode. Allowed: 0, or from 2 to `BiasEmaPeriod` − 1. The EMAs are the bot's own D1 EMAs, computed as for 3.1. ZoneFvg, the Choch model and Breakout do not use it. The parameter hash of SessionRange gains the field only when it is not 0, so a configuration with 0 keeps its hash (`3f0f30a3`); the five parameter files carry `RangeTrendFastEma=20` | 3.8, 7 |
 
 ## 1. Purpose and scope
 
@@ -322,7 +330,7 @@ Chosen with `EntryMode` = SessionRange. It follows the D1 trend into a break of 
 
 - that close time is before `RangeLastEntryNy` (12:00);
 - there are at least 16 range bars (half of the window);
-- the bias of 3.1 is long or short (`TrendSlowEmaPeriod` is a Breakout setting and is not used here);
+- the bias of 3.1 is long or short (`TrendSlowEmaPeriod` is a Breakout setting and is not used here); with `RangeTrendFastEma` above 0 (v0.17, row AY) the direction is instead D1 EMA(`RangeTrendFastEma`) above (long) or below (short) D1 EMA(`BiasEmaPeriod`) on the last closed D1 bar, and equal gives no setup;
 - range high minus range low is at least `RangeMinWidthAtr` (0.5) x ATR(D1) of the last closed D1 bar;
 - ATR(H4) of the last closed H4 bar exists.
 
@@ -812,6 +820,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | RangeExitNy (added 23 November 2026) | 16:30 | SessionRange: an open position is closed, New York time | Fixed |
 | RangeMinWidthAtr (added 23 November 2026) | 0.5 | SessionRange: smallest range, in ATR(D1) | Test 0 and 0.5 |
 | RangeStopAtr (added 23 November 2026) | 1.0 | SessionRange: stop distance, in ATR(H4) | Fixed |
+| RangeTrendFastEma (new in 0.17) | 20 | SessionRange: direction from D1 EMA(this) against D1 EMA(`BiasEmaPeriod`); 0 = close against EMA(`BiasEmaPeriod`) as in 3.1 (row AY) | Fixed |
 | NewsBeforeMin / NewsAfterMin (new) | 30 / 30 | Window around events | Fixed |
 | NewsFailMode (new) | Block | Behaviour without calendar | Fixed |
 | NewsSources (new in 0.3) | ForexFactory | ForexFactory only until a second feed is added (owner decision 2026-11-14) | n/a |
