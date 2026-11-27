@@ -113,7 +113,7 @@ Uptime 1.00:00:00, restarts 0
 | Trades, net, net R | Trades closed that Prague day, money after commission and swap, result in R. "R known for" counts trades whose plan was found | Net R far below -3 in one day should not happen (daily budget); tell the developer |
 | Balance, equity | At summary time | Equity much lower than balance means open trades are losing |
 | Drawdown | From the highest closing balance since `RiskEpochDate` | Kill switch at 8% |
-| Room to FTMO floors | Distance from equity to the FTMO daily floor (00:00 Prague balance minus `FtmoDailyLossPercent`, 3% on FTMO Instant) and to the static overall floor (90% of initial capital). On FTMO Instant the real overall floor trails the highest closed balance (section 9): the `Started` report and every guard line name it as `(trailing, peak ...)` | Emergency guard acts at 500 USD room (0.5% of the 100,000 initial capital) |
+| Room to FTMO floors | Distance from equity to the FTMO daily floor (00:00 Prague balance minus `FtmoDailyLossPercent`, 3% on FTMO Instant) and to the overall floor: 90% of initial capital on the 2-Step (`FtmoMaxLossMode=Static`); on FTMO Instant (`TrailingBalance`) P minus 10% of initial capital, P the highest closed balance (section 9), which the `Started` report and every guard line name as `(trailing, peak ...)` | Emergency guard acts at 500 USD room (0.5% of the 100,000 initial capital) |
 | Target progress | Profit against `ProfitTargetPercent` | |
 | Skips | Signals not taken, by reason | `SpreadTooWide` or `NewsCalendarUnavailable` every day means a setting or the feed needs a look |
 | Calendar | News data status: `Available` or `Unavailable` | `Unavailable` for more than a day: see `CalendarUnavailable` |

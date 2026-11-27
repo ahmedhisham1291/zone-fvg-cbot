@@ -644,7 +644,7 @@ requirements:
     wp: WP45
     spec: "4.2, 7, 15.8"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Emergency guard on a trailing FTMO floor (owner decision of
       2026-11-27, rows BH and BI). The core's risk parameters gain
@@ -2304,7 +2304,7 @@ requirements:
     wp: WP45
     spec: "11, 15.8"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Consistency readout (owner decision of 2026-11-27, row BK). With
       ConsistencyMaxPercent above 0 the core writes, at start and at the

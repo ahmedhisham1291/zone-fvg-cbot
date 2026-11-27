@@ -35,7 +35,7 @@ public sealed record DailySummaryInput(RiskSnapshot? Snapshot, NewsStatus? Calen
 /// <param name="Drawdown">Drawdown from the peak balance of the kill switch (RSK-008).</param>
 /// <param name="DrawdownPercent">Drawdown in percent of that peak.</param>
 /// <param name="DailyFloorDistance">Equity minus FTMO's daily floor: the 00:00 CE(S)T balance minus FtmoDailyLossPercent of InitialCapital.</param>
-/// <param name="OverallFloorDistance">Equity minus FTMO's overall floor: InitialCapital minus FtmoMaxLossPercent of it.</param>
+/// <param name="OverallFloorDistance">Equity minus FTMO's overall floor: InitialCapital minus FtmoMaxLossPercent of it; with FtmoMaxLossMode TrailingBalance P minus FtmoMaxLossPercent of InitialCapital (RSK-021).</param>
 /// <param name="Profit">Balance minus InitialCapital.</param>
 /// <param name="TargetMoney">ProfitTargetPercent of InitialCapital.</param>
 /// <param name="TargetProgressPercent">Profit in percent of the target.</param>
@@ -233,7 +233,7 @@ public sealed class DailySummary
             }
         }
 
-        double? overallDistance = s == null ? null : s.Account.Equity - (capital - (_risk.FtmoMaxLossPercent * capital / 100.0));
+        double? overallDistance = s == null ? null : s.Account.Equity - OverallFloor(s, capital);
         double? profit = s == null ? null : s.Account.Balance - capital;
         return new DailySummaryReport(
             dayStart,
@@ -255,6 +255,19 @@ public sealed class DailySummary
             input.Calendar,
             input.Uptime,
             input.Restarts);
+    }
+
+    // OPS-003: FTMO's overall floor. Static mode: the same expression as before, so the line is unchanged byte for
+    // byte. TrailingBalance (RSK-021, owner answer of 2026-11-27 in pull request 111): FTMO's trailing floor from the
+    // guard's P, P - FtmoMaxLossPercent x InitialCapital / 100.
+    private double OverallFloor(RiskSnapshot snapshot, double capital)
+    {
+        if (_risk.FtmoMaxLossMode == FtmoMaxLossMode.TrailingBalance)
+        {
+            return _engine.FtmoOverallFloor(snapshot);
+        }
+
+        return capital - (_risk.FtmoMaxLossPercent * capital / 100.0);
     }
 
     private static (int? Trades, double? Net) TradesOf(RiskSnapshot snapshot, DateTime fromUtc, DateTime toUtc)

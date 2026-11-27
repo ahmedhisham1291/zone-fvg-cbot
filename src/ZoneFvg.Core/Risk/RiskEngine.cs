@@ -242,6 +242,24 @@ public sealed class RiskEngine
     }
 
     /// <summary>
+    /// FTMO's own overall floor, without the guard's buffer (OPS-003, RSK-021): in static mode
+    /// InitialCapital - FtmoMaxLossPercent x InitialCapital / 100; with
+    /// <see cref="FtmoMaxLossMode.TrailingBalance"/> P - FtmoMaxLossPercent x InitialCapital / 100,
+    /// with the same P as <see cref="EmergencyGuard"/>, and the static floor when P cannot be computed
+    /// (the history does not reach back far enough, or the peak is not a positive finite number).
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <returns>The floor in the account currency.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    public double FtmoOverallFloor(RiskSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        double peak = HistoryCovers(snapshot) ? TrailingPeak(snapshot) : double.NaN;
+        double reference = double.IsNaN(peak) ? _parameters.InitialCapital : peak;
+        return reference - (_parameters.FtmoMaxLossPercent * _parameters.InitialCapital / 100.0);
+    }
+
+    /// <summary>
     /// FTMO emergency guard when no usable <see cref="RiskSnapshot"/> can be built because broker
     /// data is missing or invalid (RSK-009): only the static floor InitialCapital x (1 -
     /// (FtmoMaxLossPercent - FtmoGuardBufferPercent) / 100) is checked, from equity alone. The
