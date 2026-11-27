@@ -141,8 +141,7 @@ public class SignalEngineRangeTrendTests
     {
         SignalEngine engine = Engine(20);
 
-        Signal signal = OnlySignal(Run(engine, WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), false), false, Data.Winter).Feed)
-            .Where(step => step.Input.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0)));
+        Signal signal = OnlySignal(Run(engine, WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), false), false, Data.Winter).Feed.Where(item => item.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0))));
 
         Assert.Equal(Data.BuyId(Data.Winter), signal.ZoneId);
         Assert.Equal(Side.Buy, signal.Side);
@@ -162,8 +161,7 @@ public class SignalEngineRangeTrendTests
     {
         SignalEngine engine = Engine(0);
 
-        Signal signal = OnlySignal(Run(engine, WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), false), false, Data.Winter).Feed)
-            .Where(step => step.Input.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0)));
+        Signal signal = OnlySignal(Run(engine, WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), false), false, Data.Winter).Feed.Where(item => item.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0))));
 
         Assert.Equal(Data.SellId(Data.Winter), signal.ZoneId);
         Assert.Equal(Side.Sell, signal.Side);
@@ -182,8 +180,7 @@ public class SignalEngineRangeTrendTests
     {
         SignalEngine engine = Engine(20);
 
-        Signal signal = OnlySignal(Run(engine, WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), true), true, Data.Winter).Feed)
-            .Where(step => step.Input.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0)));
+        Signal signal = OnlySignal(Run(engine, WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), true), true, Data.Winter).Feed.Where(item => item.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0))));
 
         Assert.Equal(Data.SellId(Data.Winter), signal.ZoneId);
         Assert.Equal(Side.Sell, signal.Side);
@@ -200,8 +197,7 @@ public class SignalEngineRangeTrendTests
     {
         SignalEngine engine = Engine(0);
 
-        Signal signal = OnlySignal(Run(engine, WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), true), true, Data.Winter).Feed)
-            .Where(step => step.Input.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0)));
+        Signal signal = OnlySignal(Run(engine, WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), true), true, Data.Winter).Feed.Where(item => item.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0))));
 
         Assert.Equal(Data.BuyId(Data.Winter), signal.ZoneId);
         Assert.Equal(Side.Buy, signal.Side);
@@ -243,7 +239,7 @@ public class SignalEngineRangeTrendTests
         Assert.InRange(difference, minDifference, maxDifference);
         Assert.True(Math.Abs(difference) > PriceMath.DefaultTolerance);
 
-        Signal signal = OnlySignal(Run(Engine(20), WithD1(d1, false, Data.Winter).Feed).Where(step => step.Input.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0)));
+        Signal signal = OnlySignal(Run(Engine(20), WithD1(d1, false, Data.Winter).Feed.Where(item => item.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0))));
 
         Assert.Equal(expected, signal.Side);
     }
@@ -304,7 +300,7 @@ public class SignalEngineRangeTrendTests
         Assert.Equal(Side.Buy, buy.Side);
         Assert.Equal(Data.BuyId(Data.Winter), buy.ZoneId);
         Assert.Contains(day, step => step.Input.TimeFrame == TimeFrame.D1 && step.Input.CloseUtc == flipClose);
-        Assert.All(day.Where(step => step.Input.CloseUtc >= Data.Evaluation(Data.Winter)), step => Assert.Equal(Data.BuyId(Data.Winter), step.Setup!.Id));
+        Assert.All(day.Where(step => step.Input.CloseUtc > Data.Evaluation(Data.Winter) && step.Input.CloseUtc < dayEnd), step => Assert.Equal(Data.BuyId(Data.Winter), step.Setup?.Id));
         Assert.All(day, step => Assert.Null(step.Void));
         Assert.Equal(
             controlSteps.Where(step => step.Input.CloseUtc <= dayEnd).SelectMany(step => step.Signals).Select(ExactRecords.Key).ToArray(),
@@ -348,18 +344,25 @@ public class SignalEngineRangeTrendTests
 
     [Theory]
     [Trait("Req", "SIG-042")]
-    [InlineData(239, false)]
-    [InlineData(240, true)]
-    public void OnBarClosed_FastPeriodAboveTheBiasPeriodInTheEngine_TooFewBarsForTheFastEma_NoSetup(int closedAtEvaluation, bool setup)
+    [InlineData(240)]
+    [InlineData(276)]
+    public void OnBarClosed_FastPeriodAboveTheBiasPeriodInTheEngine_TheFastEmaIsNeverThere_NoSetup(int closedAtEvaluation)
     {
-        // BotParameters refuses RangeTrendFastEma 60 with BiasEmaPeriod 50; the engine alone does not, and
-        // then fails closed while EMA(60) (240 closes) is missing although EMA(50) is there.
+        // BotParameters refuses RangeTrendFastEma 60 with BiasEmaPeriod 50; the engine alone does not. It keeps
+        // the D1 bars of its warm-up plus a margin, 4 x 50 + 1 + 16 = 217, fewer than the 240 closes of
+        // EMA(60), so EMA(60) is missing while EMA(50) is there, and the engine fails closed on every day.
         DateTime first = LastBeforeWinter.AddDays(-(closedAtEvaluation - 1));
         List<Bar> d1 = D1(first, Rising(LastBeforeWinter, 0.0), false);
         SignalEngine engine = Engine(60);
+        SignalEngine control = Engine(20);
 
-        Run(engine, WithD1(d1, false, Data.Winter).Feed.Where(item => item.CloseUtc <= Data.Evaluation(Data.Winter)));
+        var steps = Run(engine, WithD1(d1, false, Data.Winter).Feed);
+        Run(control, WithD1(d1, false, Data.Winter).Feed.Where(item => item.CloseUtc <= Data.Evaluation(Data.Winter)));
 
-        Assert.Equal(setup, engine.RangeSetup is not null);
+        Assert.All(steps, step => Assert.Empty(step.Signals));
+        Assert.Null(engine.RangeSetup);
+        Assert.Equal(Bias.Neutral, engine.RangeDirection);
+        Assert.Equal(217, new BarStore(new SignalParameters(), null, new SessionRangeParameters { RangeTrendFastEma = 60 }, null).Capacity(TimeFrame.D1));
+        Assert.Equal(Data.BuyId(Data.Winter), control.RangeSetup!.Id);
     }
 }
