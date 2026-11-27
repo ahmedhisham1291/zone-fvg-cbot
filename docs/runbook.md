@@ -317,3 +317,20 @@ change them yourself (section 7).
   (stop, edit, start), and only while the bot is flat: no open position and no
   pending order of the bot. The next `consistency` lines then count from that
   day.
+
+## 10. FTMO 2-Step Challenge (200,000 USD, spec row BN)
+
+For the 2-Step Challenge and Verification of 200,000 USD use the two gold
+files `deploy/params/xauusd-challenge2step.cbotset.example` (SessionRange)
+and `deploy/params/xauusd-overnight-challenge2step.cbotset.example`
+(Overnight) in place of `xauusd` and `xauusd-overnight`. They equal the
+funded (FTMO Instant) files except six lines: both risk **1.25%** per trade
+(`RiskPercent=1.25`) with the monthly loss limit off
+(`MonthlyLossLimitPercent=0.0`), and the account limits are the 2-Step's:
+`InitialCapital=200000.0`, `FtmoDailyLossPercent=5.0` (5% daily) and
+`FtmoMaxLossMode=Static` (a fixed 10% floor at 180,000), with
+`FtmoGuardBufferPercent=1.0` (the emergency guard closes everything 2,000
+USD before either floor). The daily budget (2%) and the kill switch (8%)
+are unchanged. After passing, switch to the funded files (`xauusd`,
+`xauusd-overnight`) and set `RiskEpochDate` to the funded account's first
+day, only while the bot is flat (section 5).

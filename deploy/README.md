@@ -869,6 +869,21 @@ monthly loss limit (2%, 2,000 USD) are unchanged in percent.
   bot): stop, edit, start, as for `RiskEpochDate` (runbook section 5). How to
   read the line: runbook section 9.
 
+### FTMO 2-Step Challenge (spec row BN)
+
+For the owner's FTMO 2-Step Challenge of 200,000 USD, copy the two gold
+files `xauusd-challenge2step.cbotset.example` (SessionRange) and
+`xauusd-overnight-challenge2step.cbotset.example` (Overnight) instead of
+`xauusd` and `xauusd-overnight` into `params/xauusd/bot.cbotset` and
+`params/xauusd-overnight/bot.cbotset`. They equal the funded files except
+six lines: both risk 1.25% per trade (`RiskPercent=1.25`) with the monthly
+loss limit off (`MonthlyLossLimitPercent=0.0`), and the account limits are
+the 2-Step's: `InitialCapital=200000.0`, `FtmoDailyLossPercent=5.0` (5% of
+the 00:00 Prague balance per day), `FtmoMaxLossMode=Static` (a fixed 10%
+floor, 180,000) and `FtmoGuardBufferPercent=1.0`. After passing the
+Challenge and the Verification, switch to the funded files (`xauusd`,
+`xauusd-overnight`), with a new `RiskEpochDate`, while the bot is flat.
+
 ### Gold (XAUUSD)
 
 Gold runs as a fifth instance (spec v0.9, owner decision D of 2026-11-17,

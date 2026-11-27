@@ -181,6 +181,60 @@ public class Plt022FtmoInstantDefaultsTests
         Assert.Equal(new[] { "EntryMode=Overnight", "RiskPercent=1.0" }, differences);
     }
 
+    // ------------------------------------------------------------------ the 2-Step Challenge files (row BN)
+
+    [Theory]
+    [Trait("Req", "PLT-022")]
+    [InlineData("xauusd", "xauusd-challenge2step", "RiskPercent=0.75")]
+    [InlineData("xauusd-overnight", "xauusd-overnight-challenge2step", "RiskPercent=1.0")]
+    public void ChallengeFiles_EqualTheInstantFileApartFromTheSixLinesOfRowBn(string instantName, string challengeName, string instantRisk)
+    {
+        string[] instant = ParameterFile(instantName);
+        string[] challenge = ParameterFile(challengeName);
+
+        Assert.Equal(instant.Length, challenge.Length);
+        (string Instant, string Challenge)[] differences = instant.Zip(challenge).Where(pair => pair.First != pair.Second).Select(pair => (pair.First, pair.Second)).ToArray();
+        Assert.Equal(
+            new[]
+            {
+                (instantRisk, "RiskPercent=1.25"),
+                ("MonthlyLossLimitPercent=2.0", "MonthlyLossLimitPercent=0.0"),
+                ("InitialCapital=100000.0", "InitialCapital=200000.0"),
+                ("FtmoDailyLossPercent=3.0", "FtmoDailyLossPercent=5.0"),
+                ("FtmoMaxLossMode=TrailingBalance", "FtmoMaxLossMode=Static"),
+                ("FtmoGuardBufferPercent=0.5", "FtmoGuardBufferPercent=1.0"),
+            },
+            differences);
+    }
+
+    [Theory]
+    [Trait("Req", "PLT-022")]
+    [InlineData("xauusd-challenge2step", "EntryMode=SessionRange")]
+    [InlineData("xauusd-overnight-challenge2step", "EntryMode=Overnight")]
+    public void ChallengeFiles_CarryTheKeysOfRowBmOnceWithThe2StepValues(string name, string mode)
+    {
+        string[] lines = ParameterFile(name);
+        string[] expected =
+        {
+            "InitialCapital=200000.0", "FtmoDailyLossPercent=5.0", "FtmoMaxLossPercent=10.0", "FtmoMaxLossMode=Static",
+            "FtmoGuardBufferPercent=1.0", "ConsistencyMaxPercent=30.0", "RewardPeriodStartDate=",
+        };
+        int previous = -1;
+        foreach (string line in expected)
+        {
+            string key = line.Substring(0, line.IndexOf('=') + 1);
+            Assert.Single(lines, l => l.StartsWith(key, StringComparison.Ordinal));
+            int at = Array.IndexOf(lines, line);
+            Assert.True(at > previous, name + ": " + line);
+            previous = at;
+        }
+
+        Assert.Equal(mode, lines[0]);
+        Assert.Single(lines, l => l == "RiskPercent=1.25");
+        Assert.Single(lines, l => l == "MonthlyLossLimitPercent=0.0");
+        Assert.Single(lines, l => l == "EntryModel=Fvg");
+    }
+
     // ------------------------------------------------------------------ the two texts read by the core
 
     [Theory]
