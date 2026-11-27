@@ -33,6 +33,7 @@ public class ParameterHashSessionRangeTests
         ["MinWidthAtr"] = "RangeMinWidthAtr",
         ["RangeEndNy"] = "RangeEndNy",
         ["RangeStartNy"] = "RangeStartNy",
+        ["RangeTrendFastEma"] = "RangeTrendFastEma",
         ["StopAtrMult"] = "RangeStopAtr",
     };
 
@@ -50,6 +51,7 @@ public class ParameterHashSessionRangeTests
     {
         return value switch
         {
+            int i => i + 1,
             double d => d + 0.125,
             TimeSpan t => t + TimeSpan.FromMinutes(15.0),
             _ => throw new XunitException("No change rule for " + property.Name + " of type " + property.PropertyType.Name + ": add one to this test."),
@@ -123,10 +125,14 @@ public class ParameterHashSessionRangeTests
 
         Assert.Equal(CanonicalNames.Keys.OrderBy(name => name, StringComparer.Ordinal).ToArray(), names);
         string text = ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), null, new SessionRangeParameters());
-        foreach (string name in CanonicalNames.Values)
+        foreach (string name in CanonicalNames.Values.Where(name => name != "RangeTrendFastEma"))
         {
             Assert.Contains(";" + name + "=", text, StringComparison.Ordinal);
         }
+
+        // SIG-042 (row AY): RangeTrendFastEma is written only when it is not 0, so it is checked in the text with 20.
+        string withFast = ParameterHash.Canonical(new SignalParameters(), new ExecutionParameters(), null, new SessionRangeParameters { RangeTrendFastEma = 20 });
+        Assert.Contains(";RangeTrendFastEma=", withFast, StringComparison.Ordinal);
     }
 
     [Theory]

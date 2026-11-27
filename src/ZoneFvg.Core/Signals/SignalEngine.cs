@@ -37,7 +37,8 @@ namespace ZoneFvg.Core.Signals;
 /// <para>SessionRange mode (SIG-034, spec 3.8), chosen by creating the engine with session range
 /// parameters: the intake order, the bias and the warm-up gate are the same; H4 bars are only
 /// stored, so no zone is detected; M15 bars are stored and go to a <see cref="SessionRangeTracker"/>
-/// with the bias and the latest ATR(D1) and ATR(H4). A setup becomes a
+/// with the bias and the latest ATR(D1) and ATR(H4); with RangeTrendFastEma above 0 (SIG-042) the
+/// tracker gets <see cref="RangeDirection"/> in place of the bias. A setup becomes a
 /// <see cref="SignalKind.SessionRange"/> signal when the engine is ready; a void notice is shown in
 /// <see cref="LastRangeVoid"/>.</para>
 /// <para>Choch entry model of ZoneFvg mode (SIG-035 to SIG-041, spec 3.9), chosen by creating the
@@ -65,6 +66,9 @@ public sealed class SignalEngine
 
     // SIG-028: period of the slow D1 EMA of the breakout trend filter; 0 when the filter is off or in ZoneFvg mode.
     private readonly int _trendSlowEmaPeriod;
+
+    // SIG-042: period of the fast D1 EMA of the SessionRange direction; 0 when it is off or in the other modes.
+    private readonly int _rangeTrendFastEma;
 
     // Display only (PLT-005): written when a gap confirms a zone, never read by any decision.
     private readonly List<Fvg> _recentFvgs = new List<Fvg>();
@@ -126,7 +130,9 @@ public sealed class SignalEngine
         _tracker = breakout is null ? null : new BreakoutTracker(breakout, parameters.RewardRisk);
         _range = sessionRange is null ? null : new SessionRangeTracker(sessionRange, parameters.RewardRisk, fridayNoEntryUtc);
         _trendSlowEmaPeriod = breakout?.TrendSlowEmaPeriod ?? 0;
+        _rangeTrendFastEma = sessionRange?.RangeTrendFastEma ?? 0;
         Bias = Bias.Neutral;
+        RangeDirection = Bias.Neutral;
     }
 
     /// <summary>
@@ -163,6 +169,25 @@ public sealed class SignalEngine
     /// during the warm-up as well; it gates only the signals (SIG-015, SIG-018).
     /// </summary>
     public Bias Bias { get; private set; }
+
+    /// <summary>
+    /// SessionRange mode with RangeTrendFastEma above 0 (SIG-042, spec 3.8 and row AY of v0.17):
+    /// the side the trading day's setup takes, recomputed at every D1 bar from the stored D1 bars.
+    /// Long when D1 EMA(RangeTrendFastEma) is above D1 EMA(BiasEmaPeriod) by more than
+    /// <see cref="PriceMath.DefaultTolerance"/>, Short when below by more than it, Neutral (no setup)
+    /// otherwise and while either EMA has too few D1 bars. Both EMAs are computed as the bias EMA
+    /// (<see cref="Ema.Value"/> over the same D1 bars). Always Neutral in the other modes and with
+    /// RangeTrendFastEma 0, when the tracker is given <see cref="Bias"/> as before.
+    /// </summary>
+    internal Bias RangeDirection { get; private set; }
+
+    /// <summary>
+    /// The bias written into the journal's <c>bias=</c> field (OPS-001, SIG-042, orchestrating
+    /// session's answer of 2026-11-27 on pull request 103): <see cref="RangeDirection"/>, the side
+    /// the SessionRange setup took, in SessionRange mode with RangeTrendFastEma above 0; otherwise
+    /// <see cref="Bias"/>, so every other line is unchanged.
+    /// </summary>
+    internal Bias JournalBias => _rangeTrendFastEma > 0 ? RangeDirection : Bias;
 
     /// <summary>
     /// Breakout mode (SIG-022, SIG-026): the tracker's reference day, null before the first D1 bar.
@@ -247,6 +272,12 @@ public sealed class SignalEngine
         {
             case TimeFrame.D1:
                 Bias = BiasCalculator.Compute(_bars.Bars(TimeFrame.D1), _parameters.BiasEmaPeriod);
+                if (_range is not null && _rangeTrendFastEma > 0)
+                {
+                    IReadOnlyList<Bar> d1 = _bars.Bars(TimeFrame.D1);
+                    RangeDirection = Direction(Ema.Value(d1, d1.Count - 1, _rangeTrendFastEma), Ema.Value(d1, d1.Count - 1, _parameters.BiasEmaPeriod));
+                }
+
                 if (_tracker is not null)
                 {
                     OnBreakoutD1Closed(_tracker, bar);
@@ -296,7 +327,9 @@ public sealed class SignalEngine
         IReadOnlyList<Bar> h4 = _bars.Bars(TimeFrame.H4);
         double? atrD1 = d1.Count == 0 ? null : Atr.Value(d1, d1.Count - 1, _parameters.AtrPeriod);
         double? atrH4 = h4.Count == 0 ? null : Atr.Value(h4, h4.Count - 1, _parameters.AtrPeriod);
-        SessionRangeEvent? answer = tracker.OnM15Closed(bar, Bias, atrD1, atrH4);
+        // SIG-042: with RangeTrendFastEma on, the side comes from the two D1 EMAs of the last D1 bar, else from the bias of 3.1.
+        Bias side = _rangeTrendFastEma > 0 ? RangeDirection : Bias;
+        SessionRangeEvent? answer = tracker.OnM15Closed(bar, side, atrD1, atrH4);
         if (answer is null)
         {
             return NoSignals;
@@ -322,6 +355,29 @@ public sealed class SignalEngine
             ExpiryUtc = setup.ExpiryUtc,
         };
         return Array.AsReadOnly(new[] { signal });
+    }
+
+    /// <summary>
+    /// The SessionRange direction of SIG-042 from the fast and the slow D1 EMA of one D1 bar: Long
+    /// when fast is above slow by more than <see cref="PriceMath.DefaultTolerance"/>, Short when
+    /// below by more than it, Neutral when they are equal within it or either is null (fail closed).
+    /// </summary>
+    /// <param name="fast">D1 EMA(RangeTrendFastEma), or null while its window is not full.</param>
+    /// <param name="slow">D1 EMA(BiasEmaPeriod), or null while its window is not full.</param>
+    /// <returns>The direction; Neutral gives no setup.</returns>
+    internal static Bias Direction(double? fast, double? slow)
+    {
+        if (fast is null || slow is null)
+        {
+            return Bias.Neutral;
+        }
+
+        if (PriceMath.GreaterThan(fast.Value, slow.Value, PriceMath.DefaultTolerance))
+        {
+            return Bias.Long;
+        }
+
+        return PriceMath.LessThan(fast.Value, slow.Value, PriceMath.DefaultTolerance) ? Bias.Short : Bias.Neutral;
     }
 
     // SIG-022, SIG-028: the D1 bar becomes the reference; with the trend filter on, the tracker also gets the

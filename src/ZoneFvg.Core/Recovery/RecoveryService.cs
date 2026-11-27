@@ -348,7 +348,8 @@ public sealed class RecoveryService
                 string detail = "replayed signal confirmed at " + Minute(signal.ConfirmationCloseUtc) + " is not executable";
                 var skip = new SkipRecord(_symbol, signal.ZoneId, SkipReason.SignalFromReplay, 0.0, 0.0, detail, now);
                 _events.Skipped(skip);
-                replayed.Add(new ReplayedSignal(signal, engine.Bias, skip));
+                // SIG-042: the journal's bias of the replayed line, as for the live line (BotCore.PlaceSignals).
+                replayed.Add(new ReplayedSignal(signal, engine.JournalBias, skip));
             }
 
             if (engine.LastRangeVoid is not null)

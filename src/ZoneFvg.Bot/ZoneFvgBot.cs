@@ -83,6 +83,10 @@ namespace cAlgo.Robots
         [Parameter("RangeStopAtr", DefaultValue = 1.0, Group = "Entry mode")]
         public double RangeStopAtr { get; set; }
 
+        /// <summary>SessionRange: the side of the setup from D1 EMA(this) against D1 EMA(BiasEmaPeriod), 0 = the close against EMA(BiasEmaPeriod) (SIG-042, spec 3.8 and row AY of v0.17).</summary>
+        [Parameter("RangeTrendFastEma", DefaultValue = 20, Group = "Entry mode")]
+        public int RangeTrendFastEma { get; set; }
+
         /// <summary>Entry model of ZoneFvg mode, Fvg (the default from spec v0.16, PLT-020) or Choch (PLT-016, spec 3.9 and 7). Choch needs EntryMode ZoneFvg.</summary>
         [Parameter("EntryModel", DefaultValue = "Fvg", Group = "Entry model")]
         public string EntryModel { get; set; } = "Fvg";
@@ -692,7 +696,8 @@ namespace cAlgo.Robots
 
             // PLT-015: the six range values are parsed and checked in every mode, with the names cTrader
             // shows; they are passed to the core in SessionRange mode only.
-            SessionRangeParameters sessionRange = SessionRangeText.Build(RangeStartNy, RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr, RangeStopAtr);
+            // SIG-042: RangeTrendFastEma goes with them; that it is below BiasEmaPeriod is checked by BotParameters.Validate.
+            SessionRangeParameters sessionRange = SessionRangeText.Build(RangeStartNy, RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr, RangeStopAtr, RangeTrendFastEma);
 
             // PLT-016: EntryModel and the seven Choch values are checked in every mode, with the names cTrader shows;
             // Choch with another EntryMode is refused. The values are passed to the core with EntryModel Choch only.

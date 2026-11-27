@@ -34,7 +34,9 @@ public static class ParameterHash
     /// With session range parameters (SessionRange mode, spec 3.8) the text ends with RangeStartNy,
     /// RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr and RangeStopAtr in the same
     /// formats (SIG-034); without them nothing is appended, so the hashes of the other modes do not
-    /// change.
+    /// change. After RangeStopAtr comes RangeTrendFastEma (SIG-042) when it is not 0, so that
+    /// session range parameters with the direction of spec 3.1 keep the hash they had before
+    /// 27 November 2026 (3f0f30a3 for the defaults).
     /// With Choch parameters (the Choch entry model of ZoneFvg mode, REC-020) the text ends, after
     /// every field above, with EntryModel=Choch, RequireSweep, ChochWindowBars, ChochUseBias,
     /// ChochStopAtDistal, ChochTargetBufferAtr, ChochMinStopPips and MinRewardRisk in the same
@@ -114,6 +116,12 @@ public static class ParameterHash
             Add(text, "RangeExitNy", sessionRange.ExitNy);
             Add(text, "RangeMinWidthAtr", sessionRange.MinWidthAtr);
             Add(text, "RangeStopAtr", sessionRange.StopAtrMult);
+
+            // SIG-042, row AY: only when it is on, so that a configuration with 0 keeps its hash (3f0f30a3).
+            if (sessionRange.RangeTrendFastEma != 0)
+            {
+                Add(text, "RangeTrendFastEma", sessionRange.RangeTrendFastEma);
+            }
         }
 
         if (choch != null)
@@ -132,7 +140,7 @@ public static class ParameterHash
         return text.ToString();
     }
 
-    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018, SIG-034, REC-020).</summary>
+    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018, SIG-034, SIG-042, REC-020).</summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
     /// <param name="breakout">Breakout parameters in Breakout mode, or null in the other modes.</param>
