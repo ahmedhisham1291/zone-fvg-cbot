@@ -247,11 +247,11 @@ public class Ops012ConsistencyReadoutTests
 
     [Fact]
     [Trait("Req", "OPS-012")]
-    public void UnavailableFields_NameTheStartAndTheStatus()
+    public void UnavailableFields_TheStatusAndNothingElse()
     {
-        string line = string.Join(" ", ConsistencyReadout.UnavailableFields(Since).Select(field => field.Key + "=" + field.Value));
+        string line = string.Join(" ", ConsistencyReadout.UnavailableFields().Select(field => field.Key + "=" + field.Value));
 
-        Assert.Equal("since=2026-03-01 status=unavailable", line);
+        Assert.Equal("status=unavailable", line);
     }
 
     // ------------------------------------------------------------------ invalid data

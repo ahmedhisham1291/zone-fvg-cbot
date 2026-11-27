@@ -310,8 +310,8 @@ change them yourself (section 7).
   `RiskEpochDate`); `bestDay` is the Prague day with the largest profit;
   `ratio` is its share of `total` in percent (`NA` while `total` is not above
   0); `met=yes` means the 30% condition for a reward is met. It is
-  information only: it never changes an order. `status=unavailable` means the
-  history could not be read that day; nothing else happens.
+  information only: it never changes an order. `consistency status=unavailable`
+  means the history could not be read that day; nothing else happens.
 - **After each reward**, set `RewardPeriodStartDate` to the date of that
   reward (`yyyy-MM-dd`) in every parameter file, the same way as section 5
   (stop, edit, start), and only while the bot is flat: no open position and no

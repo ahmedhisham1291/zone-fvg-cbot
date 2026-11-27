@@ -272,7 +272,7 @@ public class Wp45FtmoInstantScenarios
         BotCore core = h.Start(A, WithRisk(r => r with { ConsistencyMaxPercent = 30.0, RewardPeriodStartDate = RewardDate }));
         h.FeedTo(RecoveryData.Confirmation);
 
-        Assert.Equal(new[] { JournalFormat.Time(A) + " consistency since=2026-02-01 status=unavailable" }, h.Journal.Lines(ConsistencyReadout.Category));
+        Assert.Equal(new[] { JournalFormat.Time(A) + " consistency status=unavailable" }, h.Journal.Lines(ConsistencyReadout.Category));
         Assert.Empty(h.Journal.Lines("error"));
         Assert.Equal(0, h.Alerts(AlertKind.ErrorStorm));
         Assert.Equal(BotState.Running, core.State);

@@ -700,7 +700,7 @@ public sealed class BotCore
         }
         catch (Exception)
         {
-            fields = ConsistencyReadout.UnavailableFields(since);
+            fields = ConsistencyReadout.UnavailableFields();
         }
 
         Write(ConsistencyReadout.Category, fields.ToArray());

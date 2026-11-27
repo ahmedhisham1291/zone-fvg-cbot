@@ -107,12 +107,14 @@ public static class ConsistencyReadout
         };
     }
 
-    /// <summary>The fields of the line when the history could not be read (OPS-012): <c>since=yyyy-MM-dd status=unavailable</c>.</summary>
-    /// <param name="sinceDate">The start date of the count.</param>
+    /// <summary>
+    /// The fields of the line when the history could not be read (OPS-012): <c>status=unavailable</c>
+    /// and nothing else.
+    /// </summary>
     /// <returns>The keys and values.</returns>
-    public static IReadOnlyList<(string Key, string? Value)> UnavailableFields(DateTime sinceDate)
+    public static IReadOnlyList<(string Key, string? Value)> UnavailableFields()
     {
-        return new (string Key, string? Value)[] { ("since", Date(sinceDate)), ("status", "unavailable") };
+        return new (string Key, string? Value)[] { ("status", "unavailable") };
     }
 
     private static void Check(ClosedTradeInfo trade)

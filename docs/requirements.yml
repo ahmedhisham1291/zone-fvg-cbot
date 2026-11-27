@@ -2580,7 +2580,7 @@ requirements:
     wp: WP45
     spec: "7, 15.8"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       FTMO Instant defaults in the cBot (rows BG to BM). Defaults:
       InitialCapital 100000.0, FtmoDailyLossPercent 3.0, FtmoMaxLossPercent
