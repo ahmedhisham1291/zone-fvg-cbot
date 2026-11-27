@@ -2588,7 +2588,14 @@ requirements:
       0.5, new ConsistencyMaxPercent 30.0 and new RewardPeriodStartDate ""
       (yyyy-MM-dd, parsed invariantly; empty means RiskEpochDate; a bad text
       is refused at start naming it); all passed to the core and checked at
-      start. Every file under deploy/params carries these lines. The
+      start. Every file under deploy/params carries these lines, and two
+      further files for the 2-Step Challenge (row BN),
+      xauusd-challenge2step.cbotset.example and
+      xauusd-overnight-challenge2step.cbotset.example, equal the
+      corresponding Instant files except InitialCapital=200000.0,
+      FtmoDailyLossPercent=5.0, FtmoMaxLossMode=Static,
+      FtmoGuardBufferPercent=1.0, RiskPercent=1.25 and
+      MonthlyLossLimitPercent=0.0 (tested line by line). The
       runbook, deploy/README.md and docs/backtest-howto.md describe the
       FTMO Instant account (section 15.8), starting capital 100,000 in a
       backtest, RiskEpochDate kept at the account start, the withdrawal rule
