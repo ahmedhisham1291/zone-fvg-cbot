@@ -20,8 +20,8 @@ namespace ZoneFvg.Core.Tests;
 /// <para>D1 bars open at 00:00 UTC every day from 2025-06-01 to 2026-03-19: close
 /// 2650 - 0.05 x (bars after this one), high close + 20, low close - 20. The closes rise, so the
 /// bias is Long; ATR(D1) is 40.</para>
-/// <para>H4 bars from 2026-01-01: open and close 2650, high 2662, low 2638: ATR(H4) is 24, so the
-/// largest stop of spec 3.6 is 2 x 24 = 48 USD.</para>
+/// <para>H4 bars from 2026-01-01: open and close 2650, high 2662, low 2638: ATR(H4) is 24 (the
+/// SessionRange stop; the Overnight stop is not bounded by it).</para>
 /// <para>M15 bars from 2026-02-01: open and close 2650, high 2651.5, low 2648.5: ATR(M15) is 3.
 /// The 18:15 New York evaluation bar closes at 2650, so the Overnight setup is entry 2650 +
 /// 0.03 x 3 = 2650.09, stop 2650.09 - 40 = 2610.09, target 2650.09 + 5 x 40 = 2850.09; the order

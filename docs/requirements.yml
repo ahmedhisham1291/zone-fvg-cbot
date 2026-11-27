@@ -2176,7 +2176,7 @@ requirements:
     wp: WP43
     spec: "3.10, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Overnight signal (owner request of 2026-11-27, rows AZ and BE). A
       tracker in the core, fed closed M15 bars and the last closed D1 and
@@ -2421,7 +2421,7 @@ requirements:
     wp: WP43
     spec: "3.10, 5.2, 5.3, 5.5, 8.3"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Overnight execution (owner request of 2026-11-27, rows AZ, BA and
       BD). The setup of SIG-043 is placed as a buy stop through the existing
@@ -2519,7 +2519,7 @@ requirements:
     wp: WP43
     spec: "3.10, 4.1, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Overnight in the cBot and the brake off by default (rows AZ, BB, BC).
       The cBot accepts EntryMode "Overnight" (with EntryModel Fvg; Choch is

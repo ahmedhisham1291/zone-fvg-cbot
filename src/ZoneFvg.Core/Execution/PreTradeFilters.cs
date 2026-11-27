@@ -52,7 +52,8 @@ namespace ZoneFvg.Core.Execution;
 /// it is placed as a buy stop with the signal's expiry, shortened by a news window, and the entry
 /// reached check of a stop order. The current spread is added to its entry, its stop and its target
 /// before rounding, so the stop stays NightStopAtr x ATR(D1) below the order's entry. EXE-005 and
-/// EXE-006 are not run; the spread check of EXE-002 and the stop bounds of EXE-003 apply.</para>
+/// EXE-006 are not run; the spread check of EXE-002 and the smallest stop of EXE-003 (MinStopPips) apply,
+/// the largest stop (MaxStopAtr x ATR(H4)) does not (answer 1 on pull request 109).</para>
 /// <para>Every skip is passed to <see cref="IExecutionEvents.Skipped"/> once, with one reason and
 /// its measured values (EXE-014); a sanity-cap skip (RSK-002) also raises one alert.</para>
 /// </remarks>
@@ -447,6 +448,13 @@ public sealed class PreTradeFilters
         if (PriceMath.LessThan(c.StopPips, minStopPips, PriceMath.DefaultTolerance))
         {
             return c.Skip(SkipReason.StopTooSmall, c.StopPips, minStopPips, "stop " + Text(c.StopPips) + " pips below " + Text(minStopPips));
+        }
+
+        // EXE-033 (orchestrating session's answer 1 on pull request 109): an Overnight stop of NightStopAtr x ATR(D1)
+        // is a safety stop sized into the risk; MaxStopAtr x ATR(H4) does not bound it. MinStopPips does.
+        if (IsNight(c))
+        {
+            return null;
         }
 
         double maxPips = PriceMath.ToPips(_parameters.MaxStopAtr * s.AtrH4, info.PipSize);

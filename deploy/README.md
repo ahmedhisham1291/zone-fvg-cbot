@@ -416,7 +416,9 @@ The Overnight instance places a buy stop at 18:15 New York on Monday to
 Thursday evenings just above the price (the close of the 18:15 bar, plus the
 spread, plus 0.03 x ATR(M15)) that lives 60 minutes, with a stop one daily
 ATR below the entry and a safety target of 5R; an open position is closed at
-02:45 New York. Its orders carry `ON-yyyyMMdd` in the label. Neither
+02:45 New York. Its stop is not limited by `MaxStopAtr` x ATR(H4) (that
+limit applies to the other modes only); the smallest stop (`MinStopPips`,
+automatic 8 USD) applies. Its orders carry `ON-yyyyMMdd` in the label. Neither
 instance cancels, closes, modifies or time-exits the other's order or
 position (only the emergency guard closes every bot trade of the account),
 and an instance does not enter while any bot order or position is open on

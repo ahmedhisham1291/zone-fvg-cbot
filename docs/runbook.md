@@ -214,7 +214,9 @@ runs as two cBot instances on the same XAUUSD account, each with its own file:
 buy stop just above the price at 18:15 New York on Monday to Thursday
 evenings (the close of the 18:15 bar plus the spread plus 0.03 x ATR(M15)),
 for 60 minutes; its stop is one daily ATR below the entry, its safety target
-5R above; an open Overnight position is closed at 02:45 New York. Its labels
+5R above (the `MaxStopAtr` limit of the other modes does not apply to it;
+the 8 USD smallest stop does); an open Overnight position is closed at 02:45
+New York. Its labels
 carry `ON-yyyyMMdd`. Neither instance cancels, closes, modifies or
 time-exits the other's order or position, also after a restart; the
 emergency guard is the one exception: it closes every bot trade of the

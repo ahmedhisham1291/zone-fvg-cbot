@@ -46,7 +46,7 @@ namespace ZoneFvg.Core.Signals;
 /// stored, so no zone is detected; M15 bars are stored and go to an <see cref="OvernightTracker"/>
 /// with the latest ATR(D1) and ATR(M15). A setup becomes a <see cref="SignalKind.Overnight"/> buy
 /// signal when the engine is ready; the signal carries the ATR(H4) of the last closed H4 bar, or 0
-/// when there is none, for the stop bound of spec 3.6.</para>
+/// when there is none (information only: the largest stop of spec 3.6 does not apply to this kind).</para>
 /// <para>Choch entry model of ZoneFvg mode (SIG-035 to SIG-041, spec 3.9), chosen by creating the
 /// engine with Choch parameters: D1 and H4 bars as in ZoneFvg mode; the zone book's confirmation
 /// window is ChochWindowBars. At each M15 close, after the book has applied the bar, each Touched
@@ -393,8 +393,8 @@ public sealed class SignalEngine
         return Array.AsReadOnly(new[] { signal });
     }
 
-    // SIG-043: ATR(D1) of the last closed D1 bar and ATR(M15) of this bar; ATR(H4) only for the stop bound of
-    // spec 3.6 (0 when there is none, which the execution layer refuses). The intake order (SIG-004) has made
+    // SIG-043: ATR(D1) of the last closed D1 bar and ATR(M15) of this bar; ATR(H4) is carried for information only
+    // (0 when there is none; the execution layer does not bound this kind's stop by it). The intake order (SIG-004) has made
     // sure that this bar opens after the last M15 bar, so the tracker does not throw.
     private IReadOnlyList<Signal> OnNightM15Closed(OvernightTracker tracker, Bar bar, bool replay)
     {

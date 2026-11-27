@@ -565,8 +565,8 @@ Overnight at 1.0% (`deploy/params/xauusd-overnight.cbotset.example`). The
 Overnight instance buys with a stop order just above the price at 18:15 New
 York on Monday to Thursday evenings (the close of the 18:15 bar plus the
 spread plus 0.03 x ATR(M15), for 60 minutes), with a stop one daily ATR below
-the entry and a safety target of 5R, and closes the position at 02:45 New
-York. From WP43 on the drawdown brake is off by default
+the entry and a safety target of 5R (not limited by `MaxStopAtr`), and closes
+the position at 02:45 New York. From WP43 on the drawdown brake is off by default
 (`DrawdownBrakePercent` 0; the `start` line ends with `brake=off`).
 
 cTrader backtests one instance at a time. So run each instance as its own
