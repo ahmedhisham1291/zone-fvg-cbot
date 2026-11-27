@@ -448,7 +448,7 @@ Chosen with `EntryMode` = Overnight. Buys only. Meant for XAUUSD alone, as a sec
 
 **Signal id.** `ON-yyyyMMdd`, from the date that names the trading day. It takes the place of the zone id in the label (5.2), in recovery (8.3), in the journal and in the trade log.
 
-**Skipped when** (besides the checks of 3.6 that apply): price has already reached the entry when the order is about to be placed; the spread check of 3.7.
+**Skipped when** (besides the checks of 3.6 that apply): price has already reached the entry when the order is about to be placed; the spread check of 3.7. **Not checked for this mode (decision of 27 November 2026, WP43):** the largest-stop check of 3.6 (stop above 2 x ATR(H4)); the 1 x ATR(D1) stop is a safety stop that is sized into the risk, and the research had no such cap. The smallest stop (`MinStopPips`, automatic 8 USD on gold) still applies.
 
 **What stays the same.** One position or pending order per symbol for the instance (row BA), sizing, every account limit and circuit breaker, the news windows, idempotent placement, recovery, alerts and the simulation tools.
 
