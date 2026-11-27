@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.15 · 26 November 2026 (owner request of 26 November 2026: an offline backtest lab that runs the bot's own core over about six years of downloaded history in CI, searches entry settings and compares money-management plans against a target of about 1% a month, section 12.5, rows AH to AR; the trading rules do not change. v0.14 of 24 November 2026, v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
+Version 0.16 · 27 November 2026 (owner request of 27 November 2026: SessionRange on gold becomes the default setup, with a fixed 0.75% risk per trade and a drawdown brake, rows AS to AX. v0.15 of 26 November 2026, owner request of 26 November 2026: an offline backtest lab that runs the bot's own core over about six years of downloaded history in CI, searches entry settings and compares money-management plans against a target of about 1% a month, section 12.5, rows AH to AR; the trading rules do not change. v0.14 of 24 November 2026, v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
 
 ## 0. What changed in v0.2
 
@@ -113,6 +113,19 @@ Nothing in this version changes a trading rule, a default, a money decision or t
 | AP. Target | The target to report against is about 1% a month. The report states, for development and for holdout, whether any configuration and sizing plan reaches it and at what drawdown and FTMO breach rate; if none does on the holdout it says so in one plain sentence. A target is not a rule: nothing in the bot changes because of it | 12.5 |
 | AQ. Workflow | The owner approves one new protected path for this: `.github/workflows/lab.yml`, started by hand (`workflow_dispatch`), plus checks of the lab's own code on pull requests that change it. No secret is used; the job token reads the repository and, only to post a report, writes an issue comment. The existing workflows are not changed | 12.5 |
 | AR. What the lab does not replace | The lab explores and chooses. Going live still follows 13.1 and the owner's go / no-go. **Proposal:** before go / no-go 1 the chosen settings are confirmed by one cTrader backtest per symbol on FTMO's data (one run each, not a search); open question 5 of section 14 | 12.5, 13.1, 14 |
+
+**Changes in v0.16 (owner request of 27 November 2026, verbatim: "Lets use this 0.75% please implement it and let's start using it", after the orchestrating session's study of the same day on the owner's exported FTMO bars, May 2020 to November 2026)**
+
+Evidence: on gold the Asian range break with the D1 trend (the rule of 3.8) made 237 trades, 54% winners, +0.29R per trade, profit factor 1.79, +68.3R, largest drawdown 9.2R in the search's simulation; the owner's own cTrader backtest of this mode (row of 2026-11-23 in `docs/architecture.md` section 10) made 188 trades and +53.9R. On EURUSD and GBPUSD the same rule made +1.5R and +2.4R with drawdowns of 24.5R and 15.4R. Fixed risk and the ladder earned the same per unit of drawdown (fixed 0.75%: +0.65% a month, 6.9% largest drawdown; ladder 0.3% capped at 0.5%: +0.33% a month, 3.4%); the owner chose fixed 0.75%. A brake that halves risk while the closed balance is 3% or more below its peak cut the worst month of the combined study from −4.7% to −3.0%.
+
+| Topic | Decision | Section |
+|---|---|---|
+| AS. Default entry setup | The cBot defaults to `EntryMode` = SessionRange and `EntryModel` = Fvg (the refusal of Choch with another mode stays, 3.9). `SessionStartUtc` 00:00 and `SessionEndUtc` 24:00 stay. ZoneFvg with Choch, ZoneFvg with Fvg and Breakout stay selectable and unchanged. The mode is meant for **gold only** (XAUUSD); the runbook says that no currency-pair instance is started with it | 3.8, 7 |
+| AT. Default risk | `RiskPercent` default 0.75 (was 0.5). `LadderEnabled` stays false and `SizingPlan` Ladder, so a default run risks a fixed 0.75% of balance per trade. The ladder and Recovery are unchanged and stay opt-in. Every account limit of 4.2 and 4.3 is unchanged (daily budget 2%, kill switch 8%) | 4.1, 7 |
+| AU. Drawdown brake | New, for fixed sizing only (`SizingPlan` = Ladder with `LadderEnabled` = false): while the account balance is `DrawdownBrakePercent` (default 3) percent or more below its peak, the risk of a new trade is `RiskPercent` x `DrawdownBrakeFactor` (default 0.5), so 0.375% by default; below that distance the full `RiskPercent` is used again. The peak is the kill switch's peak (RSK-008): the highest end-of-trade balance since `RiskEpochDate`, starting from the balance at the epoch. Recomputed from broker history for every new trade, nothing remembered. `DrawdownBrakePercent` 0 switches it off. The ladder and Recovery ignore it. Section 4.1 | 4.1, 7 |
+| AV. What the brake does not change | The daily budget, the kill switch, the emergency floor, the open-risk and currency caps (when on) and the sanity cap (when on) are checked as before, after the brake. The open-risk sum of a bot position counts, as before, the full sizing-rule risk of balance x `RiskPercent` (conservative). The parameter hash does not contain risk values, so every hash stays what it was | 4.2, 4.3, 13.1 |
+| AW. Parameter files | The five files under `deploy/params/` carry `EntryMode=SessionRange`, `EntryModel=Fvg`, `RiskPercent=0.75`, `DrawdownBrakePercent=3.0` and `DrawdownBrakeFactor=0.5`. Only the XAUUSD file is meant to be run; the currency-pair files stay as examples of the format | 7, 10.2 |
+| AX. Open question 4 answered, and the way to live | The owner chose SessionRange on gold for use (27 November 2026). It goes live through the gates already written, not around them: the stop-order record of PLT-011 and the live gold spread check (architecture section 10, rows of 2026-11-22 and 2026-11-23) on a demo or FTMO Free Trial account, then the Challenge. **Proposal of the orchestrating session**, the owner's to accept or waive: two to four weeks on the Free Trial with these files before the first trade on the Challenge account. When the Challenge is started stays the owner's decision (15.7) | 13.4, 14, 15.7 |
 
 ## 1. Purpose and scope
 
@@ -374,6 +387,18 @@ Chosen with `EntryMode` = ZoneFvg and `EntryModel` = Choch. `EntryModel` = Choch
 
 ### 4.1 Size per trade
 
+**Drawdown brake (v0.16, owner request of 27 November 2026, row AU).** Only
+with fixed sizing (`SizingPlan` = Ladder, `LadderEnabled` = false). For each
+new trade the bot computes the peak exactly as the kill switch does (RSK-008):
+the highest end-of-trade balance since `RiskEpochDate`, starting from the
+balance at the epoch. When `DrawdownBrakePercent` is above 0 and
+peak - `Account.Balance` is at least peak x `DrawdownBrakePercent` / 100
+(equal counts, with `PriceMath`'s tolerance), the trade's risk percent is
+`RiskPercent` x `DrawdownBrakeFactor`; otherwise `RiskPercent`. Nothing is
+remembered: the next trade decides again from broker history, so the full
+risk comes back as soon as the balance is less than the brake distance below
+the peak. The ladder (RSK-013) and Recovery (4.1.1) do not use it.
+
 **Sizing plan (owner decision of 24 November 2026).** The cBot parameter
 `SizingPlan` chooses how the risk of each new trade is set: `Ladder` (the
 default) or `Recovery` (4.1.1). With `Ladder` everything in this
@@ -395,7 +420,7 @@ the cBot's default (row AB): a default run risks a fixed 0.5% of balance per
 trade, and the owner switches the ladder on with `LadderEnabled` = true.
 
 ```
-riskAmount  = Account.Balance x riskPercent   (fixed RiskPercent 0.5% by default; ladder, at most 0.5%)
+riskAmount  = Account.Balance x riskPercent   (fixed RiskPercent 0.75% by default, 0.375% while the drawdown brake is on; ladder, at most 0.5%)
 riskAmount  = R of 4.1.1                      (Recovery, step columns, at most 1.28% of Account.Balance)
 volumeUnits = riskAmount / (stopPips x Symbol.PipValue)
 volume      = round DOWN to the symbol's volume step
@@ -718,8 +743,8 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 
 | Parameter | Default | Role | Test range |
 |---|---|---|---|
-| EntryMode (new in 0.10) | ZoneFvg (Breakout until v0.13; row AA) | Entry mode of the instance: Breakout, ZoneFvg or SessionRange (section 3) | Both are backtested |
-| EntryModel (new in 0.11) | Choch (Fvg until v0.13; row AA) | Trigger in ZoneFvg mode: Fvg or Choch (3.9). Choch with another EntryMode is refused, so Breakout and SessionRange need Fvg | Both are backtested |
+| EntryMode (new in 0.10) | SessionRange (ZoneFvg in v0.14 and v0.15, Breakout until v0.13; rows AA, AS) | Entry mode of the instance: Breakout, ZoneFvg or SessionRange (section 3) | Both are backtested |
+| EntryModel (new in 0.11) | Fvg (Choch in v0.14 and v0.15, Fvg until v0.13; rows AA, AS) | Trigger in ZoneFvg mode: Fvg or Choch (3.9). Choch with another EntryMode is refused, so Breakout and SessionRange need Fvg | Both are backtested |
 | RequireSweep (new in 0.11) | false | Choch: a sweep of an M15 swing must come before the change of character | Test false and true |
 | ChochWindowBars (new in 0.11) | 32 (proposal) | Choch: M15 bars after the touch in which the change of character must come | Fixed |
 | ChochUseBias (new in 0.11) | true (false until v0.13; row AA) | Choch: also require the D1 bias of 3.1 | Test false and true |
@@ -751,7 +776,9 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | RewardRisk | 2.0 | Target in R | **Optimise** 1.5 to 3.0, step 0.5 |
 | MinRoomR | 1.5 | Clear space to opposing zone | Fixed |
 | CostToRiskMax (new) | 0.10 | Costs as a share of stop distance | Fixed |
-| RiskPercent | 0.5 | Risk per trade; with `LadderEnabled` = false (the default from v0.14) every trade uses it | Fixed |
+| RiskPercent | 0.75 (0.5 until v0.15; row AT) | Risk per trade; with `LadderEnabled` = false (the default from v0.14) every trade uses it, halved by the drawdown brake (4.1) | Fixed |
+| DrawdownBrakePercent (new in 0.16) | 3 | Drawdown brake of 4.1: distance below the peak balance, in percent of the peak, from which fixed sizing uses `RiskPercent` x `DrawdownBrakeFactor`; 0 = off. At least 0 and below `MaxDrawdownPercent` | Fixed |
+| DrawdownBrakeFactor (new in 0.16) | 0.5 | Drawdown brake: multiplier of `RiskPercent` while braked; greater than 0 and at most 1 | Fixed |
 | LadderEnabled | false (true until v0.13; row AB) | The ladder of RSK-013 on (true) or the fixed `RiskPercent` (false), with `SizingPlan` = Ladder. The one value the owner switches by hand | Both are backtested |
 | SizingPlan (new in 0.12) | Ladder | How the risk of a new trade is set: `Ladder` (RSK-013, unchanged) or `Recovery` (4.1.1) | Both are backtested |
 | RecoveryRunLossPercent (new in 0.13; replaces RecoveryFirstRiskUsd of 0.12) | 1.0 | Recovery: the eight base amounts of a losing run together, in percent of initial capital (4.1.1) | Fixed |
@@ -1243,7 +1270,7 @@ Every quarter, re-run the backtest including the latest data and compare live re
 1. On what date did you buy the Challenge? It decides which option in section 15.7 is open to you.
 2. Will this account be used only by the bot?
 3. Index CFDs (for example US500 and US100) for the Breakout mode (v0.10). They are not part of v0.10: the bot accepts only symbols that start with six letters, and an index needs its own news currency, exposure cap, stop and spread values. To add them, the developer needs the symbol line the cBot prints at start on your FTMO cTrader account for each index (name, digits, tick size, lot size, volume steps, commission, sessions).
-4. Which acceptance marks does a mode pass that runs on one symbol (SessionRange on gold, 13.1)? The search measured it once on the holdout already, so the holdout of 12.1 is no longer unused for this rule: the remaining clean evidence is a forward test on the Free Trial or a demo account.
+4. **Answered 27 November 2026 (row AX): the owner chose SessionRange on gold for use; it goes live through the gates of row AX.** Which acceptance marks does a mode pass that runs on one symbol (SessionRange on gold, 13.1)? The search measured it once on the holdout already, so the holdout of 12.1 is no longer unused for this rule: the remaining clean evidence is a forward test on the Free Trial or a demo account.
 5. Is the lab of 12.5 enough for go / no-go 1, or are the chosen settings confirmed first by one cTrader backtest per symbol on FTMO's data (row AR proposes the second)? The same question holds for the holdout: the lab's holdout is not unused (row AN), so the clean evidence after it is again a forward test.
 
 
