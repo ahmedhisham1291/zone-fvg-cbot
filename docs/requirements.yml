@@ -613,6 +613,33 @@ requirements:
       so with the peak, the balance and the two percents (format in the work
       package); otherwise every journal line is unchanged byte for byte.
 
+  - id: RSK-020
+    wp: WP44
+    spec: "4.2, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Monthly loss limit (owner request of 2026-11-27, row BF). The core's
+      risk parameters gain MonthlyLossLimitPercent (core default 0 = off, so
+      every existing decision is unchanged); validation refuses, naming it, a
+      value not finite, below 0, or not below MaxDrawdownPercent. With a
+      value above 0: S = the balance at 00:00 CE(S)T on the first day of the
+      current CE(S)T calendar month, rebuilt as current balance minus the
+      net result (profit, commission, swap) of every account trade closed
+      since then, from broker history (as RSK-007; nothing stored). When S
+      minus Account.Balance is at least MonthlyLossLimitPercent / 100 x
+      InitialCapital (PriceMath tolerance; equal counts), a new entry is
+      refused with its own skip reason, pending bot entry orders are
+      cancelled as when the daily budget is exhausted (RSK-006), and open
+      positions are not touched; from 00:00 CE(S)T on the first day of the
+      next month entries are allowed again. It counts every closed trade of
+      the account (both gold instances), in every sizing plan and mode. A
+      history read error refuses the entry (BrokerDataInvalid, fail closed).
+      The cBot declares MonthlyLossLimitPercent with default 2.0 in the Risk
+      group and passes it to the core; the parameter files carry
+      MonthlyLossLimitPercent=2.0; the start line is unchanged; the guides
+      describe the limit.
+
   - id: NWS-001
     wp: WP05
     spec: "6.1"
