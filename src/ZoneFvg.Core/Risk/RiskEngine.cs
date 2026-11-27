@@ -164,6 +164,26 @@ public sealed class RiskEngine
     /// <exception cref="ArgumentException">The history does not reach back to the earlier of RiskEpochDate and the day start.</exception>
     public KillSwitchDecision KillSwitch(RiskSnapshot snapshot)
     {
+        double peak = PeakBalance(snapshot);
+        double equity = snapshot.Account.Equity;
+        double limit = peak * _parameters.MaxDrawdownPercent / 100.0;
+        double drawdown = peak - equity;
+        bool halt = !(peak > 0.0) || !PriceMath.LessThan(drawdown, limit, PriceMath.DefaultTolerance);
+        return new KillSwitchDecision(halt, peak, equity, drawdown, limit);
+    }
+
+    /// <summary>
+    /// The peak balance of the kill switch (RSK-008), also used by the drawdown brake (RSK-019): the
+    /// highest end-of-trade balance of the trades closed since 00:00 CE(S)T of RiskEpochDate, and
+    /// not less than the balance at that instant (current balance minus the net result of the
+    /// trades closed at or after it). <see cref="KillSwitch"/> uses exactly this value.
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <returns>The peak balance.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <exception cref="ArgumentException">The history does not reach back to the earlier of RiskEpochDate and the day start.</exception>
+    public double PeakBalance(RiskSnapshot snapshot)
+    {
         ArgumentNullException.ThrowIfNull(snapshot);
         RequireHistory(snapshot);
         DateTime epoch = EpochStartUtc();
@@ -176,11 +196,7 @@ public sealed class RiskEngine
             }
         }
 
-        double equity = snapshot.Account.Equity;
-        double limit = peak * _parameters.MaxDrawdownPercent / 100.0;
-        double drawdown = peak - equity;
-        bool halt = !(peak > 0.0) || !PriceMath.LessThan(drawdown, limit, PriceMath.DefaultTolerance);
-        return new KillSwitchDecision(halt, peak, equity, drawdown, limit);
+        return peak;
     }
 
     /// <summary>

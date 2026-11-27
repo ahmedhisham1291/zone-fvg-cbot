@@ -3,6 +3,7 @@ using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution;
 using ZoneFvg.Core.Execution.Ports;
 using ZoneFvg.Core.News;
+using ZoneFvg.Core.Risk;
 
 namespace ZoneFvg.Core.Ops;
 
@@ -68,6 +69,12 @@ public sealed record SignalJournalEntry(
     public double? RewardRisk { get; init; }
 
     /// <summary>
+    /// The drawdown brake's note when the brake set the risk of the taken order (RSK-019); null
+    /// otherwise, and the line is then unchanged.
+    /// </summary>
+    public DrawdownBrakeNote? Brake { get; init; }
+
+    /// <summary>
     /// The entry of a signal that became an order (OPS-001). Levels, stop pips, volume and time
     /// come from the order; spread and cost-to-risk from the symbol data as in EXE-004.
     /// </summary>
@@ -107,6 +114,7 @@ public sealed record SignalJournalEntry(
             Swept = order.Signal.Swept,
             TargetSource = order.Signal.TargetSource,
             RewardRisk = RewardRiskOf(order.Signal),
+            Brake = order.Brake,
         };
     }
 

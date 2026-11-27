@@ -23,6 +23,20 @@ public sealed record RiskParameters
     /// <summary>Risk per trade in percent of the current balance (RSK-001). Default 0.5.</summary>
     public double RiskPercent { get; init; } = 0.5;
 
+    /// <summary>
+    /// Drawdown brake of spec 4.1 (RSK-019): distance below the peak balance, in percent of the peak,
+    /// from which fixed sizing (SizingPlan Ladder with LadderEnabled false) uses
+    /// <see cref="RiskPercent"/> x <see cref="DrawdownBrakeFactor"/>. Default 0 (off). At least 0 and
+    /// below <see cref="MaxDrawdownPercent"/>.
+    /// </summary>
+    public double DrawdownBrakePercent { get; init; }
+
+    /// <summary>
+    /// Drawdown brake (RSK-019): the multiplier of <see cref="RiskPercent"/> while braked. Default 0.5.
+    /// Greater than 0 and at most 1.
+    /// </summary>
+    public double DrawdownBrakeFactor { get; init; } = 0.5;
+
     /// <summary>Total open risk cap in percent of <see cref="InitialCapital"/> (RSK-004). Default 1.5.</summary>
     public double MaxOpenRiskPercent { get; init; } = 1.5;
 
@@ -142,8 +156,8 @@ public sealed record RiskParameters
 
     /// <summary>
     /// Checks every value and throws for the first one that is out of range, in the order the
-    /// parameters are declared. The message names the parameter, its allowed range and the
-    /// rejected value in invariant formatting.
+    /// parameters were added (the drawdown brake values of RSK-019 last). The message names the
+    /// parameter, its allowed range and the rejected value in invariant formatting.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range. The exception's parameter name is the name of the parameter.</exception>
     public void Validate()
@@ -189,6 +203,17 @@ public sealed record RiskParameters
         // RSK-018: checked after every value that existed before, so their refusals are unchanged.
         RequirePercent(SanityCapPercent, nameof(SanityCapPercent));
         ValidateSizing();
+
+        // RSK-019: checked after every value that existed before, so their refusals are unchanged.
+        if (!double.IsFinite(DrawdownBrakePercent) || DrawdownBrakePercent < 0.0 || DrawdownBrakePercent >= MaxDrawdownPercent)
+        {
+            throw OutOfRange(nameof(DrawdownBrakePercent), "must be at least 0 and below MaxDrawdownPercent", Text(DrawdownBrakePercent));
+        }
+
+        if (!double.IsFinite(DrawdownBrakeFactor) || DrawdownBrakeFactor <= 0.0 || DrawdownBrakeFactor > 1.0)
+        {
+            throw OutOfRange(nameof(DrawdownBrakeFactor), "must be greater than 0 and at most 1", Text(DrawdownBrakeFactor));
+        }
     }
 
     /// <summary>

@@ -8,12 +8,13 @@ gates are green and reports every merge to the owner.
 **Status:** the bot is built: the core logic, the cTrader adapter, the
 simulation tools and the deployment files. It has three entry modes, chosen
 per instance with the parameter `EntryMode` (spec v0.10 and 3.8):
-**ZoneFvg** (the default from spec v0.14), **Breakout**, and **SessionRange** (a break of the
+**SessionRange** (the default from spec v0.16, for gold only: a break of the
 19:00 to 03:00 New York range on the side of the D1 trend, added on
 23 November 2026 for gold after the strategy search
-`research/search/REPORT-2026-11-23.md`; not accepted until the owner decides
-spec 14, question 4). Inside ZoneFvg mode the parameter `EntryModel`
-chooses the trigger at a zone: `Fvg` or `Choch` (the default from spec v0.14), the owner's
+`research/search/REPORT-2026-11-23.md`; chosen by the owner on 27 November
+2026, live only through the gates of spec row AX), **ZoneFvg** (the default
+of spec v0.14 and v0.15) and **Breakout**. Inside ZoneFvg mode the parameter `EntryModel`
+chooses the trigger at a zone: `Fvg` (the default from spec v0.16) or `Choch` (the default of spec v0.14 and v0.15), the owner's
 manual change-of-character method (spec 3.9, added on 23 November 2026;
 unproven until its backtest). `docs/requirements.yml` holds 137 requirements; 127
 are implemented (count of `python3 tools/check_traceability.py`). Of the

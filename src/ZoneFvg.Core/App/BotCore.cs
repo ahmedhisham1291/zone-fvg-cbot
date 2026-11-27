@@ -41,6 +41,9 @@ namespace ZoneFvg.Core.App;
 /// counts name the window end <c>no-choch</c>.</para>
 /// <para>With SizingPlan Recovery (RSK-018, PLT-017) the start line ends with <c>sizing=Recovery</c>,
 /// after the mode and model fields; with Ladder it is unchanged.</para>
+/// <para>With SizingPlan Ladder and LadderEnabled false (fixed sizing, PLT-020, RSK-019) the start line
+/// ends, after every other field, with <c>brake=&lt;DrawdownBrakePercent&gt;/&lt;DrawdownBrakeFactor&gt;</c>,
+/// or <c>brake=off</c> when DrawdownBrakePercent is 0.</para>
 /// </remarks>
 public sealed class BotCore
 {
@@ -371,6 +374,12 @@ public sealed class BotCore
         {
             // EXE-032: the profile and the effective values at the very end; without a profile the line is unchanged.
             start.AddRange(ProfileFields(_symbolProfile));
+        }
+
+        if (_risk.SizingPlan == SizingPlan.Ladder && !_risk.LadderEnabled)
+        {
+            // PLT-020, RSK-019: fixed sizing names the drawdown brake at the very end; the ladder and Recovery lines are unchanged.
+            start.Add(("brake", _risk.DrawdownBrakePercent > 0.0 ? Number(_risk.DrawdownBrakePercent) + "/" + Number(_risk.DrawdownBrakeFactor) : "off"));
         }
 
         Write("start", start.ToArray());

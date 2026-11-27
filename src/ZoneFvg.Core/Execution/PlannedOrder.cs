@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ZoneFvg.Core.Domain;
 using ZoneFvg.Core.Execution.Ports;
+using ZoneFvg.Core.Risk;
 
 namespace ZoneFvg.Core.Execution;
 
@@ -52,6 +53,12 @@ public sealed record PlannedOrder(
     /// <see cref="EntryOrderType.Limit"/> otherwise. Default Limit.
     /// </summary>
     public EntryOrderType EntryType { get; init; }
+
+    /// <summary>
+    /// The drawdown brake's peak, balance and braked percent when the brake set this order's risk
+    /// (RSK-019), for the journal; null otherwise (the default).
+    /// </summary>
+    public DrawdownBrakeNote? Brake { get; init; }
 
     /// <summary>The limit order request that places this order (EXE-008).</summary>
     /// <returns>A limit order request with stop loss, take profit, expiry, label and comment.</returns>

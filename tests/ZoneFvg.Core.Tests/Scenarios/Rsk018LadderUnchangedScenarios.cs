@@ -95,7 +95,8 @@ public class Rsk018LadderUnchangedScenarios
 
         string ladderStart = Assert.Single(ladder.Journal.Lines("start"));
         string recoveryStart = Assert.Single(recovery.Journal.Lines("start"));
-        Assert.Equal(ladderStart + " sizing=Recovery", recoveryStart);
+        Assert.EndsWith(" brake=off", ladderStart, StringComparison.Ordinal);
+        Assert.Equal(ladderStart[..^" brake=off".Length] + " sizing=Recovery", recoveryStart);
         Assert.EndsWith(";h=" + hash, CommentOf(Assert.Single(recovery.Broker.Requests)), StringComparison.Ordinal);
     }
 }

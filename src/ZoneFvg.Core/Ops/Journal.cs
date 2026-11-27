@@ -59,7 +59,8 @@ public sealed class Journal
     /// kind (<c>range</c>) and level, the range edge that is traded (SIG-034); for a Choch signal
     /// kind (<c>choch</c>), level (the broken swing level), sweep (<c>yes</c> or <c>no</c>), target
     /// (the source of SIG-040) and rr (the reward on the signal's own levels, as a price is written)
-    /// (OPS-011).
+    /// (OPS-011). When the drawdown brake set the risk of a taken order (RSK-019) the line ends with
+    /// brake (<c>on</c>), peak, balance and riskPercent.
     /// </summary>
     /// <param name="entry">The signal fields.</param>
     /// <returns>The line written.</returns>
@@ -108,6 +109,15 @@ public sealed class Journal
             fields.Add(("sweep", entry.Swept.HasValue ? (entry.Swept.Value ? "yes" : "no") : JournalFormat.NotAvailable));
             fields.Add(("target", entry.TargetSource ?? JournalFormat.NotAvailable));
             fields.Add(("rr", JournalFormat.Price(entry.RewardRisk)));
+        }
+
+        if (entry.Brake is not null)
+        {
+            // RSK-019: the drawdown brake's note at the very end of a taken line it sized; every other line is unchanged.
+            fields.Add(("brake", "on"));
+            fields.Add(("peak", entry.Brake.PeakText));
+            fields.Add(("balance", entry.Brake.BalanceText));
+            fields.Add(("riskPercent", entry.Brake.RiskPercentText));
         }
 
         return Emit(entry.TimeUtc, "signal", fields);

@@ -52,8 +52,8 @@ public class Plt018CbotDefaultsTests
     [Trait("Req", "PLT-015")]
     [Trait("Req", "PLT-016")]
     [Trait("Req", "PLT-017")]
-    [InlineData("[Parameter(\"EntryMode\", DefaultValue = \"ZoneFvg\", Group = \"Entry mode\")]")]
-    [InlineData("[Parameter(\"EntryModel\", DefaultValue = \"Choch\", Group = \"Entry model\")]")]
+    [InlineData("[Parameter(\"EntryMode\", DefaultValue = \"SessionRange\", Group = \"Entry mode\")]")]
+    [InlineData("[Parameter(\"EntryModel\", DefaultValue = \"Fvg\", Group = \"Entry model\")]")]
     [InlineData("[Parameter(\"ChochUseBias\", DefaultValue = true, Group = \"Entry model\")]")]
     [InlineData("[Parameter(\"ChochMinStopPips\", DefaultValue = 0.0, Group = \"Entry model\")]")]
     [InlineData("[Parameter(\"SessionStartUtc\", DefaultValue = \"00:00\", Group = \"Execution\")]")]
@@ -62,7 +62,7 @@ public class Plt018CbotDefaultsTests
     [InlineData("[Parameter(\"MaxSpreadPips\", DefaultValue = 0.0, Group = \"Execution\")]")]
     [InlineData("[Parameter(\"MaxVolumeUnits\", DefaultValue = 0.0, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"LadderEnabled\", DefaultValue = false, Group = \"Risk\")]")]
-    [InlineData("[Parameter(\"RiskPercent\", DefaultValue = 0.5, Group = \"Risk\")]")]
+    [InlineData("[Parameter(\"RiskPercent\", DefaultValue = 0.75, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"SizingPlan\", DefaultValue = \"Ladder\", Group = \"Risk\")]")]
     [InlineData("[Parameter(\"InitialCapital\", DefaultValue = 200000.0, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"NewsEnabled\", DefaultValue = true, Group = \"News\")]")]
@@ -77,8 +77,8 @@ public class Plt018CbotDefaultsTests
 
     [Theory]
     [Trait("Req", "PLT-018")]
-    [InlineData("public string EntryMode { get; set; } = \"ZoneFvg\";")]
-    [InlineData("public string EntryModel { get; set; } = \"Choch\";")]
+    [InlineData("public string EntryMode { get; set; } = \"SessionRange\";")]
+    [InlineData("public string EntryModel { get; set; } = \"Fvg\";")]
     [InlineData("public string SessionStartUtc { get; set; } = \"00:00\";")]
     [InlineData("public string SessionEndUtc { get; set; } = \"24:00\";")]
     public void Bot_TextDefaults_AlsoInTheInitialisers(string declaration)
@@ -122,7 +122,7 @@ public class Plt018CbotDefaultsTests
     {
         string[] expected =
         {
-            "EntryMode=ZoneFvg", "EntryModel=Choch", "ChochUseBias=true", "SessionStartUtc=00:00", "SessionEndUtc=24:00", "MaxSpreadPips=0.0",
+            "EntryMode=SessionRange", "EntryModel=Fvg", "ChochUseBias=true", "SessionStartUtc=00:00", "SessionEndUtc=24:00", "MaxSpreadPips=0.0",
             "MinStopPips=0.0", "ChochMinStopPips=0.0", "MaxVolumeUnits=0.0", "LadderEnabled=false",
         };
         foreach (string name in Files)

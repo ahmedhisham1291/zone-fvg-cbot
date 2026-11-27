@@ -98,7 +98,7 @@ public class Exe032GoldProfileScenarios
         BotHarness h = Started(pip);
 
         Assert.EndsWith(
-            " mode=ZoneFvg model=Choch profile=Gold " + values + " maxVolumeUnits=1000 auto=MaxSpreadPips,MinStopPips,ChochMinStopPips,MaxVolumeUnits",
+            " mode=ZoneFvg model=Choch profile=Gold " + values + " maxVolumeUnits=1000 auto=MaxSpreadPips,MinStopPips,ChochMinStopPips,MaxVolumeUnits brake=off",
             StartLine(h),
             StringComparison.Ordinal);
     }

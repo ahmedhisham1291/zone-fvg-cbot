@@ -156,7 +156,8 @@ public class Plt017CbotSizingTests
         string recoveryLine = Assert.Single(recovery.Journal.Lines("start"));
 
         Assert.DoesNotContain("sizing=", ladderLine, StringComparison.Ordinal);
-        Assert.Equal(ladderLine + " sizing=Recovery", recoveryLine);
+        Assert.EndsWith(" brake=off", ladderLine, StringComparison.Ordinal);
+        Assert.Equal(ladderLine[..^" brake=off".Length] + " sizing=Recovery", recoveryLine);
         Assert.Contains(" hash=" + RecoveryData.Hash + " ", recoveryLine, StringComparison.Ordinal);
     }
 }

@@ -157,10 +157,24 @@ parameter panel, start it.
 when the bot is flat on that symbol (`deploy/README.md`, section "Entry
 mode").
 
-**Defaults from spec v0.14 (owner request of 2026-11-24).** A backtest needs no
+**Defaults from spec v0.16 (owner request of 2026-11-27).** A backtest needs no
 parameter typed by hand except `LadderEnabled` (`false`, the default: a fixed
-0.5% per trade; `true`: the ladder). The defaults are ZoneFvg with the Choch
-model, all day, with the D1 trend filter, and `MaxSpreadPips`, `MinStopPips`,
+0.75% of balance per trade; `true`: the ladder). The defaults are SessionRange
+with `EntryModel` Fvg on gold (XAUUSD) only, all day, with the D1 trend
+filter, and the drawdown brake: while the balance is 3% or more below its peak
+since `RiskEpochDate` (the kill switch's peak), a new trade risks 0.375%
+(`DrawdownBrakePercent` 3, `DrawdownBrakeFactor` 0.5; fixed sizing only,
+the ladder and Recovery ignore it); the full 0.75% comes back as soon as the
+balance is less than 3% below the peak. The `start` line ends with
+`brake=3/0.5`. Every account limit is unchanged (daily budget 2%, kill
+switch 8%). Only the XAUUSD instance is started with these files; no
+currency-pair instance runs SessionRange. Before the Challenge, on a demo or
+FTMO Free Trial account: the stop-order record (PLT-011), the live gold
+spread check and the SessionRange record (`deploy/README.md`, "Before
+SessionRange trades on the Challenge account"); proposed, for you to accept
+or waive: two to four weeks on the Free Trial with these files. The ZoneFvg
+defaults of v0.14 (Choch model) stay selectable with `EntryMode=ZoneFvg`
+and `EntryModel=Choch`. `MaxSpreadPips`, `MinStopPips`,
 `ChochMinStopPips` and `MaxVolumeUnits` at `0`, automatic from the symbol
 (spec 7.1; the `start` line ends with `profile=... pipSize=...` and the
 values). If one of the four is typed by hand and does not fit the symbol, the
