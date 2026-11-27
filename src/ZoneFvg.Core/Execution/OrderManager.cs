@@ -24,7 +24,7 @@ public enum PlaceOutcome
     /// <summary>The broker clearly rejected the order; it is not retried (EXE-009).</summary>
     Rejected,
 
-    /// <summary>The outcome is unclear; the placement is kept for <see cref="OrderManager.ResolvePending"/> (EXE-009).</summary>
+    /// <summary>The outcome is unclear; the placement is kept for <see cref="OrderManager.ResolvePending(IReadOnlyList{Bar})"/> (EXE-009).</summary>
     Unclear,
 
     /// <summary>The order read back differs from the request in stop, target or expiry; a cancel was sent and an alert raised (EXE-010).</summary>
@@ -120,7 +120,7 @@ public sealed class OrderManager
     /// (RSK-010; with the record-only mode of REC-014 it is sent all the same). Otherwise one
     /// request is sent and its result handled: success is read back
     /// and checked (EXE-010); a clear rejection is recorded and alerted and never retried; an
-    /// unclear outcome is kept for <see cref="ResolvePending"/> and never resent here.
+    /// unclear outcome is kept for <see cref="ResolvePending(IReadOnlyList{Bar})"/> and never resent here.
     /// </summary>
     /// <param name="order">The checked order from <see cref="PreTradeFilters"/>.</param>
     /// <returns>What happened.</returns>
