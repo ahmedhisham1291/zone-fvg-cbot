@@ -8,7 +8,8 @@ namespace ZoneFvg.Core.Tests;
 /// <summary>
 /// EXE-033 in the execution layer, with the EURUSD values of <see cref="ExecutionData"/>: the
 /// Overnight buy ON-20260114 confirms at 10:00 UTC with the entry 1.0863, stop 1.0823 (40 pips)
-/// and target 1.0943, expiry 11:00 UTC, ATR(H4) 0.004 (largest stop 80 pips). The order adds the
+/// and target 1.0943, expiry 11:00 UTC, ATR(H4) 0.004 (not used: the largest stop of spec 3.6 does not
+/// apply to this kind, answer 1 on pull request 109). The order adds the
 /// spread 0.0001 to all three levels: 1.0864, 1.0824 and 1.0944. EXE-020, EXE-021 and EXE-023 for
 /// this kind are the cases of <c>SessionRangeUnclearPlacementTests</c>: the next bar opens 10:00
 /// and closes 10:15.
@@ -97,19 +98,52 @@ public class OvernightExecutionTests
 
     [Theory]
     [Trait("Req", "EXE-033")]
-    [InlineData(0.002, true)]
-    [InlineData(0.00199, false)]
-    public void Evaluate_StopAbove2AtrH4_SkippedAsStopTooLarge(double atrH4, bool placed)
+    [InlineData(0.002)]
+    [InlineData(0.00199)]
+    [InlineData(0.0005)]
+    [InlineData(0.0)]
+    public void Evaluate_StopFarAbove2AtrH4_StillPlaced(double atrH4)
     {
-        // Spec 3.6, which spec 3.10 does not lift: the 40-pip stop is allowed up to 2 x ATR(H4).
+        // Orchestrating session's answer 1 on pull request 109: MaxStopAtr x ATR(H4) does not apply to an Overnight
+        // signal; the 40-pip stop (1 x ATR(D1)) is placed with ATR(H4) 0.0005 (largest stop 10 pips) or none.
         var h = new ExecutionHarness(ExecutionHarness.DefaultBroker(ExecutionData.BuyQuote()));
 
-        PreTradeResult result = h.Evaluate(NightBuy(atrH4: atrH4));
+        PlannedOrder order = h.OrderOf(NightBuy(atrH4: atrH4));
+
+        Assert.Equal(40.0, order.StopPips, 6);
+        Assert.Equal(1.0824, order.StopLoss, 9);
+    }
+
+    [Theory]
+    [Trait("Req", "EXE-033")]
+    [InlineData(0.0005)]
+    [InlineData(0.00199)]
+    public void Evaluate_SessionRangeWithTheSameDistances_StillSkippedAsStopTooLarge(double atrH4)
+    {
+        var h = new ExecutionHarness(ExecutionHarness.DefaultBroker(ExecutionData.BuyQuote()));
+        Signal range = NightBuy(atrH4: atrH4) with { ZoneId = "RH-20260114", Kind = SignalKind.SessionRange };
+
+        SkipRecord skip = h.SkipOf(range);
+
+        Assert.Equal(SkipReason.StopTooLarge, skip.Reason);
+        Assert.Equal(2.0 * atrH4 / 0.0001, skip.Limit, 6);
+    }
+
+    [Theory]
+    [Trait("Req", "EXE-033")]
+    [InlineData(1.0851, true)]
+    [InlineData(1.08562, false)]
+    public void Evaluate_StopBelowMinStopPips_StillSkippedAsStopTooSmall(double stop, bool placed)
+    {
+        // MinStopPips (12 pips for EURUSD by default) still applies to Overnight: a 12-pip stop is placed, a 6.8-pip stop refused.
+        var h = new ExecutionHarness(ExecutionHarness.DefaultBroker(ExecutionData.BuyQuote()));
+
+        PreTradeResult result = h.Evaluate(NightBuy() with { Stop = stop });
 
         Assert.Equal(placed, result.IsAllowed);
         if (!placed)
         {
-            Assert.Equal(SkipReason.StopTooLarge, result.Skip!.Reason);
+            Assert.Equal(SkipReason.StopTooSmall, result.Skip!.Reason);
         }
     }
 
