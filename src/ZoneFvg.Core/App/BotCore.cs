@@ -454,7 +454,7 @@ public sealed class BotCore
         JournalActions("protection", _trades.EnsureProtection());
         GuardStatus guard = _guard.Evaluate(now);
         ApplyGuard(guard, now, false);
-        MonthlyLimitDuty(now);
+        string? noResend = MonthlyLimitDuty(now);
         if (_machine.State == BotState.Halted)
         {
             _trades.CancelEntryOrders("halted");
@@ -465,7 +465,7 @@ public sealed class BotCore
         RangeExitDuty(now, close);
         UpdateCalendar(now);
         ApplyState("M15 bar closed at " + Minute(close), now);
-        ResolvePending(guard, now);
+        ResolvePending(guard, now, noResend);
         PlaceSignals(signals, zonesBefore, guard, now);
         ReleaseRangeSetup();
 
@@ -797,6 +797,8 @@ public sealed class BotCore
         }
 
         ApplyStoredBudgetBlock(now);
+
+        // RSK-020: the cancellation only; a resend is decided at an M15 close alone (ResolvePending), which gets the status there.
         MonthlyLimitDuty(now);
 
         UpdateCalendar(now);
@@ -867,11 +869,13 @@ public sealed class BotCore
     // positions are not touched; new entries are refused by the pre-trade check. Nothing is stored: the month
     // status is rebuilt from broker history each time. Broker data that cannot be used cancels nothing and is
     // journaled; the pre-trade check then refuses new entries (architecture section 10, "Bad broker data").
-    private void MonthlyLimitDuty(DateTime now)
+    // Returns why an unclear placement may not be resent (limit reached or status unknown), or null when
+    // the limit is off or not reached.
+    private string? MonthlyLimitDuty(DateTime now)
     {
         if (!(_risk.MonthlyLossLimitPercent > 0.0))
         {
-            return;
+            return null;
         }
 
         MonthlyLossStatus status;
@@ -885,13 +889,16 @@ public sealed class BotCore
         catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
         {
             Write("risk", ("event", "monthly-limit-unavailable"), ("reason", exception.GetType().Name + ": " + OneLine(exception.Message)));
-            return;
+            return "monthly loss limit status unknown, not resent";
         }
 
-        if (status.Reached)
+        if (!status.Reached)
         {
-            JournalActions("monthly-limit", _trades.CancelEntryOrders("monthly loss limit reached"));
+            return null;
         }
+
+        JournalActions("monthly-limit", _trades.CancelEntryOrders("monthly loss limit reached"));
+        return "monthly loss limit reached, not resent";
     }
 
     private void CheckEmergencyGuard(DateTime now)
@@ -1195,7 +1202,7 @@ public sealed class BotCore
         engine.OrderNoLongerPending(setup.Id);
     }
 
-    private void ResolvePending(GuardStatus guard, DateTime now)
+    private void ResolvePending(GuardStatus guard, DateTime now, string? noResendReason)
     {
         if (_orders.UnresolvedCount == 0 || !_machine.AllowsNewOrders || !guard.EntriesAllowed)
         {
@@ -1204,7 +1211,9 @@ public sealed class BotCore
             return;
         }
 
-        foreach (PlaceResult result in _orders.ResolvePending(_recentM15))
+        // RSK-020: with the monthly loss limit reached or its status unknown a resend is a new entry that may not
+        // go out; the placement is abandoned with that reason. With the limit 0 the reason is null: as before.
+        foreach (PlaceResult result in _orders.ResolvePending(_recentM15, noResendReason))
         {
             Write("order", ("event", "resolved"), ("label", result.Label), ("outcome", result.Outcome.ToString()), ("detail", result.Detail));
             if (result.Outcome == PlaceOutcome.RequestLimitReached)

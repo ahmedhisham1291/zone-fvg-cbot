@@ -161,12 +161,28 @@ public sealed class OrderManager
     /// <exception cref="ArgumentNullException"><paramref name="recentM15Bars"/> is null.</exception>
     public IReadOnlyList<PlaceResult> ResolvePending(IReadOnlyList<Bar> recentM15Bars)
     {
+        return ResolvePending(recentM15Bars, null);
+    }
+
+    /// <summary>
+    /// <see cref="ResolvePending(IReadOnlyList{Bar})"/> with a reason that forbids a resend (RSK-020: the
+    /// monthly loss limit reached, or its status unknown). Every placement is resolved as there, but a
+    /// placement that would be resent is abandoned instead, recorded as UnclearOutcomeNotResent with
+    /// <paramref name="noResendReason"/> as detail; nothing is sent. With null the result is that of
+    /// the overload without it.
+    /// </summary>
+    /// <param name="recentM15Bars">Closed M15 bars of the symbol, at least those since the oldest unresolved confirmation.</param>
+    /// <param name="noResendReason">Why no resend may be sent, or null when a resend is allowed.</param>
+    /// <returns>One result per placement that was resolved, in the order the placements were made.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="recentM15Bars"/> is null.</exception>
+    public IReadOnlyList<PlaceResult> ResolvePending(IReadOnlyList<Bar> recentM15Bars, string? noResendReason)
+    {
         ArgumentNullException.ThrowIfNull(recentM15Bars);
         var results = new List<PlaceResult>();
         DateTime now = _broker.ServerTimeUtc;
         foreach (PlannedOrder order in _unresolved.ToList())
         {
-            PlaceResult? result = Resolve(order, recentM15Bars, now);
+            PlaceResult? result = Resolve(order, recentM15Bars, now, noResendReason);
             if (result != null)
             {
                 results.Add(result);
@@ -201,7 +217,7 @@ public sealed class OrderManager
         return results.AsReadOnly();
     }
 
-    private PlaceResult? Resolve(PlannedOrder order, IReadOnlyList<Bar> bars, DateTime now)
+    private PlaceResult? Resolve(PlannedOrder order, IReadOnlyList<Bar> bars, DateTime now, string? noResendReason)
     {
         PendingOrderInfo? existing = FindOrder(order.Label, null);
         if (existing != null)
@@ -243,7 +259,7 @@ public sealed class OrderManager
         }
 
         _unresolved.Remove(order);
-        string? reason = ResendBlocker(order, bars, now, age);
+        string? reason = ResendBlocker(order, bars, now, age) ?? noResendReason;
         return reason != null ? Abandon(order, now, age, reason) : Send(order);
     }
 

@@ -324,6 +324,12 @@ public class Rsk020MonthlyLossLimitScenarios
         h.Broker.Account = ExecutionData.Account(98000.0, 98000.0, 98000.0);
         h.Broker.AddClosedTrade(Closed(990, RecoveryData.At(2, 12, 0), -2000.0, 98000.0));
         h.FeedTo(exitUtc.AddMinutes(-15.0));
+        DateTime now = h.Broker.ServerTimeUtc;
+        var month = new RiskSnapshot(now, h.Broker.GetAccount(), Array.Empty<PositionInfo>(), Array.Empty<PendingOrderInfo>(), h.Broker.GetHistory(MarchStart), MarchStart, Array.Empty<SymbolInfo>());
+        MonthlyLossStatus status = new RiskEngine(parameters.Risk).MonthlyLoss(month);
+        Assert.True(status.Reached);
+        Assert.Equal(2000.0, status.Limit, 9);
+        Assert.True(status.Loss >= 2000.0);
         PositionInfo open = Assert.Single(h.Broker.GetPositions());
         Assert.Equal(position.StopLoss, open.StopLoss);
         Assert.Equal(position.TakeProfit, open.TakeProfit);
@@ -394,6 +400,131 @@ public class Rsk020MonthlyLossLimitScenarios
         Assert.Equal(0, h.Count(BrokerCall.Cancel));
         Assert.Equal(1, h.Journal.Count("risk", "event=monthly-limit-unavailable reason=InvalidOperationException:\\sThe\\sbroker\\sreturned\\sno\\shistory."));
         Assert.Empty(h.Journal.Lines("error"));
+    }
+
+    // ------------------------------------------------------------------ the resend of an unclear placement
+
+    /// <summary>
+    /// The validator's case at InitialCapital 200,000 (limit 4,000): 3,800 lost on 2 March, so the reference
+    /// signal passes at 08:45; its placement is unclear and nothing reached the broker. At 08:50 a trade of
+    /// another instance loses 300 (4,100 in the month). The 09:00 close resolves the placement.
+    /// </summary>
+    private static BotHarness UnclearAtTheConfirmation(double? limit, Func<BotHarness, Func<DateTime, IReadOnlyList<ClosedTradeInfo>>>? history = null)
+    {
+        var h = new BotHarness(broker: BotHarness.NewBroker(A, ExecutionData.Account(196200.0, 196200.0, 196200.0)));
+        h.Broker.AddClosedTrade(Closed(901, RecoveryData.At(2, 12, 0), -3800.0, 196200.0));
+        BotParameters parameters = RecoveryData.Parameters();
+        RiskParameters risk = parameters.Risk with { InitialCapital = 200000.0 };
+        risk = limit.HasValue ? risk with { MonthlyLossLimitPercent = limit.Value } : risk;
+        h.Start(A, parameters with { Risk = risk });
+        h.FeedTo(A.AddMinutes(30.0));
+        h.Broker.Script(BrokerCall.Place, BrokerFault.UnclearNotApplied, "Timeout");
+        h.FeedTo(RecoveryData.Confirmation);
+        Assert.Equal(1, h.Count(BrokerCall.Place));
+        Assert.Empty(h.Broker.GetPendingOrders());
+
+        h.Broker.AdvanceTo(A.AddMinutes(50.0));
+        h.Broker.Account = ExecutionData.Account(195900.0, 195900.0, 195900.0);
+        h.Broker.AddClosedTrade(Closed(902, A.AddMinutes(50.0), -300.0, 195900.0, "ZFVG|v1|XAUUSD|RH-20260304"));
+        if (history != null)
+        {
+            h.Port.History = history(h);
+        }
+
+        h.FeedTo(A.AddMinutes(60.0));
+        return h;
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-020")]
+    public void Resend_LimitReachedBeforeTheNextBar_NotResentNothingPlacedJournaled()
+    {
+        BotHarness h = UnclearAtTheConfirmation(2.0);
+
+        Assert.Equal(1, h.Count(BrokerCall.Place));
+        Assert.Empty(h.Broker.GetPendingOrders());
+        Assert.Empty(h.Broker.GetPositions());
+        Assert.Equal(1, h.Journal.Count("order", "outcome=Abandoned detail=monthly\\sloss\\slimit\\sreached,\\snot\\sresent"));
+        Assert.Equal(1, h.Journal.Count("skip", "reason=UnclearOutcomeNotResent"));
+
+        h.FeedTo(A.AddHours(2.0));
+        Assert.Equal(1, h.Count(BrokerCall.Place));
+        Assert.Equal(1, h.Broker.WriteRequestCount);
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-020")]
+    public void Resend_LimitOnMonthHistoryUnreadable_NotResentNothingPlacedJournaled()
+    {
+        BotHarness h = UnclearAtTheConfirmation(2.0, harness => s => s == MarchStart ? throw new InvalidOperationException("history unavailable") : harness.Broker.GetHistory(s));
+
+        Assert.Equal(1, h.Count(BrokerCall.Place));
+        Assert.Empty(h.Broker.GetPendingOrders());
+        Assert.Equal(1, h.Journal.Count("risk", "event=monthly-limit-unavailable"));
+        Assert.Equal(1, h.Journal.Count("order", "outcome=Abandoned detail=monthly\\sloss\\slimit\\sstatus\\sunknown,\\snot\\sresent"));
+        Assert.Empty(h.Journal.Lines("error"));
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-020")]
+    public void Resend_LimitZero_ResentAsBeforeIdenticalToARunWithoutTheField()
+    {
+        BotHarness zero = UnclearAtTheConfirmation(0.0);
+        BotHarness without = UnclearAtTheConfirmation(null);
+
+        Assert.Equal(without.Broker.QueryCount, zero.Broker.QueryCount);
+        Assert.Equal(without.Journal.Entries, zero.Journal.Entries);
+        Assert.Equal(without.Broker.Requests, zero.Broker.Requests);
+        Assert.Equal(2, zero.Count(BrokerCall.Place));
+        Assert.Single(zero.Broker.GetPendingOrders(), order => order.Label == RecoveryData.Label);
+        Assert.Equal(0, zero.Journal.Count("order", "outcome=Abandoned"));
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-020")]
+    public void Resend_LimitOnNotReached_ResentAsWithTheLimitOff()
+    {
+        // Nothing more is lost before the 09:00 close: 3,800 is below the 4,000 limit, so the resend goes out.
+        var h = new BotHarness(broker: BotHarness.NewBroker(A, ExecutionData.Account(196200.0, 196200.0, 196200.0)));
+        h.Broker.AddClosedTrade(Closed(901, RecoveryData.At(2, 12, 0), -3800.0, 196200.0));
+        BotParameters parameters = RecoveryData.Parameters();
+        h.Start(A, parameters with { Risk = parameters.Risk with { InitialCapital = 200000.0, MonthlyLossLimitPercent = 2.0 } });
+        h.FeedTo(A.AddMinutes(30.0));
+        h.Broker.Script(BrokerCall.Place, BrokerFault.UnclearNotApplied, "Timeout");
+        h.FeedTo(A.AddMinutes(60.0));
+
+        Assert.Equal(2, h.Count(BrokerCall.Place));
+        Assert.Single(h.Broker.GetPendingOrders(), order => order.Label == RecoveryData.Label);
+    }
+
+    // ------------------------------------------------------------------ smaller cases
+
+    [Fact]
+    [Trait("Req", "RSK-020")]
+    public void Filters_MonthStartBalanceNotPositive_RefusedAsRiskInvalidInput_NoOrder()
+    {
+        // Balance 1,000 after +2,000 in January: S = -1,000.
+        ClosedTradeInfo[] history = { Closed(1, ExecutionData.At(5, 12, 0), 2000.0, 1000.0) };
+
+        FilterRun run = FilterRun.Evaluate(Fixed(2.0) with { InitialCapital = 10000.0 }, 1000.0, _ => history);
+
+        SkipRecord skip = Assert.Single(run.Events.Skips);
+        Assert.Equal(SkipReason.RiskInvalidInput, skip.Reason);
+        Assert.Contains("month-start balance", skip.Detail, StringComparison.Ordinal);
+        Assert.Empty(run.Broker.Requests);
+    }
+
+    [Theory]
+    [Trait("Req", "RSK-020")]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Filters_LadderOrRecoveryHistoryThrowsWithTheLimitOn_NoOrder(bool ladder)
+    {
+        RiskParameters risk = ladder ? Fixed(2.0) with { LadderEnabled = true } : Fixed(2.0) with { SizingPlan = SizingPlan.Recovery };
+
+        // The sizing reads the history as before this work package; its exception leaves the filters (the bot's
+        // event boundary journals and counts it) and nothing is sent.
+        Assert.Throws<InvalidOperationException>(() => FilterRun.Evaluate(risk, 205000.0, _ => throw new InvalidOperationException("The broker history could not be read.")));
     }
 
     /// <summary>One EURUSD instance's filters on a FakeBroker with the history reads recorded (or replaced).</summary>
