@@ -340,11 +340,12 @@ public class Rsk020MonthlyLossLimitScenarios
             h.Timer(A.AddHours(2.0).AddMinutes(1.0));
         }
 
-        Assert.NotNull(zero.ReferenceOrder());
-        Assert.Equal(0, zero.Count(BrokerCall.Cancel));
+        // Read counts first: the assertions below read the broker too.
+        Assert.Equal(without.Broker.QueryCount, zero.Broker.QueryCount);
         Assert.Equal(without.Journal.Entries, zero.Journal.Entries);
         Assert.Equal(without.Broker.Requests, zero.Broker.Requests);
-        Assert.Equal(without.Broker.QueryCount, zero.Broker.QueryCount);
+        Assert.NotNull(zero.ReferenceOrder());
+        Assert.Equal(0, zero.Count(BrokerCall.Cancel));
         Assert.Equal(withoutSince, zeroSince);
         Assert.DoesNotContain(MarchStart, zeroSince);
         Assert.Equal(0, zero.Journal.Count("action", "duty=monthly-limit "));
