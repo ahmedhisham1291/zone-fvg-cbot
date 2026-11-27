@@ -67,7 +67,7 @@ public class Plt017CbotSizingTests
 
     [Theory]
     [Trait("Req", "PLT-017")]
-    [InlineData("[Parameter(\"InitialCapital\", DefaultValue = 200000.0, Group = \"Risk\")]")]
+    [InlineData("[Parameter(\"InitialCapital\", DefaultValue = 100000.0, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"DailyLossLimitPercent\", DefaultValue = 2.0, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"MaxVolumeUnits\", DefaultValue = 0.0, Group = \"Risk\")]")]
     public void Bot_AccountDefaults_AreThoseOfSpecV012(string declaration)
@@ -107,7 +107,7 @@ public class Plt017CbotSizingTests
             string volume = "MaxVolumeUnits=0.0";
             string[] expected =
             {
-                "InitialCapital=200000.0", "DailyLossLimitPercent=2.0", volume, "SizingPlan=Ladder", "RecoveryRunLossPercent=1.0", "RecoveryMaxRiskPercent=1.28",
+                "InitialCapital=100000.0", "DailyLossLimitPercent=2.0", volume, "SizingPlan=Ladder", "RecoveryRunLossPercent=1.0", "RecoveryMaxRiskPercent=1.28",
                 "SanityCapEnabled=false", "SanityCapPercent=0.55", "OpenRiskCapEnabled=false", "CurrencyCapEnabled=false",
             };
             foreach (string line in expected)

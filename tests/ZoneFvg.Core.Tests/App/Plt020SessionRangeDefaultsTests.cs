@@ -71,7 +71,7 @@ public class Plt020SessionRangeDefaultsTests
     [InlineData("[Parameter(\"SizingPlan\", DefaultValue = \"Ladder\", Group = \"Risk\")]")]
     [InlineData("[Parameter(\"SessionStartUtc\", DefaultValue = \"00:00\", Group = \"Execution\")]")]
     [InlineData("[Parameter(\"SessionEndUtc\", DefaultValue = \"24:00\", Group = \"Execution\")]")]
-    [InlineData("[Parameter(\"InitialCapital\", DefaultValue = 200000.0, Group = \"Risk\")]")]
+    [InlineData("[Parameter(\"InitialCapital\", DefaultValue = 100000.0, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"MaxSpreadPips\", DefaultValue = 0.0, Group = \"Execution\")]")]
     [InlineData("[Parameter(\"MinStopPips\", DefaultValue = 0.0, Group = \"Execution\")]")]
     [InlineData("[Parameter(\"ChochMinStopPips\", DefaultValue = 0.0, Group = \"Entry model\")]")]
