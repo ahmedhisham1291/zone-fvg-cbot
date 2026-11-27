@@ -28,10 +28,12 @@ namespace ZoneFvg.Core.Tests;
 /// the symbol: fail closed); it closes at 22:30.</item>
 /// <item>RH-20260311: placed, filled, closed at 20:30. ON-20260312: placed at 22:15 (the SessionRange
 /// core restarted at 22:20 with it pending), filled at 22:30, stopped out at 01:00 UTC on 2026-03-12
-/// at 2610.39: 25 ounces x 40 = 1,000 lost in the CE(S)T day of 2026-03-12.</item>
-/// <item>RH-20260312 at 07:00: about 0.75% of 98,990 = 742 more would make 1,742 above 1,500: skipped
-/// as DailyBudgetExceeded in the SessionRange core, by the Overnight core's loss. ON-20260313 at
-/// 22:15 UTC (still the CE(S)T day of 2026-03-12): about 990 more, skipped the same way.</item>
+/// at 2610.39: 1% of the balance of about 99,989 is 999.89, so 24 ounces; 24 x 40 = 960 lost in the
+/// CE(S)T day of 2026-03-12.</item>
+/// <item>RH-20260312 at 07:00: 0.75% of about 99,029 is 742.7, 30 ounces x 24 = 720 more would make
+/// 1,680 above 1,500: skipped as DailyBudgetExceeded in the SessionRange core, by the Overnight core's
+/// loss. ON-20260313 at 22:15 UTC (still the CE(S)T day of 2026-03-12): 24 ounces x 40 = 960 more,
+/// skipped the same way.</item>
 /// <item>RH-20260313: placed, filled, closed by the Friday close. RH-20260316 (Monday): placed,
 /// filled, closed at 20:30. ON-20260317: placed, filled, closed at 06:45.</item>
 /// </list>
@@ -231,7 +233,7 @@ public class Exe033TwoInstanceScenarios
         var byLabel = _h.Broker.History.ToDictionary(trade => trade.Label, trade => trade);
         Assert.Equal(7, byLabel.Count);
         Assert.Equal(TradeExitReason.StopLoss, byLabel[Night(12)].ExitReason);
-        Assert.Equal(-1000.0, byLabel[Night(12)].NetProfit, 6);
+        Assert.Equal(-960.0, byLabel[Night(12)].NetProfit, 6);
         foreach (string label in new[] { Night(10), Range(10), Range(11), Range(13), Range(16), Night(17) })
         {
             Assert.Equal(TradeExitReason.ClosedByBot, byLabel[label].ExitReason);
