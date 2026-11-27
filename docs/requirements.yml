@@ -584,6 +584,35 @@ requirements:
       before this change, for the same parameters and broker data.
 
   # ---------------------------------------------------------------- NEWS
+  - id: RSK-019
+    wp: WP41
+    spec: "4.1, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Drawdown brake (owner request of 2026-11-27, rows AU and AV). The
+      core's risk parameters gain DrawdownBrakePercent (core default 0 = off,
+      so every existing decision is unchanged) and DrawdownBrakeFactor (core
+      default 0.5). Validation refuses, naming the parameter, a
+      DrawdownBrakePercent that is not finite, below 0, or not below
+      MaxDrawdownPercent, and a DrawdownBrakeFactor that is not finite, not
+      greater than 0, or greater than 1. Only with SizingPlan Ladder and
+      LadderEnabled false: for each new trade the peak is computed as for
+      the kill switch (RSK-008, the same epoch and history); when
+      DrawdownBrakePercent is above 0 and peak minus Account.Balance is at
+      least peak x DrawdownBrakePercent / 100 (PriceMath tolerance, equal
+      counts as braked), the trade's risk percent is RiskPercent x
+      DrawdownBrakeFactor, otherwise RiskPercent. A peak that is not
+      positive leaves the decision to the kill switch, which halts (fail
+      closed); the brake never raises risk. Nothing is stored between
+      trades. The ladder (RSK-013) and Recovery (RSK-014 onward) ignore the
+      brake. Every later check (daily budget, kill switch, floors, caps,
+      sanity cap, MaxVolumeUnits) runs unchanged on the braked amount; the
+      open-risk sum keeps counting balance x RiskPercent. When the brake
+      sets the risk, the sizing note in the journal line of the trade says
+      so with the peak, the balance and the two percents (format in the work
+      package); otherwise every journal line is unchanged byte for byte.
+
   - id: NWS-001
     wp: WP05
     spec: "6.1"
@@ -2357,6 +2386,30 @@ requirements:
       artifacts hold manifests, trade logs, run records and reports. The
       existing workflows are not changed. Proven by the first recorded run
       of each stage in docs/test-records/WP40-lab.md.
+
+  - id: PLT-020
+    wp: WP41
+    spec: "3.8, 4.1, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Defaults of the owner request of 2026-11-27 in the cBot (rows AS, AT,
+      AU and AW). Defaults: EntryMode "SessionRange", EntryModel "Fvg",
+      RiskPercent 0.75, and two new parameters in the Risk group,
+      DrawdownBrakePercent 3.0 and DrawdownBrakeFactor 0.5, passed to the
+      core and checked at start by the core's validation (a refusal names
+      the parameter as cTrader shows it). Every other default is unchanged
+      (among them LadderEnabled false, SizingPlan "Ladder", SessionStartUtc
+      "00:00", SessionEndUtc "24:00", InitialCapital 200000, the automatic
+      symbol values of 7.1). The defaults run is accepted for XAUUSD at pip
+      sizes 1 and 0.01. With SizingPlan Ladder and LadderEnabled false the
+      start line ends, after any part it has today, with brake=<percent>/
+      <factor> (brake=off when DrawdownBrakePercent is 0); otherwise it is
+      unchanged byte for byte. The five files under deploy/params carry
+      EntryMode=SessionRange, EntryModel=Fvg, RiskPercent=0.75,
+      DrawdownBrakePercent=3.0 and DrawdownBrakeFactor=0.5;
+      deploy/README.md, docs/runbook.md and docs/backtest-howto.md name the
+      new defaults and say that only the XAUUSD instance is run with them.
 
   - id: LAB-001
     wp: WP40
