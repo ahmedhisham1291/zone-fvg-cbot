@@ -37,7 +37,8 @@ public class BotParametersBreakoutTests
     public void EntryMode_Values_ZoneFvgIsZeroAndBreakoutIsOne()
     {
         // WP34 (SIG-034) appends SessionRange as the third value; the first two keep their numbers.
-        Assert.Equal(new[] { EntryMode.ZoneFvg, EntryMode.Breakout, EntryMode.SessionRange }, Enum.GetValues<EntryMode>());
+        // WP43 (SIG-043) appends Overnight as the fourth value; the first three keep their numbers.
+        Assert.Equal(new[] { EntryMode.ZoneFvg, EntryMode.Breakout, EntryMode.SessionRange, EntryMode.Overnight }, Enum.GetValues<EntryMode>());
         Assert.Equal(0, (int)EntryMode.ZoneFvg);
         Assert.Equal(1, (int)EntryMode.Breakout);
         Assert.Equal(2, (int)EntryMode.SessionRange);

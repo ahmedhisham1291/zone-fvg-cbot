@@ -65,7 +65,8 @@ public class Sig042CbotRangeTrendTests
         string source = BotSource();
         int stop = Once(source, "[Parameter(\"RangeStopAtr\", DefaultValue = 1.0, Group = \"Entry mode\")]");
         int fast = Once(source, Declaration);
-        int next = Once(source, "[Parameter(\"EntryModel\"");
+        // WP43 (PLT-021): the seven Night parameters of the group "Overnight" now follow it; the next one is NightEntryNy.
+        int next = Once(source, "[Parameter(\"NightEntryNy\"");
 
         Assert.True(stop < fast && fast < next);
         Assert.DoesNotContain("[Parameter(", source.Substring(stop + 1, fast - stop - 1), StringComparison.Ordinal);
@@ -103,7 +104,9 @@ public class Sig042CbotRangeTrendTests
             Assert.Single(lines, line => line.StartsWith("RangeTrendFastEma=", StringComparison.Ordinal));
             int at = Array.IndexOf(lines, "RangeTrendFastEma=20");
             Assert.Equal("RangeStopAtr=1.0", lines[at - 1]);
-            Assert.Equal("EntryModel=Fvg", lines[at + 1]);
+            // WP43 (PLT-021): the seven Night lines now follow it; EntryModel comes after them.
+            Assert.Equal("NightEntryNy=18:15", lines[at + 1]);
+            Assert.Equal("EntryModel=Fvg", lines[at + 8]);
             Assert.Equal(11, at);
             Assert.Equal("EntryMode=SessionRange", lines[0]);
         }

@@ -46,7 +46,8 @@ public class EnumContractTests
     {
         // WP34 (SIG-034) appends SessionRange; the first two members keep their names and values.
         // WP37a (SIG-041) appends Choch; the first three members keep their names and values.
-        AssertMembers<SignalKind>("ZoneFvg", "Breakout", "SessionRange", "Choch");
+        // WP43 (SIG-043) appends Overnight; the first four members keep their names and values.
+        AssertMembers<SignalKind>("ZoneFvg", "Breakout", "SessionRange", "Choch", "Overnight");
     }
 
     [Fact]
