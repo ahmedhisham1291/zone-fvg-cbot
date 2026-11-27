@@ -18,3 +18,4 @@ after the owner has signed its record.
 | `WP26-stop-orders.md` | Stop-entry orders (PLT-011) |
 | `WP28-entry-mode.md` | Entry mode in the cBot (PLT-012, PLT-013) |
 | `WP35-session-range.md` | SessionRange in the cBot and the gold backtest compared with the strategy search (PLT-015 in cTrader). It does not accept the mode (spec 14, question 4) |
+| `WP43-overnight-spread.md` | The Overnight cost gate (spec v0.18 row BD): gold's spread at ten or more Overnight entries on the Free Trial, before the Overnight instance trades on the Challenge |

@@ -56,7 +56,7 @@ public class Plt020SessionRangeDefaultsTests
     [InlineData("[Parameter(\"EntryMode\", DefaultValue = \"SessionRange\", Group = \"Entry mode\")]")]
     [InlineData("[Parameter(\"EntryModel\", DefaultValue = \"Fvg\", Group = \"Entry model\")]")]
     [InlineData("[Parameter(\"RiskPercent\", DefaultValue = 0.75, Group = \"Risk\")]")]
-    [InlineData("[Parameter(\"DrawdownBrakePercent\", DefaultValue = 3.0, Group = \"Risk\")]")]
+    [InlineData("[Parameter(\"DrawdownBrakePercent\", DefaultValue = 0.0, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"DrawdownBrakeFactor\", DefaultValue = 0.5, Group = \"Risk\")]")]
     [InlineData("public string EntryMode { get; set; } = \"SessionRange\";")]
     [InlineData("public string EntryModel { get; set; } = \"Fvg\";")]
@@ -121,7 +121,7 @@ public class Plt020SessionRangeDefaultsTests
     [Trait("Req", "PLT-020")]
     public void ParameterFiles_CarryTheNewDefaultsOnceInTheCbotsOrder()
     {
-        string[] expected = { "EntryMode=SessionRange", "EntryModel=Fvg", "RiskPercent=0.75", "DrawdownBrakePercent=3.0", "DrawdownBrakeFactor=0.5" };
+        string[] expected = { "EntryMode=SessionRange", "EntryModel=Fvg", "RiskPercent=0.75", "DrawdownBrakePercent=0.0", "DrawdownBrakeFactor=0.5" };
         foreach (string name in Files)
         {
             string[] lines = ParameterFile(name);
@@ -134,7 +134,7 @@ public class Plt020SessionRangeDefaultsTests
             Assert.DoesNotContain(lines, l => l.StartsWith("RiskPercent=", StringComparison.Ordinal) && l != "RiskPercent=0.75");
             Assert.Equal("EntryMode=SessionRange", lines[0]);
             int risk = Array.IndexOf(lines, "RiskPercent=0.75");
-            Assert.Equal("DrawdownBrakePercent=3.0", lines[risk + 1]);
+            Assert.Equal("DrawdownBrakePercent=0.0", lines[risk + 1]);
             Assert.Equal("DrawdownBrakeFactor=0.5", lines[risk + 2]);
             Assert.Equal("MaxOpenRiskPercent=1.5", lines[risk + 3]);
             Assert.Equal("LadderEnabled=false", lines[Array.IndexOf(lines, "MaxVolumeUnits=0.0") + 1]);
@@ -179,7 +179,7 @@ public class Plt020SessionRangeDefaultsTests
             {
                 RiskEpochDate = RiskData.Epoch,
                 RiskPercent = 0.75,
-                DrawdownBrakePercent = 3.0,
+                DrawdownBrakePercent = 0.0,
                 DrawdownBrakeFactor = 0.5,
                 LadderEnabled = false,
                 SizingPlan = SizingPlan.Ladder,
@@ -207,7 +207,7 @@ public class Plt020SessionRangeDefaultsTests
         Assert.Equal(0.75, parameters.Risk.RiskPercent);
         Assert.False(parameters.Risk.LadderEnabled);
         Assert.Equal(SizingPlan.Ladder, parameters.Risk.SizingPlan);
-        Assert.Equal(3.0, parameters.Risk.DrawdownBrakePercent);
+        Assert.Equal(0.0, parameters.Risk.DrawdownBrakePercent);
         Assert.Equal(0.5, parameters.Risk.DrawdownBrakeFactor);
         Assert.Equal(TimeSpan.FromHours(24.0), parameters.Execution.SessionEndUtc);
         Assert.Equal(SymbolProfileKind.Gold, parameters.SymbolProfile!.Profile);

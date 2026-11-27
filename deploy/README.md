@@ -8,7 +8,7 @@ administrator. Follow the steps in order and do not skip a check.
   [`docs/runbook.md`](../docs/runbook.md).
 - The 14 fault-injection tests you must pass before the Challenge:
   [`docs/test-records/WP11-fault-injection.md`](../docs/test-records/WP11-fault-injection.md).
-- The entry mode (Breakout, ZoneFvg or SessionRange), which mode and values
+- The entry mode (Breakout, ZoneFvg, SessionRange or Overnight), which mode and values
   the live files carry, how to change them, the two records you sign before
   an instance trades in Breakout mode on the Challenge account, and what
   must happen before SessionRange trades there: section "Entry mode" below,
@@ -168,6 +168,20 @@ values in SessionRange mode only; in the other modes they produce no signal
 and are not part of the parameter hash. The gold file uses the same twelve
 values as the forex files.
 
+**Overnight (spec 3.10, v0.18).** `EntryMode=Overnight` is the fourth mode,
+for the second gold instance only (see "Gold as two instances" below). Its
+seven parameters, group "Overnight", are the next seven lines of every file,
+directly after `RangeTrendFastEma`: `NightEntryNy` 18:15 and `NightLatestNy`
+19:00 (the evaluation bar closes at or after the first and before the second,
+New York time), `NightExitNy` 02:45 (an open position is closed),
+`NightEntryBufferAtr` 0.03 (the buy stop lies this many ATR(M15) above the
+close plus the spread), `NightStopAtr` 1.0 (stop distance in ATR(D1)),
+`NightTargetR` 5.0 (safety target in R) and `NightOrderMinutes` 60 (life of
+the order). They are checked at start in every mode (times `HH:mm` in the
+order of the trading day, the three numbers above 0, minutes 1 to 180) and
+used in Overnight mode only; the parameter hash covers them in Overnight
+mode only. Overnight also needs `EntryModel=Fvg`.
+
 **Entry model of ZoneFvg mode (spec 3.9, v0.11).** In ZoneFvg mode the
 parameter `EntryModel` chooses the trigger at a touched zone: `Choch` (the
 change of character of your manual method, spec 3.9; the default from spec
@@ -246,12 +260,17 @@ symbol, before the laptop stage, write into the files:
   `MaxVolumeUnits=0.0` (automatic: 3,000,000
   units, gold 1,000 ounces), `RiskPercent=0.75` with `LadderEnabled=false`
   (a fixed 0.75% of balance per trade; `true` for the ladder, the one value
-  you choose), the drawdown brake `DrawdownBrakePercent=3.0` and
-  `DrawdownBrakeFactor=0.5` (with fixed sizing only: while the balance is 3%
-  or more below its peak since `RiskEpochDate`, a new trade risks 0.375%;
-  the full 0.75% comes back as soon as it is less than 3% below; `0` switches
-  the brake off; the ladder and Recovery ignore it; the start line ends with
-  `brake=3/0.5`),
+  you choose), the drawdown brake off, `DrawdownBrakePercent=0.0` (from
+  spec v0.18, row BC; the start line ends with `brake=off`), with
+  `DrawdownBrakeFactor=0.5` (with fixed sizing only and `DrawdownBrakePercent=3`:
+  while the balance is 3% or more below its peak since `RiskEpochDate`, a new
+  trade risks 0.375%; the full 0.75% comes back as soon as it is less than 3%
+  below; the ladder and Recovery ignore it; the start line then ends with
+  `brake=3/0.5`), the seven Overnight values after the range values
+  (`NightEntryNy=18:15`, `NightLatestNy=19:00`, `NightExitNy=02:45`,
+  `NightEntryBufferAtr=0.03`, `NightStopAtr=1.0`, `NightTargetR=5.0`,
+  `NightOrderMinutes=60`; used in Overnight mode only, checked at start in
+  every mode),
   `SizingPlan=Ladder`, `RecoveryRunLossPercent=1.0`,
   `RecoveryMaxRiskPercent=1.28`, and the per-trade sanity cap, the open-risk
   cap and the currency cap off (`SanityCapEnabled=false` with
@@ -305,10 +324,11 @@ second in `tests/ZoneFvg.Core.Tests/Execution/ParameterHashProfileTests.cs`.)
 **Check after each start.** The first adapter line ends with the mode, for
 example `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
 In Breakout mode the core `start` line also has `mode=Breakout`, in
-SessionRange mode `mode=SessionRange`; in ZoneFvg mode it has no
-`mode=` field. With fixed sizing (`SizingPlan=Ladder`, `LadderEnabled=false`)
-the line ends with `brake=3/0.5` (or `brake=off` with
-`DrawdownBrakePercent=0`), after every other field.
+SessionRange mode `mode=SessionRange`, in Overnight mode `mode=Overnight`;
+in ZoneFvg mode it has no `mode=` field. With fixed sizing
+(`SizingPlan=Ladder`, `LadderEnabled=false`) the line ends with `brake=off`
+(the default from spec v0.18; `brake=3/0.5` with `DrawdownBrakePercent=3`),
+after every other field.
 
 **A change of mode is a parameter change.** Change `EntryMode` (or any other
 parameter) only when the bot is flat on that symbol (spec 10.2,
@@ -383,6 +403,44 @@ Then the Challenge. When it is started stays your decision (spec 15.7).
 The gold instance's `hash=` must equal that of the run you judged
 (`2dea1bc3` with the example files as they are, all day; `9078773f` with
 07:00 to 17:00; `469b1f35` and `57c90d56` with `RangeTrendFastEma=0`).
+
+**Gold as two instances: SessionRange and Overnight (spec v0.18, rows AZ to
+BE).** Gold runs as two instances on the same account and symbol: the
+SessionRange instance with `deploy/params/xauusd.cbotset.example`
+(`RiskPercent=0.75`) and the Overnight instance with
+`deploy/params/xauusd-overnight.cbotset.example` (`EntryMode=Overnight`,
+`RiskPercent=1.0`, its own `HeartbeatUrl`; every other line equals the
+XAUUSD file). On the VPS the second instance is the container
+`xauusd-overnight` with the folder `params/xauusd-overnight/` (step 10).
+The Overnight instance places a buy stop at 18:15 New York on Monday to
+Thursday evenings just above the price (the close of the 18:15 bar, plus the
+spread, plus 0.03 x ATR(M15)) that lives 60 minutes, with a stop one daily
+ATR below the entry and a safety target of 5R; an open position is closed at
+02:45 New York. Its stop is not limited by `MaxStopAtr` x ATR(H4) (that
+limit applies to the other modes only); the smallest stop (`MinStopPips`,
+automatic 8 USD) applies. Its orders carry `ON-yyyyMMdd` in the label. Neither
+instance cancels, closes, modifies or time-exits the other's order or
+position (only the emergency guard closes every bot trade of the account),
+and an instance does not enter while any bot order or position is open on
+XAUUSD, so the two never hold a position together. **The account limits are
+shared:** the daily budget (2%), the kill switch (8%), the monthly loss
+limit and the FTMO guard count both instances' trades. The Overnight
+instance's `hash=` is `826c617f` with the example file as it is (all day,
+the four values automatic, at a pip of 1 and of 0.01). The drawdown brake is
+off in all six files from v0.18 (`DrawdownBrakePercent=0.0`, row BC; the
+`start` line ends with `brake=off`).
+
+**Before the Overnight instance trades on the Challenge account (row BD,
+the cost gate).** The effect of this mode depends on the cost: with a spread
+of 0.50 USD the research total fell from +23R to +14R, with 0.80 USD to +1R.
+On the Free Trial, with both gold files, fill in
+[`docs/test-records/WP43-overnight-spread.md`](../docs/test-records/WP43-overnight-spread.md)
+for at least ten Overnight evaluations: the spread of the journal line and
+whether the entry was taken or skipped. Entries are made only while the
+spread is within `MaxSpreadPips` (automatic: 0.40 USD). If most entries are
+skipped for spread, or the taken ones paid more than about 0.40 USD on
+average, the Overnight instance is not started on the Challenge. The
+stop-order record and the other gates above apply to it too.
 
 ---
 
@@ -692,6 +750,7 @@ Everything lives in `/opt/zfvg`, outside any git checkout:
   params/usdjpy/bot.cbotset
   params/audusd/bot.cbotset
   params/xauusd/bot.cbotset  from deploy/params/xauusd.cbotset.example (gold)
+  params/xauusd-overnight/bot.cbotset  from deploy/params/xauusd-overnight.cbotset.example (gold, Overnight)
   log-archive/               copies of container logs saved before updates
 ```
 
@@ -699,7 +758,7 @@ Everything lives in `/opt/zfvg`, outside any git checkout:
 sudo mkdir -p /opt/zfvg
 sudo chown $USER:$USER /opt/zfvg
 cd /opt/zfvg
-mkdir -p secrets algo/current algo/previous log-archive params/eurusd params/gbpusd params/usdjpy params/audusd params/xauusd
+mkdir -p secrets algo/current algo/previous log-archive params/eurusd params/gbpusd params/usdjpy params/audusd params/xauusd params/xauusd-overnight
 chmod 700 secrets params
 ```
 
@@ -720,6 +779,7 @@ scp deploy/params/gbpusd.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/gbpusd/
 scp deploy/params/usdjpy.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/usdjpy/bot.cbotset
 scp deploy/params/audusd.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/audusd/bot.cbotset
 scp deploy/params/xauusd.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/xauusd/bot.cbotset
+scp deploy/params/xauusd-overnight.cbotset.example zfvg@SERVER_IP:/opt/zfvg/params/xauusd-overnight/bot.cbotset
 scp ZoneFvgBot.algo zfvg@SERVER_IP:/opt/zfvg/algo/current/ZoneFvgBot.algo
 ```
 

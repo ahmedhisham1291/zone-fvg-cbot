@@ -41,6 +41,12 @@ namespace ZoneFvg.Core.Signals;
 /// tracker gets <see cref="RangeDirection"/> in place of the bias. A setup becomes a
 /// <see cref="SignalKind.SessionRange"/> signal when the engine is ready; a void notice is shown in
 /// <see cref="LastRangeVoid"/>.</para>
+/// <para>Overnight mode (SIG-043, spec 3.10), chosen by creating the engine with Overnight
+/// parameters: the intake order, the bias and the warm-up gate are the same; H4 bars are only
+/// stored, so no zone is detected; M15 bars are stored and go to an <see cref="OvernightTracker"/>
+/// with the latest ATR(D1) and ATR(M15). A setup becomes a <see cref="SignalKind.Overnight"/> buy
+/// signal when the engine is ready; the signal carries the ATR(H4) of the last closed H4 bar, or 0
+/// when there is none (information only: the largest stop of spec 3.6 does not apply to this kind).</para>
 /// <para>Choch entry model of ZoneFvg mode (SIG-035 to SIG-041, spec 3.9), chosen by creating the
 /// engine with Choch parameters: D1 and H4 bars as in ZoneFvg mode; the zone book's confirmation
 /// window is ChochWindowBars. At each M15 close, after the book has applied the bar, each Touched
@@ -62,6 +68,7 @@ public sealed class SignalEngine
     private readonly ZoneBook _book;
     private readonly BreakoutTracker? _tracker;
     private readonly SessionRangeTracker? _range;
+    private readonly OvernightTracker? _night;
     private readonly ChochParameters? _choch;
 
     // SIG-028: period of the slow D1 EMA of the breakout trend filter; 0 when the filter is off or in ZoneFvg mode.
@@ -99,7 +106,7 @@ public sealed class SignalEngine
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public SignalEngine(SignalParameters parameters, BreakoutParameters? breakout)
-        : this(parameters, breakout, null, TimeSpan.Zero, null)
+        : this(parameters, breakout, null, TimeSpan.Zero, null, null)
     {
     }
 
@@ -114,21 +121,39 @@ public sealed class SignalEngine
     /// <exception cref="ArgumentNullException"><paramref name="parameters"/> or <paramref name="sessionRange"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public SignalEngine(SignalParameters parameters, SessionRangeParameters sessionRange, TimeSpan fridayNoEntryUtc)
-        : this(parameters, null, sessionRange ?? throw new ArgumentNullException(nameof(sessionRange)), fridayNoEntryUtc, null)
+        : this(parameters, null, sessionRange ?? throw new ArgumentNullException(nameof(sessionRange)), fridayNoEntryUtc, null, null)
     {
     }
 
+    /// <summary>
+    /// Creates an engine in Overnight mode with no bars (SIG-020, SIG-043): not ready, Neutral bias,
+    /// no zones, with an <see cref="OvernightTracker"/> of these parameters. A factory rather than a
+    /// constructor, so that the existing calls <c>new SignalEngine(parameters, null)</c> keep meaning
+    /// ZoneFvg mode.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="overnight">The Overnight parameters. They are validated by the tracker.</param>
+    /// <returns>The engine.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> or <paramref name="overnight"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public static SignalEngine WithOvernight(SignalParameters parameters, OvernightParameters overnight)
+    {
+        ArgumentNullException.ThrowIfNull(overnight);
+        return new SignalEngine(parameters, null, null, TimeSpan.Zero, null, overnight);
+    }
 
-    private SignalEngine(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, TimeSpan fridayNoEntryUtc, ChochParameters? choch)
+
+    private SignalEngine(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, TimeSpan fridayNoEntryUtc, ChochParameters? choch, OvernightParameters? overnight)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         _parameters = parameters;
-        _bars = new BarStore(parameters, breakout, sessionRange, choch);
+        _bars = new BarStore(parameters, breakout, sessionRange, choch, overnight);
         _book = choch is null ? new ZoneBook(parameters) : new ZoneBook(parameters, choch.ChochWindowBars);
         _choch = choch;
         _tracker = breakout is null ? null : new BreakoutTracker(breakout, parameters.RewardRisk);
         _range = sessionRange is null ? null : new SessionRangeTracker(sessionRange, parameters.RewardRisk, fridayNoEntryUtc);
+        _night = overnight is null ? null : new OvernightTracker(overnight);
         _trendSlowEmaPeriod = breakout?.TrendSlowEmaPeriod ?? 0;
         _rangeTrendFastEma = sessionRange?.RangeTrendFastEma ?? 0;
         Bias = Bias.Neutral;
@@ -151,7 +176,7 @@ public sealed class SignalEngine
     public static SignalEngine WithChoch(SignalParameters parameters, ChochParameters choch)
     {
         ArgumentNullException.ThrowIfNull(choch);
-        return new SignalEngine(parameters, null, null, TimeSpan.Zero, choch);
+        return new SignalEngine(parameters, null, null, TimeSpan.Zero, choch, null);
     }
 
     /// <summary>
@@ -200,6 +225,12 @@ public sealed class SignalEngine
     /// after its void; null before the evaluation, on a day without a setup and in the other modes.
     /// </summary>
     public SessionRangeSetup? RangeSetup => _range?.Setup;
+
+    /// <summary>
+    /// Overnight mode (SIG-043): the setup of the trading day of the last M15 bar; null before the
+    /// evaluation, on a day without a setup and in the other modes.
+    /// </summary>
+    public OvernightSetup? NightSetup => _night?.Setup;
 
     /// <summary>
     /// SessionRange mode (SIG-033, SIG-034): the setup that the last accepted bar made void, null
@@ -285,7 +316,7 @@ public sealed class SignalEngine
 
                 return NoSignals;
             case TimeFrame.H4:
-                if (_tracker is null && _range is null)
+                if (_tracker is null && _range is null && _night is null)
                 {
                     OnH4Closed(bar);
                 }
@@ -295,6 +326,11 @@ public sealed class SignalEngine
                 if (_range is not null)
                 {
                     return OnRangeM15Closed(_range, bar, replay);
+                }
+
+                if (_night is not null)
+                {
+                    return OnNightM15Closed(_night, bar, replay);
                 }
 
                 if (_choch is not null)
@@ -351,6 +387,32 @@ public sealed class SignalEngine
         var signal = new Signal(setup.Id, setup.Side, setup.Entry, setup.Stop, setup.Target, null, closeUtc, replay, atrH4.GetValueOrDefault())
         {
             Kind = SignalKind.SessionRange,
+            Level = setup.Entry,
+            ExpiryUtc = setup.ExpiryUtc,
+        };
+        return Array.AsReadOnly(new[] { signal });
+    }
+
+    // SIG-043: ATR(D1) of the last closed D1 bar and ATR(M15) of this bar; ATR(H4) is carried for information only
+    // (0 when there is none; the execution layer does not bound this kind's stop by it). The intake order (SIG-004) has made
+    // sure that this bar opens after the last M15 bar, so the tracker does not throw.
+    private IReadOnlyList<Signal> OnNightM15Closed(OvernightTracker tracker, Bar bar, bool replay)
+    {
+        IReadOnlyList<Bar> d1 = _bars.Bars(TimeFrame.D1);
+        IReadOnlyList<Bar> h4 = _bars.Bars(TimeFrame.H4);
+        IReadOnlyList<Bar> m15 = _bars.Bars(TimeFrame.M15);
+        double? atrD1 = d1.Count == 0 ? null : Atr.Value(d1, d1.Count - 1, _parameters.AtrPeriod);
+        double? atrM15 = Atr.Value(m15, m15.Count - 1, _parameters.AtrPeriod);
+        OvernightSetup? setup = tracker.OnM15Closed(bar, atrD1, atrM15);
+        if (setup is null || !IsReady)
+        {
+            return NoSignals;
+        }
+
+        double? atrH4 = h4.Count == 0 ? null : Atr.Value(h4, h4.Count - 1, _parameters.AtrPeriod);
+        var signal = new Signal(setup.Id, Side.Buy, setup.Entry, setup.Stop, setup.Target, null, setup.EvaluationCloseUtc, replay, Usable(atrH4) ? atrH4!.Value : 0.0)
+        {
+            Kind = SignalKind.Overnight,
             Level = setup.Entry,
             ExpiryUtc = setup.ExpiryUtc,
         };

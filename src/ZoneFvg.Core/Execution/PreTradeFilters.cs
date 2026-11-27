@@ -47,6 +47,13 @@ namespace ZoneFvg.Core.Execution;
 /// distance over stop distance on the signal's own levels (signed: a target on the wrong side
 /// gives a ratio of zero or less), must be at least MinRewardRisk (RewardRiskTooLow). The planned
 /// order is a limit order.</para>
+/// <para>A signal of kind Overnight (EXE-033, spec 3.10): it must be a buy with no gap, a level and a
+/// UTC expiry; the news checks are those of a session range signal (no bar of its own is checked);
+/// it is placed as a buy stop with the signal's expiry, shortened by a news window, and the entry
+/// reached check of a stop order. The current spread is added to its entry, its stop and its target
+/// before rounding, so the stop stays NightStopAtr x ATR(D1) below the order's entry. EXE-005 and
+/// EXE-006 are not run; the spread check of EXE-002 and the smallest stop of EXE-003 (MinStopPips) apply,
+/// the largest stop (MaxStopAtr x ATR(H4)) does not (answer 1 on pull request 109).</para>
 /// <para>Every skip is passed to <see cref="IExecutionEvents.Skipped"/> once, with one reason and
 /// its measured values (EXE-014); a sanity-cap skip (RSK-002) also raises one alert.</para>
 /// </remarks>
@@ -100,9 +107,10 @@ public sealed class PreTradeFilters
     /// give ChochMinStopPips and MinRewardRisk (EXE-028) and are part of the parameter hash (REC-020).
     /// </param>
     /// <param name="symbolProfile">The symbol profile (EXE-032), or null (the default); used only for the parameter hash.</param>
+    /// <param name="overnight">Overnight parameters in Overnight mode (SIG-043), or null (the default); used only for the parameter hash.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
-    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null)
+    public PreTradeFilters(ExecutionParameters parameters, SignalParameters signalParameters, RiskParameters riskParameters, IBroker broker, NewsService news, IExecutionEvents events, bool dailyBudgetRecordOnly = false, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null, OvernightParameters? overnight = null)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(signalParameters);
@@ -121,7 +129,7 @@ public sealed class PreTradeFilters
         _events = events ?? throw new ArgumentNullException(nameof(events));
         choch?.Validate();
         _choch = choch;
-        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout, sessionRange, choch, symbolProfile);
+        _parameterHash = ParameterHash.Compute(signalParameters, parameters, breakout, sessionRange, choch, symbolProfile, overnight);
         _dailyBudgetRecordOnly = dailyBudgetRecordOnly;
     }
 
@@ -231,6 +239,12 @@ public sealed class PreTradeFilters
             return s.Fvg == null && s.Level.HasValue && IsPrice(s.Level.Value) && s.ExpiryUtc.HasValue && s.ExpiryUtc.Value.Kind == DateTimeKind.Utc;
         }
 
+        // EXE-033: an Overnight signal is a buy, with no gap, a level and a UTC expiry.
+        if (s.Kind == SignalKind.Overnight)
+        {
+            return s.Side == Side.Buy && s.Fvg == null && s.Level.HasValue && IsPrice(s.Level.Value) && s.ExpiryUtc.HasValue && s.ExpiryUtc.Value.Kind == DateTimeKind.Utc;
+        }
+
         return s.Kind == SignalKind.ZoneFvg
             && s.Fvg != null && s.Fvg.Side == s.Side
             && IsPrice(s.Fvg.Upper) && IsPrice(s.Fvg.Lower) && s.Fvg.Upper > s.Fvg.Lower
@@ -252,10 +266,21 @@ public sealed class PreTradeFilters
         return c.Signal.Kind == SignalKind.Choch;
     }
 
-    // EXE-018, EXE-024: the kinds placed as a stop order, with the spread on a buy's entry and the entry-reached check.
+    private static bool IsNight(Candidate c)
+    {
+        return c.Signal.Kind == SignalKind.Overnight;
+    }
+
+    // EXE-024, EXE-033: the kinds with their own expiry and the news checks of every order only.
+    private static bool HasOwnExpiry(Candidate c)
+    {
+        return IsRange(c) || IsNight(c);
+    }
+
+    // EXE-018, EXE-024, EXE-033: the kinds placed as a stop order, with the spread on a buy's entry and the entry-reached check.
     private static bool IsStopEntry(Candidate c)
     {
-        return IsBreakout(c) || IsRange(c);
+        return IsBreakout(c) || IsRange(c) || IsNight(c);
     }
 
     private static SkipRecord? CheckFreshness(Candidate c)
@@ -343,7 +368,7 @@ public sealed class PreTradeFilters
     {
         // CheckInputs has made sure that a ZoneFvg signal has its gap (EXE-019 (a)).
         NewsDecision decision;
-        if (IsRange(c))
+        if (HasOwnExpiry(c))
         {
             decision = RangeNews(c);
         }
@@ -398,9 +423,13 @@ public sealed class PreTradeFilters
 
         // EXE-019 (c): a buy stop triggers on the ask, so the spread is added to a breakout buy's entry.
         double rawEntry = IsStopEntry(c) && s.Side == Side.Buy ? s.Entry + info.Spread : s.Entry;
+
+        // EXE-033 (spec 3.10): the stop and the target of an Overnight buy are measured from the entry with the spread.
+        double rawTarget = IsNight(c) ? s.Target + info.Spread : s.Target;
+        rawStop = IsNight(c) ? s.Stop + info.Spread : rawStop;
         c.Entry = PriceGrid.RoundToTick(rawEntry, info.TickSize);
         c.Stop = PriceGrid.RoundToTick(rawStop, info.TickSize);
-        c.Target = PriceGrid.RoundToTick(s.Target, info.TickSize);
+        c.Target = PriceGrid.RoundToTick(rawTarget, info.TickSize);
         if (!OnLossSide(s.Side, c.Entry, c.Stop))
         {
             return c.Skip(SkipReason.StopOnWrongSide, c.Stop, c.Entry, "stop " + Text(c.Stop) + " entry " + Text(c.Entry));
@@ -419,6 +448,13 @@ public sealed class PreTradeFilters
         if (PriceMath.LessThan(c.StopPips, minStopPips, PriceMath.DefaultTolerance))
         {
             return c.Skip(SkipReason.StopTooSmall, c.StopPips, minStopPips, "stop " + Text(c.StopPips) + " pips below " + Text(minStopPips));
+        }
+
+        // EXE-033 (orchestrating session's answer 1 on pull request 109): an Overnight stop of NightStopAtr x ATR(D1)
+        // is a safety stop sized into the risk; MaxStopAtr x ATR(H4) does not bound it. MinStopPips does.
+        if (IsNight(c))
+        {
+            return null;
         }
 
         double maxPips = PriceMath.ToPips(_parameters.MaxStopAtr * s.AtrH4, info.PipSize);
@@ -540,7 +576,7 @@ public sealed class PreTradeFilters
 
     private SkipRecord? CheckRoom(Candidate c)
     {
-        // EXE-019 (b): not applied to a breakout signal; nor to a session range signal (EXE-024).
+        // EXE-019 (b): not applied to a breakout signal; nor to a session range signal (EXE-024) or an Overnight signal (EXE-033).
         if (IsStopEntry(c))
         {
             return null;
@@ -574,7 +610,7 @@ public sealed class PreTradeFilters
     private SkipRecord? CheckExpiry(Candidate c)
     {
         // EXE-024: a session range order ends at the signal's expiry; CheckInputs has made sure that it has one.
-        DateTime normal = IsRange(c) ? c.Signal.ExpiryUtc.GetValueOrDefault() : c.Now + TimeSpan.FromTicks(BarLength.Ticks * _parameters.EntryExpiryBars);
+        DateTime normal = HasOwnExpiry(c) ? c.Signal.ExpiryUtc.GetValueOrDefault() : c.Now + TimeSpan.FromTicks(BarLength.Ticks * _parameters.EntryExpiryBars);
         DateTime? window = _news.CalendarAt(c.Now).NextWindowStart(c.Context.Symbol, c.Now);
         c.Expiry = window.HasValue && window.Value < normal ? window.Value : normal;
         TimeSpan life = c.Expiry - c.Now;

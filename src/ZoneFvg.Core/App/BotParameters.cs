@@ -91,6 +91,16 @@ public sealed record BotParameters
     public ChochParameters? Choch { get; init; }
 
     /// <summary>
+    /// SIG-043 (spec 3.10): the Overnight parameters. Null (the default) leaves the mode to the
+    /// other properties; a value is Overnight mode, in which the signal engine, the replay of
+    /// recovery, the pre-trade filters, the timed exit (EXE-033), the parameter hash and the
+    /// instance's own-trade scope use these parameters. <see cref="Validate"/> checks them and
+    /// refuses them together with <see cref="Breakout"/>, <see cref="SessionRange"/> or
+    /// <see cref="Choch"/>: one mode per instance.
+    /// </summary>
+    public OvernightParameters? Overnight { get; init; }
+
+    /// <summary>
     /// EXE-032 (spec 7.1): the symbol profile the adapter resolved at start, with the effective values
     /// of MaxSpreadPips, MinStopPips, ChochMinStopPips and MaxVolumeUnits and which were automatic.
     /// Null (the default): no profile; the start line and the parameter hash are as before.
@@ -100,11 +110,12 @@ public sealed record BotParameters
     public SymbolProfileResult? SymbolProfile { get; init; }
 
     /// <summary>
-    /// The entry mode (REC-017, SIG-034): <see cref="EntryMode.Breakout"/> when <see cref="Breakout"/>
+    /// The entry mode (REC-017, SIG-034, SIG-043): <see cref="EntryMode.Breakout"/> when <see cref="Breakout"/>
     /// is set, otherwise <see cref="EntryMode.SessionRange"/> when <see cref="SessionRange"/> is set,
-    /// otherwise <see cref="EntryMode.ZoneFvg"/>.
+    /// otherwise <see cref="EntryMode.Overnight"/> when <see cref="Overnight"/> is set, otherwise
+    /// <see cref="EntryMode.ZoneFvg"/>.
     /// </summary>
-    public EntryMode Mode => Breakout is not null ? EntryMode.Breakout : SessionRange is not null ? EntryMode.SessionRange : EntryMode.ZoneFvg;
+    public EntryMode Mode => Breakout is not null ? EntryMode.Breakout : SessionRange is not null ? EntryMode.SessionRange : Overnight is not null ? EntryMode.Overnight : EntryMode.ZoneFvg;
 
     /// <summary>
     /// Checks every value and throws for the first problem: the symbol must start with six letters
@@ -115,7 +126,9 @@ public sealed record BotParameters
     /// is set it must be valid and <see cref="Breakout"/> must be null (SIG-034), and its
     /// RangeTrendFastEma, when above 0, must be below BiasEmaPeriod (SIG-042). When
     /// <see cref="Choch"/> is set, <see cref="Breakout"/> and <see cref="SessionRange"/> must be
-    /// null and it must be valid (SIG-035).
+    /// null and it must be valid (SIG-035). When <see cref="Overnight"/> is set it must be valid and
+    /// <see cref="Breakout"/> and <see cref="SessionRange"/> must be null (SIG-043); with
+    /// <see cref="Choch"/> it is refused as for the other modes.
     /// </summary>
     /// <param name="isBacktest">True in a backtest.</param>
     /// <exception cref="ArgumentNullException">A parameter group is null.</exception>
@@ -147,6 +160,7 @@ public sealed record BotParameters
         Ops.Validate();
         ValidateBreakout();
         ValidateSessionRange();
+        ValidateOvernight();
         ValidateChoch();
         ValidateSymbolProfile();
         MonthDay.ParseList(MarketHolidays);
@@ -198,6 +212,23 @@ public sealed record BotParameters
         }
     }
 
+    // SIG-043: one mode per instance; the Overnight parameters validate themselves.
+    private void ValidateOvernight()
+    {
+        if (Overnight is null)
+        {
+            return;
+        }
+
+        if (Breakout is not null || SessionRange is not null)
+        {
+            string other = Breakout is not null ? "Breakout" : "SessionRange";
+            throw new ArgumentException(other + " and Overnight must not both be set: one entry mode per instance (SIG-043).", nameof(Overnight));
+        }
+
+        Overnight.Validate();
+    }
+
     // EXE-032: the profile's effective values are the values the core uses; the adapter passes the same doubles.
     private void ValidateSymbolProfile()
     {
@@ -234,9 +265,9 @@ public sealed record BotParameters
             return;
         }
 
-        if (Breakout is not null || SessionRange is not null)
+        if (Breakout is not null || SessionRange is not null || Overnight is not null)
         {
-            string mode = Breakout is not null ? "Breakout" : "SessionRange";
+            string mode = Breakout is not null ? "Breakout" : SessionRange is not null ? "SessionRange" : "Overnight";
             throw new ArgumentException("EntryModel Choch needs EntryMode ZoneFvg, but EntryMode is " + mode + " (SIG-035).", nameof(Choch));
         }
 

@@ -235,14 +235,42 @@ public static class WarmupCalculator
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, ChochParameters? choch)
     {
+        return For(parameters, breakout, sessionRange, choch, null);
+    }
+
+    /// <summary>
+    /// Bars needed per timeframe (SIG-020, SIG-043) as
+    /// <see cref="For(SignalParameters, BreakoutParameters, SessionRangeParameters, ChochParameters)"/>,
+    /// except that in Overnight mode (Overnight parameters set) each requirement also covers what
+    /// that mode needs, as in SessionRange mode: D1 at least AtrPeriod + 1 bars, H4 at least
+    /// AtrPeriod + 1 bars, M15 at least one trading day, <see cref="M15BarsPerTradingDay"/> bars.
+    /// With the default parameters the result equals <see cref="For(SignalParameters)"/>.
+    /// </summary>
+    /// <param name="parameters">The signal parameters. They are validated first.</param>
+    /// <param name="breakout">The breakout parameters, or null outside Breakout mode. They are validated next.</param>
+    /// <param name="sessionRange">The session range parameters, or null outside SessionRange mode. They are validated next.</param>
+    /// <param name="choch">The Choch parameters, or null outside the Choch model. They are validated next.</param>
+    /// <param name="overnight">The Overnight parameters, or null outside Overnight mode. They are validated next.</param>
+    /// <returns>The requirement for D1, H4 and M15 as a read-only dictionary that enumerates D1, H4, M15.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null.</exception>
+    /// <exception cref="ArgumentException">More than one of breakout, session range, Choch and Overnight parameters is set.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public static IReadOnlyDictionary<TimeFrame, int> For(SignalParameters parameters, BreakoutParameters? breakout, SessionRangeParameters? sessionRange, ChochParameters? choch, OvernightParameters? overnight)
+    {
         ArgumentNullException.ThrowIfNull(parameters);
         parameters.Validate();
         breakout?.Validate();
         sessionRange?.Validate();
         choch?.Validate();
+        overnight?.Validate();
         if (breakout is not null && sessionRange is not null)
         {
             throw new ArgumentException("Breakout and session range parameters must not both be set: one entry mode per instance (SIG-034).", nameof(sessionRange));
+        }
+
+        if (overnight is not null && (breakout is not null || sessionRange is not null || choch is not null))
+        {
+            throw new ArgumentException("Overnight parameters must not be set together with breakout, session range or Choch parameters: one entry mode per instance (SIG-043).", nameof(overnight));
         }
 
         if (choch is not null && (breakout is not null || sessionRange is not null))
@@ -254,9 +282,9 @@ public static class WarmupCalculator
         int d1 = (Ema.WindowMultiple * emaPeriod) + 1;
         int h4 = parameters.MaxZoneAgeBars + SwingDetector.LookbackBars + (2 * parameters.SwingStrength) + parameters.MaxImpulseBars + parameters.MaxBaseBars + parameters.AtrPeriod + 2;
         int m15 = ((parameters.MaxZoneAgeBars + 1) * M15BarsPerH4Bar) + parameters.ConfirmWindowBars + parameters.AtrPeriod + 2;
-        if (sessionRange is not null)
+        if (sessionRange is not null || overnight is not null)
         {
-            // SIG-034: one trading day of M15 bars besides what the bias and the two ATRs need.
+            // SIG-034, SIG-043: one trading day of M15 bars besides what the bias and the two ATRs need.
             d1 = Math.Max(d1, parameters.AtrPeriod + 1);
             h4 = Math.Max(h4, parameters.AtrPeriod + 1);
             m15 = Math.Max(m15, M15BarsPerTradingDay);

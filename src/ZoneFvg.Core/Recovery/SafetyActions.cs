@@ -28,7 +28,10 @@ public sealed class SafetyActions
     private readonly RequestCounter _counter;
     private readonly IExecutionEvents _events;
 
-    /// <summary>Creates the actions of one instance (RSK-009, REC-009).</summary>
+    // EXE-033, row BA: true in an Overnight instance; the symbol's actions are limited to its own trades.
+    private readonly bool _overnight;
+
+    /// <summary>Creates the actions of one instance (RSK-009, REC-009) that is not in Overnight mode.</summary>
     /// <param name="symbol">Symbol of this instance.</param>
     /// <param name="parameters">Execution parameters (FridayCloseUtc); validated here.</param>
     /// <param name="broker">Broker port.</param>
@@ -37,6 +40,24 @@ public sealed class SafetyActions
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentException">The symbol is empty.</exception>
     public SafetyActions(string symbol, ExecutionParameters parameters, IBroker broker, RequestCounter counter, IExecutionEvents events)
+        : this(symbol, parameters, broker, counter, events, false)
+    {
+    }
+
+    /// <summary>
+    /// Creates the actions of one instance (RSK-009, REC-009, EXE-033). The weekend close and the
+    /// exposure check look only at the trades of the symbol the instance owns
+    /// (<see cref="InstanceScope.Owns"/>); the emergency close of the account is not limited.
+    /// </summary>
+    /// <param name="symbol">Symbol of this instance.</param>
+    /// <param name="parameters">Execution parameters (FridayCloseUtc); validated here.</param>
+    /// <param name="broker">Broker port.</param>
+    /// <param name="counter">Request counter of this instance (RSK-010).</param>
+    /// <param name="events">Hook for alerts.</param>
+    /// <param name="overnightInstance">True for an instance in Overnight mode (EXE-033).</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentException">The symbol is empty.</exception>
+    public SafetyActions(string symbol, ExecutionParameters parameters, IBroker broker, RequestCounter counter, IExecutionEvents events, bool overnightInstance)
     {
         if (string.IsNullOrEmpty(symbol))
         {
@@ -50,6 +71,7 @@ public sealed class SafetyActions
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _counter = counter ?? throw new ArgumentNullException(nameof(counter));
         _events = events ?? throw new ArgumentNullException(nameof(events));
+        _overnight = overnightInstance;
     }
 
     /// <summary>
@@ -65,12 +87,12 @@ public sealed class SafetyActions
             || nowUtc.DayOfWeek == DayOfWeek.Sunday;
     }
 
-    /// <summary>True when the broker holds a bot position or bot pending order on the symbol (REC-009).</summary>
+    /// <summary>True when the broker holds a bot position or bot pending order on the symbol that the instance owns (REC-009, EXE-033).</summary>
     /// <returns>True when there is something to close or cancel.</returns>
     public bool HasSymbolExposure()
     {
-        return _broker.GetPositions().Any(p => IsBotOn(p.Label, p.Symbol, _symbol))
-            || _broker.GetPendingOrders().Any(o => IsBotOn(o.Label, o.Symbol, _symbol));
+        return _broker.GetPositions().Any(p => IsBotOn(p.Label, p.Symbol, _symbol) && InstanceScope.Owns(_overnight, p.Label))
+            || _broker.GetPendingOrders().Any(o => IsBotOn(o.Label, o.Symbol, _symbol) && InstanceScope.Owns(_overnight, o.Label));
     }
 
     /// <summary>True when the broker reports the symbol's market open, so requests are accepted again (owner decision of 2026-11-16).</summary>
@@ -89,25 +111,26 @@ public sealed class SafetyActions
     /// <returns>One action per order and position, cancels first, each group ordered by id.</returns>
     public IReadOnlyList<TradeAction> CloseAllBotTrades(string reason)
     {
-        return CloseWhere(symbol => true, reason);
+        return CloseWhere((symbol, label) => true, reason);
     }
 
     /// <summary>
     /// Weekend close (REC-009, owner decision of 2026-11-16): cancels the bot pending orders of the
-    /// symbol, then closes its bot positions. The caller checks that the market is open.
+    /// symbol, then closes its bot positions, of the trades the instance owns (EXE-033). The caller
+    /// checks that the market is open.
     /// </summary>
     /// <param name="reason">Why, for alerts.</param>
     /// <returns>One action per order and position, cancels first, each group ordered by id.</returns>
     public IReadOnlyList<TradeAction> CloseSymbolTrades(string reason)
     {
-        return CloseWhere(symbol => string.Equals(symbol, _symbol, StringComparison.Ordinal), reason);
+        return CloseWhere((symbol, label) => string.Equals(symbol, _symbol, StringComparison.Ordinal) && InstanceScope.Owns(_overnight, label), reason);
     }
 
-    private IReadOnlyList<TradeAction> CloseWhere(Func<string, bool> symbolFilter, string reason)
+    private IReadOnlyList<TradeAction> CloseWhere(Func<string, string, bool> filter, string reason)
     {
         var actions = new List<TradeAction>();
         List<PendingOrderInfo> orders = _broker.GetPendingOrders()
-            .Where(o => RiskEngine.IsBotLabel(o.Label) && symbolFilter(o.Symbol))
+            .Where(o => RiskEngine.IsBotLabel(o.Label) && filter(o.Symbol, o.Label))
             .OrderBy(o => o.Id)
             .ToList();
         foreach (PendingOrderInfo order in orders)
@@ -125,7 +148,7 @@ public sealed class SafetyActions
         }
 
         List<PositionInfo> positions = _broker.GetPositions()
-            .Where(p => RiskEngine.IsBotLabel(p.Label) && symbolFilter(p.Symbol))
+            .Where(p => RiskEngine.IsBotLabel(p.Label) && filter(p.Symbol, p.Label))
             .OrderBy(p => p.Id)
             .ToList();
         foreach (PositionInfo position in positions)

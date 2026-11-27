@@ -30,14 +30,17 @@ day, a fixed 0.75% risk per trade (`RiskPercent` 0.75, `LadderEnabled`
 false) and the drawdown brake (`DrawdownBrakePercent` 3,
 `DrawdownBrakeFactor` 0.5): while the balance is 3% or more below its peak
 since `RiskEpochDate`, a trade risks 0.375%; the ladder and Recovery ignore
-the brake. Only the XAUUSD instance runs these defaults; for a currency pair
+the brake. **From WP43 on (spec v0.18, row BC) the brake is off by default**
+(`DrawdownBrakePercent` 0, `start` line ending `brake=off`); 3 switches it on
+again. Gold then runs as a second instance in Overnight mode too: Part 5b. Only the XAUUSD instance runs these defaults; for a currency pair
 set the mode of Part 2. A backtest still needs no value typed by hand except
 `LadderEnabled` if you want the ladder. From WP42 on (spec v0.17, row AY)
 the default `RangeTrendFastEma` 20 takes the side of the day's order from
 the D1 EMA(20) against the D1 EMA(50) (buy above, sell below, no order when
 equal) instead of the last D1 close against the EMA(50); 0 gives the rule of
 before. The `start` line ends with
-`mode=SessionRange`, the profile and then `brake=3/0.5`. Before the
+`mode=SessionRange`, the profile and then `brake=3/0.5` (from WP43 on
+`brake=off`). Before the
 Challenge come the gates of `deploy/README.md`, "Before SessionRange trades
 on the Challenge account" (the stop-order record, the live gold spread on a
 demo or Free Trial account, and, proposed for you to accept or waive, two to
@@ -553,6 +556,45 @@ step 4.
     the same and the money results are about twice as large.)
 23. Send the developer `xauusd-sessionrange-all-log.txt`,
     `xauusd-sessionrange-all.csv` and the settings of step 17.
+
+## Part 5b. Gold as two instances: SessionRange and Overnight (from WP43 on)
+
+From spec v0.18 (rows AZ to BE) gold runs as two instances on one account:
+SessionRange at 0.75% (`deploy/params/xauusd.cbotset.example`) and
+Overnight at 1.0% (`deploy/params/xauusd-overnight.cbotset.example`). The
+Overnight instance buys with a stop order just above the price at 18:15 New
+York on Monday to Thursday evenings (the close of the 18:15 bar plus the
+spread plus 0.03 x ATR(M15), for 60 minutes), with a stop one daily ATR below
+the entry and a safety target of 5R (not limited by `MaxStopAtr`), and closes
+the position at 02:45 New York. From WP43 on the drawdown brake is off by default
+(`DrawdownBrakePercent` 0; the `start` line ends with `brake=off`).
+
+cTrader backtests one instance at a time. So run each instance as its own
+backtest, on the same XAUUSD M15 chart, with the same period and the same
+settings of step 17:
+
+24. **SessionRange:** the parameters of `xauusd.cbotset.example` (every
+    default; `EntryMode` SessionRange, `RiskPercent` 0.75). Save the log as
+    `xauusd-sessionrange-log.txt` and the trades as `xauusd-sessionrange.csv`.
+25. **Overnight:** the same, with `EntryMode` set to `Overnight` and
+    `RiskPercent` to `1.0` (the values of `xauusd-overnight.cbotset.example`;
+    the seven `Night...` parameters of the group "Overnight" stay at their
+    defaults: 18:15, 19:00, 02:45, 0.03, 1.0, 5.0, 60). `EntryModel` stays
+    `Fvg`: Choch is refused. The `start` line shows `mode=Overnight` and the
+    hash `826c617f` (all day, automatic values). Save the log as
+    `xauusd-overnight-log.txt` and the trades as `xauusd-overnight.csv`.
+26. Send the developer both logs and both `.csv` files. The developer
+    combines them: the account limits (2% daily budget, 8% kill switch,
+    the monthly loss limit, the FTMO guard) are shared by the two instances
+    live, which two separate backtests cannot show; and in the live account
+    an entry of one instance is skipped while the other holds an order or a
+    position on XAUUSD.
+
+Look at the spread in the journal lines of the Overnight entries:
+`spreadPips=` is the spread in the platform's pip (with a pip of 1 USD the
+value is in USD; with a pip of 0.01 USD divide by 100). A backtest with a
+fixed spread shows only that value; the real cost gate is the Free Trial
+record `docs/test-records/WP43-overnight-spread.md` (row BD).
 
 ## Part 6. The two ZoneFvg entry models side by side: Fvg and Choch
 

@@ -52,6 +52,7 @@ public sealed class RecoveryService
     private readonly BreakoutParameters? _breakout;
     private readonly SessionRangeParameters? _sessionRange;
     private readonly ChochParameters? _choch;
+    private readonly OvernightParameters? _overnight;
     private readonly ExecutionParameters _executionParameters;
     private readonly bool _newsEnabled;
     private readonly IBroker _broker;
@@ -104,8 +105,14 @@ public sealed class RecoveryService
     /// of the parameter hash.
     /// </param>
     /// <param name="symbolProfile">The symbol profile (EXE-032), or null (the default); used only for the parameter hash.</param>
+    /// <param name="overnight">
+    /// SIG-043, EXE-033: the Overnight parameters in Overnight mode, or null (the default); validated
+    /// here and refused together with the parameters of another mode. They select the engine of the
+    /// replay and its warm-up, are part of the parameter hash, and limit the broker read, the repair,
+    /// the cancels and the closes of the symbol to the instance's own trades (<see cref="InstanceScope"/>).
+    /// </param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    /// <exception cref="ArgumentException">The symbol is empty, or more than one of breakout, session range and Choch parameters is set (SIG-034, SIG-035).</exception>
+    /// <exception cref="ArgumentException">The symbol is empty, or more than one of breakout, session range, Choch and Overnight parameters is set (SIG-034, SIG-035, SIG-043).</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public RecoveryService(
         string symbol,
@@ -124,7 +131,8 @@ public sealed class RecoveryService
         BreakoutParameters? breakout = null,
         SessionRangeParameters? sessionRange = null,
         ChochParameters? choch = null,
-        SymbolProfileResult? symbolProfile = null)
+        SymbolProfileResult? symbolProfile = null,
+        OvernightParameters? overnight = null)
     {
         ArgumentNullException.ThrowIfNull(signalParameters);
         ArgumentNullException.ThrowIfNull(executionParameters);
@@ -145,6 +153,13 @@ public sealed class RecoveryService
             throw new ArgumentException("Choch parameters belong to ZoneFvg mode and must not be set together with breakout or session range parameters (SIG-035).", nameof(choch));
         }
 
+        overnight?.Validate();
+        if (overnight != null && (breakout != null || sessionRange != null || choch != null))
+        {
+            throw new ArgumentException("Overnight parameters must not be set together with breakout, session range or Choch parameters: one entry mode per instance (SIG-043).", nameof(overnight));
+        }
+
+        _overnight = overnight;
         _symbol = symbol;
         _signalParameters = signalParameters;
         _breakout = breakout;
@@ -159,11 +174,11 @@ public sealed class RecoveryService
         _enterState = enterState ?? throw new ArgumentNullException(nameof(enterState));
         _marketHolidays = marketHolidays ?? Array.Empty<MonthDay>();
         _haltsRecordOnly = haltsRecordOnly;
-        _warmup = WarmupCalculator.For(signalParameters, breakout, sessionRange, choch);
-        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout, sessionRange, choch, symbolProfile);
-        _trades = new TradeManager(symbol, executionParameters, broker, counter, events);
+        _warmup = WarmupCalculator.For(signalParameters, breakout, sessionRange, choch, overnight);
+        _parameterHash = ParameterHash.Compute(signalParameters, executionParameters, breakout, sessionRange, choch, symbolProfile, overnight);
+        _trades = new TradeManager(symbol, executionParameters, broker, counter, events, overnight != null);
         _guard = new AccountGuard(symbol, riskParameters, broker);
-        _safety = new SafetyActions(symbol, executionParameters, broker, counter, events);
+        _safety = new SafetyActions(symbol, executionParameters, broker, counter, events, overnight != null);
         _journal = new TradeJournal(symbol, riskParameters, broker, store, tradeEvents);
     }
 
@@ -328,11 +343,8 @@ public sealed class RecoveryService
         // REC-017: the same engine as the live one; a breakout id is known because the replay returned a signal with it.
         // SIG-034: the same for a session range id; a setup the replay found void is remembered for step 5.
         // REC-020: the Choch engine in the Choch model; a zone id is known because the replay returned a signal with it.
-        SignalEngine engine = _choch is not null
-            ? SignalEngine.WithChoch(_signalParameters, _choch)
-            : _sessionRange is null
-                ? new SignalEngine(_signalParameters, _breakout)
-                : new SignalEngine(_signalParameters, _sessionRange, _executionParameters.FridayNoEntryUtc);
+        // SIG-043: the Overnight engine in Overnight mode; an ON- id is known because the replay returned a signal with it.
+        SignalEngine engine = ReplayEngine();
         var known = new SortedSet<string>(StringComparer.Ordinal);
         var voided = new SortedSet<string>(StringComparer.Ordinal);
         SessionRangeSetup? lastVoid = null;
@@ -367,15 +379,35 @@ public sealed class RecoveryService
         return new ReplayStep(engine, known, voided, currentVoid, replayed.AsReadOnly());
     }
 
-    // Step 3: the bot's positions and pending orders on this symbol, from the broker only.
+    private SignalEngine ReplayEngine()
+    {
+        if (_choch is not null)
+        {
+            return SignalEngine.WithChoch(_signalParameters, _choch);
+        }
+
+        if (_overnight is not null)
+        {
+            return SignalEngine.WithOvernight(_signalParameters, _overnight);
+        }
+
+        return _sessionRange is null
+            ? new SignalEngine(_signalParameters, _breakout)
+            : new SignalEngine(_signalParameters, _sessionRange, _executionParameters.FridayNoEntryUtc);
+    }
+
+    // Step 3: the bot's positions and pending orders on this symbol, from the broker only. EXE-033 (row BA):
+    // only the trades the instance owns, so the other gold instance's order and position are never adopted,
+    // reported as strangers or cancelled here.
     private BrokerStep ReadBroker()
     {
+        bool overnight = _overnight != null;
         List<PositionInfo> positions = _broker.GetPositions()
-            .Where(p => RiskEngine.IsBotLabel(p.Label) && string.Equals(p.Symbol, _symbol, StringComparison.Ordinal))
+            .Where(p => RiskEngine.IsBotLabel(p.Label) && string.Equals(p.Symbol, _symbol, StringComparison.Ordinal) && InstanceScope.Owns(overnight, p.Label))
             .OrderBy(p => p.Id)
             .ToList();
         List<PendingOrderInfo> orders = _broker.GetPendingOrders()
-            .Where(o => RiskEngine.IsBotLabel(o.Label) && string.Equals(o.Symbol, _symbol, StringComparison.Ordinal))
+            .Where(o => RiskEngine.IsBotLabel(o.Label) && string.Equals(o.Symbol, _symbol, StringComparison.Ordinal) && InstanceScope.Owns(overnight, o.Label))
             .OrderBy(o => o.Id)
             .ToList();
         return new BrokerStep(positions, orders);

@@ -180,7 +180,8 @@ balance is less than 3% below the peak. From spec v0.17 (row AY) SessionRange
 takes its side from `RangeTrendFastEma` 20: a buy when the D1 EMA(20) is above
 the D1 EMA(50), a sell when it is below, no order when they are equal
 (`RangeTrendFastEma` 0 is the close against the EMA(50) of before). The `start` line ends with
-`brake=3/0.5`. Every account limit is unchanged (daily budget 2%, kill
+`brake=3/0.5` (until v0.17; from v0.18 the brake is off by default and the
+line ends with `brake=off`, see "Gold as two instances" below). Every account limit is unchanged (daily budget 2%, kill
 switch 8%). Only the XAUUSD instance is started with these files; no
 currency-pair instance runs SessionRange. Before the Challenge, on a demo or
 FTMO Free Trial account: the stop-order record (PLT-011), the live gold
@@ -204,6 +205,33 @@ SessionRange mode. If the instance starts in another mode while a
 SessionRange position (label with `RH-` or `RL-`) is open, the position
 keeps its stop loss, its take profit and the Friday close, but nothing
 closes it at 16:30 New York.
+
+**Gold as two instances (spec v0.18, rows AZ to BE).** From spec v0.18 gold
+runs as two cBot instances on the same XAUUSD account, each with its own file:
+`deploy/params/xauusd.cbotset.example` (`EntryMode=SessionRange`,
+`RiskPercent=0.75`) and `deploy/params/xauusd-overnight.cbotset.example`
+(`EntryMode=Overnight`, `RiskPercent=1.0`). The Overnight instance places a
+buy stop just above the price at 18:15 New York on Monday to Thursday
+evenings (the close of the 18:15 bar plus the spread plus 0.03 x ATR(M15)),
+for 60 minutes; its stop is one daily ATR below the entry, its safety target
+5R above (the `MaxStopAtr` limit of the other modes does not apply to it;
+the 8 USD smallest stop does); an open Overnight position is closed at 02:45
+New York. Its labels
+carry `ON-yyyyMMdd`. Neither instance cancels, closes, modifies or
+time-exits the other's order or position, also after a restart; the
+emergency guard is the one exception: it closes every bot trade of the
+account. Each instance still refuses an entry while any bot order or
+position is open on XAUUSD, so the two can never hold a position at the
+same time. **The account limits are shared:** the 2% daily budget, the 8%
+kill switch, the monthly loss limit and the FTMO guard count the trades of
+both instances, so a loss of one instance can stop the other's next entry.
+Give each instance its own heartbeat address. Do not stop one of the two
+while it has an order or a position: the other does not close it at its
+timed exit or on Friday evening. The drawdown brake is off by default from
+v0.18 (`DrawdownBrakePercent` 0, row BC; the `start` line ends with
+`brake=off`); `DrawdownBrakePercent=3` switches it on again. Before the
+Overnight instance trades on the Challenge account, its cost gate (row BD)
+must be passed on the Free Trial: `docs/test-records/WP43-overnight-spread.md`.
 
 ## 6. Weekly checks (Saturday)
 
