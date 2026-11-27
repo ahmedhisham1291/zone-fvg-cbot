@@ -57,7 +57,10 @@ public sealed class TradeManager
     private readonly RequestCounter _counter;
     private readonly IExecutionEvents _events;
 
-    /// <summary>Creates the trade manager of one symbol (EXE-011, EXE-013).</summary>
+    // EXE-033, row BA: true in an Overnight instance, which acts only on Overnight trades (InstanceScope).
+    private readonly bool _overnight;
+
+    /// <summary>Creates the trade manager of one symbol (EXE-011, EXE-013) for an instance that is not in Overnight mode.</summary>
     /// <param name="symbol">Symbol of this instance; only bot trades on it are managed.</param>
     /// <param name="parameters">Execution parameters; validated here.</param>
     /// <param name="broker">Broker port.</param>
@@ -67,6 +70,26 @@ public sealed class TradeManager
     /// <exception cref="ArgumentException">The symbol is empty.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
     public TradeManager(string symbol, ExecutionParameters parameters, IBroker broker, RequestCounter counter, IExecutionEvents events)
+        : this(symbol, parameters, broker, counter, events, false)
+    {
+    }
+
+    /// <summary>
+    /// Creates the trade manager of one symbol (EXE-011, EXE-013, EXE-033). Every action and every
+    /// read of the bot's trades is limited to the trades the instance owns
+    /// (<see cref="InstanceScope.Owns"/>): with <paramref name="overnightInstance"/> true only the
+    /// Overnight trades of the symbol, otherwise every bot trade of the symbol except those.
+    /// </summary>
+    /// <param name="symbol">Symbol of this instance; only bot trades on it are managed.</param>
+    /// <param name="parameters">Execution parameters; validated here.</param>
+    /// <param name="broker">Broker port.</param>
+    /// <param name="counter">Request counter of this instance (RSK-010), shared with <see cref="OrderManager"/>.</param>
+    /// <param name="events">Hook for alerts.</param>
+    /// <param name="overnightInstance">True for an instance in Overnight mode (EXE-033).</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentException">The symbol is empty.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A parameter is out of range.</exception>
+    public TradeManager(string symbol, ExecutionParameters parameters, IBroker broker, RequestCounter counter, IExecutionEvents events, bool overnightInstance)
     {
         if (string.IsNullOrEmpty(symbol))
         {
@@ -80,6 +103,7 @@ public sealed class TradeManager
         _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         _counter = counter ?? throw new ArgumentNullException(nameof(counter));
         _events = events ?? throw new ArgumentNullException(nameof(events));
+        _overnight = overnightInstance;
     }
 
     /// <summary>
@@ -161,7 +185,7 @@ public sealed class TradeManager
     {
         var actions = new List<TradeAction>();
         IEnumerable<PendingOrderInfo> orders = _broker.GetPendingOrders()
-            .Where(o => RiskEngine.IsBotLabel(o.Label) && string.Equals(o.Symbol, _symbol, StringComparison.Ordinal))
+            .Where(o => RiskEngine.IsBotLabel(o.Label) && string.Equals(o.Symbol, _symbol, StringComparison.Ordinal) && InstanceScope.Owns(_overnight, o.Label))
             .OrderBy(o => o.Id);
         foreach (PendingOrderInfo order in orders)
         {
@@ -187,9 +211,11 @@ public sealed class TradeManager
     /// time is at or after <paramref name="exitNy"/> New York on the date in the id, which is the
     /// close time of the first M15 bar at or after that time, since the exit lies on a 15-minute
     /// boundary. Positions of other kinds are not looked at. The positions are read from the broker.
+    /// EXE-033: in an Overnight instance the same with the Overnight id (ON-, <see cref="OvernightId"/>)
+    /// and NightExitNy, and only Overnight positions are looked at.
     /// </summary>
     /// <param name="serverTimeUtc">Broker server time, kind UTC.</param>
-    /// <param name="exitNy">RangeExitNy, a New York time of day.</param>
+    /// <param name="exitNy">RangeExitNy, or NightExitNy in an Overnight instance, a New York time of day.</param>
     /// <returns>True when <see cref="RangeExit"/> would close a position.</returns>
     /// <exception cref="ArgumentException">The server time is not UTC.</exception>
     public bool RangeExitDue(DateTime serverTimeUtc, TimeSpan exitNy)
@@ -199,12 +225,13 @@ public sealed class TradeManager
 
     /// <summary>
     /// EXE-025: closes at market, in id order, every position for which <see cref="RangeExitDue"/>
-    /// holds, with the detail "range exit". A position that closed is gone from the broker, so it is
-    /// closed once; a close that failed is alerted (CloseFailed) and tried again at the next call.
-    /// Pending orders and positions of other kinds are not touched.
+    /// holds, with the detail "range exit" (EXE-033: "night exit" in an Overnight instance). A
+    /// position that closed is gone from the broker, so it is closed once; a close that failed is
+    /// alerted (CloseFailed) and tried again at the next call. Pending orders and positions of other
+    /// kinds are not touched.
     /// </summary>
     /// <param name="serverTimeUtc">Broker server time, kind UTC.</param>
-    /// <param name="exitNy">RangeExitNy, a New York time of day.</param>
+    /// <param name="exitNy">RangeExitNy, or NightExitNy in an Overnight instance, a New York time of day.</param>
     /// <returns>One action per position, Closed or CloseFailed.</returns>
     /// <exception cref="ArgumentException">The server time is not UTC.</exception>
     public IReadOnlyList<TradeAction> RangeExit(DateTime serverTimeUtc, TimeSpan exitNy)
@@ -212,7 +239,7 @@ public sealed class TradeManager
         var actions = new List<TradeAction>();
         foreach (PositionInfo position in RangeExitPositions(serverTimeUtc, exitNy))
         {
-            actions.Add(Close(position, null, "range exit"));
+            actions.Add(Close(position, null, _overnight ? "night exit" : "range exit"));
         }
 
         return actions.AsReadOnly();
@@ -265,7 +292,7 @@ public sealed class TradeManager
     private List<PendingOrderInfo> OrdersOf(string signalId)
     {
         return _broker.GetPendingOrders()
-            .Where(o => RiskEngine.IsBotLabel(o.Label) && string.Equals(o.Symbol, _symbol, StringComparison.Ordinal) && string.Equals(IdOf(o.Label), signalId, StringComparison.Ordinal))
+            .Where(o => RiskEngine.IsBotLabel(o.Label) && string.Equals(o.Symbol, _symbol, StringComparison.Ordinal) && InstanceScope.Owns(_overnight, o.Label) && string.Equals(IdOf(o.Label), signalId, StringComparison.Ordinal))
             .OrderBy(o => o.Id)
             .ToList();
     }
@@ -278,8 +305,14 @@ public sealed class TradeManager
         }
 
         return BotPositions()
-            .Where(p => SessionRangeId.TryTradingDate(IdOf(p.Label), out DateTime tradingDate) && serverTimeUtc >= NewYorkClock.UtcInTradingDay(tradingDate, exitNy))
+            .Where(p => TimedTradingDate(IdOf(p.Label), out DateTime tradingDate) && serverTimeUtc >= NewYorkClock.UtcInTradingDay(tradingDate, exitNy))
             .ToList();
+    }
+
+    // EXE-025, EXE-033: the trading day of a position of the instance's timed kind.
+    private bool TimedTradingDate(string? id, out DateTime tradingDate)
+    {
+        return _overnight ? OvernightId.TryTradingDate(id, out tradingDate) : SessionRangeId.TryTradingDate(id, out tradingDate);
     }
 
     private static string? IdOf(string label)
@@ -327,7 +360,7 @@ public sealed class TradeManager
     private IEnumerable<PositionInfo> BotPositions()
     {
         return _broker.GetPositions()
-            .Where(p => RiskEngine.IsBotLabel(p.Label) && string.Equals(p.Symbol, _symbol, StringComparison.Ordinal))
+            .Where(p => RiskEngine.IsBotLabel(p.Label) && string.Equals(p.Symbol, _symbol, StringComparison.Ordinal) && InstanceScope.Owns(_overnight, p.Label))
             .OrderBy(p => p.Id)
             .ToList();
     }

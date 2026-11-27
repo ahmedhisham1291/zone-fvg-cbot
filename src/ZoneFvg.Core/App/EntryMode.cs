@@ -14,4 +14,7 @@ public enum EntryMode
 
     /// <summary>Break of the session range (spec 3.8, SIG-034): <see cref="BotParameters.SessionRange"/> is set.</summary>
     SessionRange,
+
+    /// <summary>A buy of gold after the daily reopening, closed by a timed exit (spec 3.10, SIG-043): <see cref="BotParameters.Overnight"/> is set.</summary>
+    Overnight,
 }

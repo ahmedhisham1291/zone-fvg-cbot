@@ -41,6 +41,11 @@ public static class ParameterHash
     /// every field above, with EntryModel=Choch, RequireSweep, ChochWindowBars, ChochUseBias,
     /// ChochStopAtDistal, ChochTargetBufferAtr, ChochMinStopPips and MinRewardRisk in the same
     /// formats; without them nothing is appended, so the hash of the Fvg model does not change.
+    /// With Overnight parameters (Overnight mode, spec 3.10, SIG-043) the text ends, after every field
+    /// above, with NightEntryNy, NightLatestNy, NightExitNy, NightEntryBufferAtr, NightStopAtr,
+    /// NightTargetR and NightOrderMinutes in the same formats and with no field for the mode, as in
+    /// SessionRange mode; without them nothing is appended, so no other mode's hash changes. The
+    /// default is <c>c13379a6</c>.
     /// SessionEndUtc 24:00 (EXE-029) is written <c>1.00:00:00</c>.
     /// With a symbol profile (EXE-032, spec 7.1) an automatic MaxSpreadPips, MinStopPips or
     /// ChochMinStopPips is written in its usual place as <c>auto:</c>, the profile's value and its
@@ -54,9 +59,10 @@ public static class ParameterHash
     /// <param name="sessionRange">Session range parameters in SessionRange mode, or null in the other modes.</param>
     /// <param name="choch">Choch parameters in the Choch model, or null in the other models and modes.</param>
     /// <param name="symbolProfile">The symbol profile of the instance (EXE-032), or null.</param>
+    /// <param name="overnight">Overnight parameters in Overnight mode (SIG-043), or null in the other modes.</param>
     /// <returns>The canonical text.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
-    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null)
+    public static string Canonical(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null, OvernightParameters? overnight = null)
     {
         ArgumentNullException.ThrowIfNull(signal);
         ArgumentNullException.ThrowIfNull(execution);
@@ -137,21 +143,34 @@ public static class ParameterHash
             Add(text, "MinRewardRisk", choch.MinRewardRisk);
         }
 
+        if (overnight != null)
+        {
+            // SIG-043: after every existing field, and only in Overnight mode.
+            Add(text, "NightEntryNy", overnight.NightEntryNy);
+            Add(text, "NightLatestNy", overnight.NightLatestNy);
+            Add(text, "NightExitNy", overnight.NightExitNy);
+            Add(text, "NightEntryBufferAtr", overnight.NightEntryBufferAtr);
+            Add(text, "NightStopAtr", overnight.NightStopAtr);
+            Add(text, "NightTargetR", overnight.NightTargetR);
+            Add(text, "NightOrderMinutes", overnight.NightOrderMinutes);
+        }
+
         return text.ToString();
     }
 
-    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018, SIG-034, SIG-042, REC-020).</summary>
+    /// <summary>The 8-character hash of the parameters (EXE-008, EXE-018, SIG-034, SIG-042, SIG-043, REC-020).</summary>
     /// <param name="signal">Signal parameters.</param>
     /// <param name="execution">Execution parameters.</param>
     /// <param name="breakout">Breakout parameters in Breakout mode, or null in the other modes.</param>
     /// <param name="sessionRange">Session range parameters in SessionRange mode, or null in the other modes.</param>
     /// <param name="choch">Choch parameters in the Choch model, or null in the other models and modes (REC-020).</param>
     /// <param name="symbolProfile">The symbol profile of the instance (EXE-032), or null.</param>
+    /// <param name="overnight">Overnight parameters in Overnight mode (SIG-043), or null in the other modes.</param>
     /// <returns>8 lowercase hex characters.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="signal"/> or <paramref name="execution"/> is null.</exception>
-    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null)
+    public static string Compute(SignalParameters signal, ExecutionParameters execution, BreakoutParameters? breakout = null, SessionRangeParameters? sessionRange = null, ChochParameters? choch = null, SymbolProfileResult? symbolProfile = null, OvernightParameters? overnight = null)
     {
-        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout, sessionRange, choch, symbolProfile)));
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(Canonical(signal, execution, breakout, sessionRange, choch, symbolProfile, overnight)));
         var hex = new StringBuilder(Length);
         for (int i = 0; i < Length / 2; i++)
         {

@@ -129,6 +129,9 @@ public sealed class BotCore
     // SIG-034, EXE-025: the session range parameters in SessionRange mode, null in the other modes.
     private readonly SessionRangeParameters? _sessionRange;
 
+    // SIG-043, EXE-033: the Overnight parameters in Overnight mode, null in the other modes.
+    private readonly OvernightParameters? _overnight;
+
     // REC-020: true in the Choch model of ZoneFvg mode (BotParameters.Choch set).
     private readonly bool _choch;
 
@@ -194,23 +197,26 @@ public sealed class BotCore
         _risk = parameters.Risk;
         _mode = parameters.Mode;
         _sessionRange = parameters.SessionRange;
+        _overnight = parameters.Overnight;
+        bool overnight = _overnight is not null;
         _choch = parameters.Choch is not null;
         _zoneCounts = new ZoneOutcomeCounts(_choch);
         _symbolProfile = parameters.SymbolProfile;
-        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile);
+        _parameterHash = ParameterHash.Compute(parameters.Signal, parameters.Execution, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile, _overnight);
         _news = CreateNews(parameters, store, http, isBacktest);
         _requests = new RequestCounter(parameters.Risk);
         _errors = new ErrorCounter(parameters.Risk);
         _events = new CoreEvents(this);
-        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile);
+        _filters = new PreTradeFilters(parameters.Execution, parameters.Signal, parameters.Risk, broker, _news, _events, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile, _overnight);
         _orders = new OrderManager(broker, _requests, _events, _haltsLogOnly);
-        _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events);
+        // EXE-033 (row BA): an Overnight instance acts only on Overnight trades, every other instance on every other.
+        _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events, overnight);
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
         _riskEngine = new RiskEngine(parameters.Risk);
-        _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
+        _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events, overnight);
         var tradeEvents = new CoreTradeEvents(this);
         _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, tradeEvents);
-        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile);
+        _recovery = new RecoveryService(_symbol, parameters.Signal, parameters.Execution, parameters.Risk, _newsEnabled, broker, store, tradeEvents, _requests, _events, EnterStateAfterRecovery, _marketHolidays, _haltsLogOnly, parameters.Breakout, parameters.SessionRange, parameters.Choch, _symbolProfile, _overnight);
     }
 
     /// <summary>The current state (REC-001).</summary>
@@ -363,6 +369,11 @@ public sealed class BotCore
         {
             // SIG-034: the same field in SessionRange mode.
             start.Add(("mode", "SessionRange"));
+        }
+        else if (_mode == EntryMode.Overnight)
+        {
+            // SIG-043, PLT-021: the same field in Overnight mode.
+            start.Add(("mode", "Overnight"));
         }
         else if (_choch)
         {
@@ -1161,22 +1172,25 @@ public sealed class BotCore
         }
     }
 
-    // EXE-025: in SessionRange mode only; against a closed market no request is sent and the exit, which stays
+    // EXE-025: in SessionRange mode, and (EXE-033) in Overnight mode with NightExitNy and the duty name
+    // night-exit; in the other modes nothing. Against a closed market no request is sent and the exit, which stays
     // due, is made at the first call after the reopen (as EXE-016). Positions are read from the broker each time.
     // EXE-026: at a closed M15 bar whose close time is at or after the exit the close is sent without reading the
     // reported market state, since the bar is proof that the market trades; the timer (barClose null) and a bar
     // that closed before the exit keep the market check. One call per bar, so one close request per bar.
     private void RangeExitDuty(DateTime now, DateTime? barClose)
     {
-        if (_sessionRange == null || !_trades.RangeExitDue(now, _sessionRange.ExitNy))
+        TimeSpan? exit = _sessionRange?.ExitNy ?? _overnight?.NightExitNy;
+        if (exit == null || !_trades.RangeExitDue(now, exit.Value))
         {
             return;
         }
 
-        bool barAtExit = barClose.HasValue && _trades.RangeExitDue(barClose.Value, _sessionRange.ExitNy);
+        string duty = _overnight is null ? "range-exit" : "night-exit";
+        bool barAtExit = barClose.HasValue && _trades.RangeExitDue(barClose.Value, exit.Value);
         if (barAtExit || _safety.MarketOpen())
         {
-            JournalActions("range-exit", _trades.RangeExit(now, _sessionRange.ExitNy));
+            JournalActions(duty, _trades.RangeExit(now, exit.Value));
             return;
         }
 
@@ -1184,7 +1198,7 @@ public sealed class BotCore
         {
             // One line per day, not per minute.
             _rangeExitDeferredDay = now.Date;
-            Write("range-exit", ("event", "deferred"), ("reason", "market-closed"));
+            Write(duty, ("event", "deferred"), ("reason", "market-closed"));
         }
     }
 

@@ -118,6 +118,20 @@ services:
       - xauusd-data:/data
       - xauusd-logs:/logs
 
+  # Gold, second instance (spec v0.18 rows AZ to BB, PLT-021): EntryMode Overnight at 1.0% on the same
+  # account and symbol. Its own parameter file (params/xauusd-overnight/bot.cbotset, from
+  # deploy/params/xauusd-overnight.cbotset.example), storage, logs and heartbeat check.
+  xauusd-overnight:
+    <<: *bot
+    environment:
+      <<: *env
+      SYMBOL: XAUUSD
+    volumes:
+      - ./algo/current:/mnt/algo:ro
+      - ./params/xauusd-overnight:/mnt/params:ro
+      - xauusd-overnight-data:/data
+      - xauusd-overnight-logs:/logs
+
 secrets:
   ctrader_password:
     file: ./secrets/ctrader-cli.pwd
@@ -133,3 +147,5 @@ volumes:
   audusd-logs:
   xauusd-data:
   xauusd-logs:
+  xauusd-overnight-data:
+  xauusd-overnight-logs:

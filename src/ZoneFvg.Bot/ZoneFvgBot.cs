@@ -39,7 +39,7 @@ namespace cAlgo.Robots
         // Parameter attribute (Name, DefaultValue, Group): https://help.ctrader.com/ctrader-algo/references/Attributes/ParameterAttribute/
         // Parameter types: https://help.ctrader.com/ctrader-algo/guides/parameter-types
 
-        /// <summary>Entry mode of this instance, SessionRange (the default from spec v0.16, meant for XAUUSD only, PLT-020), ZoneFvg or Breakout (PLT-012, PLT-015, spec 3.7, 3.8 and 7).</summary>
+        /// <summary>Entry mode of this instance, SessionRange (the default from spec v0.16, meant for XAUUSD only, PLT-020), ZoneFvg, Breakout or Overnight (the second XAUUSD instance, PLT-021, spec 3.10) (PLT-012, PLT-015, spec 3.7, 3.8 and 7).</summary>
         [Parameter("EntryMode", DefaultValue = "SessionRange", Group = "Entry mode")]
         public string EntryMode { get; set; } = "SessionRange";
 
@@ -86,6 +86,34 @@ namespace cAlgo.Robots
         /// <summary>SessionRange: the side of the setup from D1 EMA(this) against D1 EMA(BiasEmaPeriod), 0 = the close against EMA(BiasEmaPeriod) (SIG-042, spec 3.8 and row AY of v0.17).</summary>
         [Parameter("RangeTrendFastEma", DefaultValue = 20, Group = "Entry mode")]
         public int RangeTrendFastEma { get; set; }
+
+        /// <summary>Overnight: the evaluation bar closes at or after this New York time, HH:mm (PLT-021, SIG-043, spec 3.10).</summary>
+        [Parameter("NightEntryNy", DefaultValue = "18:15", Group = "Overnight")]
+        public string NightEntryNy { get; set; } = "18:15";
+
+        /// <summary>Overnight: the evaluation bar closes before this New York time, HH:mm (PLT-021, SIG-043, spec 3.10).</summary>
+        [Parameter("NightLatestNy", DefaultValue = "19:00", Group = "Overnight")]
+        public string NightLatestNy { get; set; } = "19:00";
+
+        /// <summary>Overnight: an open position is closed, New York time, HH:mm (PLT-021, EXE-033, spec 3.10).</summary>
+        [Parameter("NightExitNy", DefaultValue = "02:45", Group = "Overnight")]
+        public string NightExitNy { get; set; } = "02:45";
+
+        /// <summary>Overnight: buy stop above close + spread, in ATR(M15) (PLT-021, SIG-043, spec 3.10).</summary>
+        [Parameter("NightEntryBufferAtr", DefaultValue = 0.03, Group = "Overnight")]
+        public double NightEntryBufferAtr { get; set; }
+
+        /// <summary>Overnight: stop distance in ATR(D1) (PLT-021, SIG-043, spec 3.10).</summary>
+        [Parameter("NightStopAtr", DefaultValue = 1.0, Group = "Overnight")]
+        public double NightStopAtr { get; set; }
+
+        /// <summary>Overnight: safety target in R (PLT-021, SIG-043, spec 3.10).</summary>
+        [Parameter("NightTargetR", DefaultValue = 5.0, Group = "Overnight")]
+        public double NightTargetR { get; set; }
+
+        /// <summary>Overnight: life of the buy stop after the evaluation bar, in minutes (PLT-021, SIG-043, spec 3.10).</summary>
+        [Parameter("NightOrderMinutes", DefaultValue = 60, Group = "Overnight")]
+        public int NightOrderMinutes { get; set; }
 
         /// <summary>Entry model of ZoneFvg mode, Fvg (the default from spec v0.16, PLT-020) or Choch (PLT-016, spec 3.9 and 7). Choch needs EntryMode ZoneFvg.</summary>
         [Parameter("EntryModel", DefaultValue = "Fvg", Group = "Entry model")]
@@ -235,8 +263,8 @@ namespace cAlgo.Robots
         [Parameter("RiskPercent", DefaultValue = 0.75, Group = "Risk")]
         public double RiskPercent { get; set; }
 
-        /// <summary>Drawdown brake of fixed sizing: distance below the peak balance in percent; 0 = off (RSK-019, PLT-020, spec 4.1).</summary>
-        [Parameter("DrawdownBrakePercent", DefaultValue = 3.0, Group = "Risk")]
+        /// <summary>Drawdown brake of fixed sizing: distance below the peak balance in percent; 0 = off, the default from spec v0.18 row BC (RSK-019, PLT-020, PLT-021, spec 4.1).</summary>
+        [Parameter("DrawdownBrakePercent", DefaultValue = 0.0, Group = "Risk")]
         public double DrawdownBrakePercent { get; set; }
 
         /// <summary>Drawdown brake: multiplier of RiskPercent while braked (RSK-019, PLT-020, spec 4.1).</summary>
@@ -493,7 +521,7 @@ namespace cAlgo.Robots
         {
             try
             {
-                var warmup = WarmupCalculator.For(parameters.Signal, parameters.Breakout, parameters.SessionRange, parameters.Choch);
+                var warmup = WarmupCalculator.For(parameters.Signal, parameters.Breakout, parameters.SessionRange, parameters.Choch, parameters.Overnight);
                 CTraderBars bars = _bars!;
                 string Part(CoreTimeFrame timeFrame) =>
                     timeFrame + " " + bars.ClosedBars(timeFrame, int.MaxValue).Count.ToString(CultureInfo.InvariantCulture)
@@ -703,6 +731,10 @@ namespace cAlgo.Robots
             // SIG-042: RangeTrendFastEma goes with them; that it is below BiasEmaPeriod is checked by BotParameters.Validate.
             SessionRangeParameters sessionRange = SessionRangeText.Build(RangeStartNy, RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr, RangeStopAtr, RangeTrendFastEma);
 
+            // PLT-021: the seven Overnight values are parsed and checked in every mode, with the names cTrader
+            // shows; they are passed to the core in Overnight mode only.
+            OvernightParameters overnight = OvernightText.Build(NightEntryNy, NightLatestNy, NightExitNy, NightEntryBufferAtr, NightStopAtr, NightTargetR, NightOrderMinutes);
+
             // PLT-016: EntryModel and the seven Choch values are checked in every mode, with the names cTrader shows;
             // Choch with another EntryMode is refused. The values are passed to the core with EntryModel Choch only.
             ChochParameters? choch = ChochText.Build(EntryModel, mode, RequireSweep, ChochWindowBars, ChochUseBias, ChochStopAtDistal, ChochTargetBufferAtr, ChochMinStopPips, MinRewardRisk);
@@ -721,9 +753,11 @@ namespace cAlgo.Robots
                     CoreEntryMode.Breakout => BuildBreakout(execution),
                     CoreEntryMode.ZoneFvg => null,
                     CoreEntryMode.SessionRange => null,
-                    _ => throw new ArgumentException(nameof(EntryMode) + " must be one of: ZoneFvg, Breakout, SessionRange.", nameof(EntryMode)),
+                    CoreEntryMode.Overnight => null,
+                    _ => throw new ArgumentException(nameof(EntryMode) + " must be one of: ZoneFvg, Breakout, SessionRange, Overnight.", nameof(EntryMode)),
                 },
                 SessionRange = mode == CoreEntryMode.SessionRange ? sessionRange : null,
+                Overnight = mode == CoreEntryMode.Overnight ? overnight : null,
                 Choch = choch,
 
                 // EXE-032: the profile and the effective values, for the start line and the parameter hash.
