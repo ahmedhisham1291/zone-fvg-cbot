@@ -198,7 +198,7 @@ public class Wp45FtmoInstantScenarios
 
         Assert.Empty(h.Journal.Lines(ConsistencyReadout.Category));
         Assert.DoesNotContain(February, reads);
-        Assert.Empty(h.Journal.Entries.Where(entry => entry.Line.Contains("consistency", StringComparison.Ordinal)));
+        Assert.DoesNotContain(h.Journal.Entries, entry => entry.Line.Contains("consistency", StringComparison.Ordinal));
     }
 
     [Fact]
