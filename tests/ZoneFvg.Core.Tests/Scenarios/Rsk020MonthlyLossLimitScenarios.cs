@@ -174,6 +174,19 @@ public class Rsk020MonthlyLossLimitScenarios
         Assert.Empty(run.Broker.Requests);
     }
 
+    [Fact]
+    [Trait("Req", "RSK-020")]
+    public void Filters_LimitOnBrokerReturnsNoHistory_SkippedAsBrokerDataInvalid_ReadOnce()
+    {
+        FilterRun run = FilterRun.Evaluate(Fixed(2.0), 205000.0, _ => null!);
+
+        SkipRecord skip = Assert.Single(run.Events.Skips);
+        Assert.Equal(SkipReason.BrokerDataInvalid, skip.Reason);
+        Assert.Equal("The broker returned no history.", skip.Detail);
+        Assert.Single(run.Since);
+        Assert.Empty(run.Broker.Requests);
+    }
+
     // ------------------------------------------------------------------ the bot
 
     private static BotParameters BotWith(double? limit)
@@ -364,6 +377,22 @@ public class Rsk020MonthlyLossLimitScenarios
         Assert.NotNull(h.ReferenceOrder());
         Assert.Equal(0, h.Count(BrokerCall.Cancel));
         Assert.Equal(1, h.Journal.Count("risk", "event=monthly-limit-unavailable reason=InvalidOperationException:\\shistory\\sunavailable"));
+        Assert.Empty(h.Journal.Lines("error"));
+    }
+
+    [Fact]
+    [Trait("Req", "RSK-020")]
+    public void Bot_LimitOnBrokerReturnsNoHistory_NoCancellationOneJournalLine()
+    {
+        (BotHarness h, _) = StartedWithOrder(2.0);
+        LoseFiveHundredMore(h);
+        h.Port.History = s => s == MarchStart ? null! : h.Broker.GetHistory(s);
+
+        h.FeedTo(A.AddMinutes(75.0));
+
+        Assert.NotNull(h.ReferenceOrder());
+        Assert.Equal(0, h.Count(BrokerCall.Cancel));
+        Assert.Equal(1, h.Journal.Count("risk", "event=monthly-limit-unavailable reason=InvalidOperationException:\\sThe\\sbroker\\sreturned\\sno\\shistory."));
         Assert.Empty(h.Journal.Lines("error"));
     }
 
