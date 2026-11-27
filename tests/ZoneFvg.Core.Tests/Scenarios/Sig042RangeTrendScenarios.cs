@@ -73,9 +73,9 @@ public class Sig042RangeTrendScenarios
         Assert.True(order.VolumeUnits > 0.0);
         Assert.Equal("c3c1d46e", OrderComment.TryParse(order.Comment)!.ParameterHash);
 
-        // The journal's bias field is the bias of 3.1, unchanged (Short); the signal's side is the direction.
+        // The journal's bias field shows the direction used (Long), not the bias of 3.1 (Short).
         string signal = Assert.Single(h.Journal.Lines("signal"));
-        Assert.Contains(" result=taken bias=Short zone=RH-20260304 ", signal, StringComparison.Ordinal);
+        Assert.Contains(" result=taken bias=Long zone=RH-20260304 ", signal, StringComparison.Ordinal);
         Assert.EndsWith(" skip=none kind=range level=100.4", signal, StringComparison.Ordinal);
         Assert.Contains(" hash=c3c1d46e ", Assert.Single(h.Journal.Lines("start")), StringComparison.Ordinal);
         Assert.Equal(BotState.Running, h.Core.State);
@@ -98,6 +98,8 @@ public class Sig042RangeTrendScenarios
         Assert.Equal(Data.SellOrderStop, sell.StopLossPrice, 9);
         Assert.Equal(Data.SellTarget, sell.TakeProfitPrice, 9);
         Assert.Equal(Data.Label(Data.SellId(Data.Winter)), sell.Label);
+        Assert.Contains(" result=taken bias=Long zone=RH-20260304 ", Assert.Single(zero.Journal.Lines("signal")), StringComparison.Ordinal);
+        Assert.Contains(" result=taken bias=Short zone=RL-20260304 ", Assert.Single(twenty.Journal.Lines("signal")), StringComparison.Ordinal);
         ScenarioAssert.Global(zero.Broker);
         ScenarioAssert.Global(twenty.Broker);
     }
@@ -112,7 +114,7 @@ public class Sig042RangeTrendScenarios
         h.FeedTo(Data.Utc(2026, 3, 4, 16, 0));
 
         string signal = Assert.Single(h.Journal.Lines("signal"));
-        Assert.Contains(" result=skipped bias=Short zone=RH-20260304 ", signal, StringComparison.Ordinal);
+        Assert.Contains(" result=skipped bias=Long zone=RH-20260304 ", signal, StringComparison.Ordinal);
         Assert.EndsWith(" skip=SignalFromReplay kind=range level=100.4", signal, StringComparison.Ordinal);
         Assert.Equal(0, h.Broker.WriteRequestCount);
     }

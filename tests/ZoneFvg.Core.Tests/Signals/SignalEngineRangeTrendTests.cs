@@ -365,4 +365,42 @@ public class SignalEngineRangeTrendTests
         Assert.Equal(217, new BarStore(new SignalParameters(), null, new SessionRangeParameters { RangeTrendFastEma = 60 }, null).Capacity(TimeFrame.D1));
         Assert.Equal(Data.BuyId(Data.Winter), control.RangeSetup!.Id);
     }
+
+    // ------------------------------------------------------------------ the journal's bias
+
+    [Fact]
+    [Trait("Req", "SIG-042")]
+    public void JournalBias_Twenty_TheDirectionUsed_ZeroAndOtherModes_TheBias()
+    {
+        BarSet bars = WithD1(D1(D1Start, Rising(LastBeforeWinter, -0.05), false), false, Data.Winter);
+        IEnumerable<FeedBar> day = bars.Feed.Where(item => item.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0)).ToList();
+        SignalEngine twenty = Engine(20);
+        SignalEngine zero = Engine(0);
+        var breakout = new SignalEngine(new SignalParameters(), new BreakoutParameters());
+        var zoneFvg = new SignalEngine(new SignalParameters());
+
+        Run(twenty, day);
+        Run(zero, day);
+        Run(breakout, day);
+        Run(zoneFvg, day);
+
+        Assert.Equal(Bias.Long, twenty.JournalBias);
+        Assert.Equal(Bias.Short, twenty.Bias);
+        Assert.Equal(Bias.Short, zero.JournalBias);
+        Assert.Equal(zero.Bias, zero.JournalBias);
+        Assert.Equal(breakout.Bias, breakout.JournalBias);
+        Assert.Equal(zoneFvg.Bias, zoneFvg.JournalBias);
+        Assert.Equal(Bias.Short, zoneFvg.JournalBias);
+    }
+
+    [Fact]
+    [Trait("Req", "SIG-042")]
+    public void JournalBias_Twenty_EqualEmas_Neutral()
+    {
+        SignalEngine engine = Engine(20);
+
+        Run(engine, WithD1(D1(D1Start, _ => 100.0, false), false, Data.Winter).Feed.Where(item => item.CloseUtc <= Data.Utc(2026, 3, 4, 16, 0)));
+
+        Assert.Equal(Bias.Neutral, engine.JournalBias);
+    }
 }

@@ -37,7 +37,7 @@ public class SessionRangeParametersTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "ExitNy", "LastEntryNy", "MinWidthAtr", "RangeEndNy", "RangeStartNy", "StopAtrMult" }, actual);
+        Assert.Equal(new[] { "ExitNy", "LastEntryNy", "MinWidthAtr", "RangeEndNy", "RangeStartNy", "RangeTrendFastEma", "StopAtrMult" }, actual);
     }
 
     [Fact]
