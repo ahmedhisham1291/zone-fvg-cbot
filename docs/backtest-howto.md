@@ -253,6 +253,16 @@ step 1).
    limits and FTMO's rules afterwards. Before WP23, any `KillSwitch` or
    `EmergencyGuard` line in the Log means the bot stopped trading there and
    the run is too short for spec 13.1.
+
+   **Monthly loss limit (from WP44 on).** `MonthlyLossLimitPercent` (default
+   2) is not one of these: a backtest applies it as the live bot does. Once
+   the account's closed result for the Prague-time calendar month reaches -2%
+   of the initial capital (-4,000 USD at 200,000), the bot opens nothing new
+   until the first day of the next month and cancels its pending entry
+   orders; it counts every closed trade of the account (both gold instances
+   together in live trading), never closes a trade, and the Log shows the
+   refused signals with `MonthlyLossLimit`. The `sim` commands of Part 3 do
+   not model it. `0` switches it off.
 9. **Save the Log.** Click the **Log** tab under the chart. Click one line in
    it, press **Cmd+A** (select all) and **Cmd+C** (copy). Open **TextEdit**,
    choose **Format > Make Plain Text**, press **Cmd+V**, and save the file as

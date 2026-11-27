@@ -68,6 +68,14 @@ public sealed record RiskParameters
     /// </summary>
     public DateTime RiskEpochDate { get; init; }
 
+    /// <summary>
+    /// Monthly loss limit of spec 4.2 (RSK-020, row BF): the closed loss of the CE(S)T calendar month,
+    /// in percent of <see cref="InitialCapital"/>, from which no new entry is allowed and pending
+    /// entries are cancelled until the next month. Default 0 (off). At least 0 and below
+    /// <see cref="MaxDrawdownPercent"/>.
+    /// </summary>
+    public double MonthlyLossLimitPercent { get; init; }
+
     /// <summary>Most entries per symbol per CE(S)T day (RSK-010). Default 2.</summary>
     public int MaxEntriesPerSymbolPerDay { get; init; } = 2;
 
@@ -156,7 +164,8 @@ public sealed record RiskParameters
 
     /// <summary>
     /// Checks every value and throws for the first one that is out of range, in the order the
-    /// parameters were added (the drawdown brake values of RSK-019 last). The message names the
+    /// parameters were added (the drawdown brake values of RSK-019, then the monthly loss limit of
+    /// RSK-020 last). The message names the
     /// parameter, its allowed range and the rejected value in invariant formatting.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range. The exception's parameter name is the name of the parameter.</exception>
@@ -213,6 +222,12 @@ public sealed record RiskParameters
         if (!double.IsFinite(DrawdownBrakeFactor) || DrawdownBrakeFactor <= 0.0 || DrawdownBrakeFactor > 1.0)
         {
             throw OutOfRange(nameof(DrawdownBrakeFactor), "must be greater than 0 and at most 1", Text(DrawdownBrakeFactor));
+        }
+
+        // RSK-020: checked after every value that existed before, so their refusals are unchanged.
+        if (!double.IsFinite(MonthlyLossLimitPercent) || MonthlyLossLimitPercent < 0.0 || MonthlyLossLimitPercent >= MaxDrawdownPercent)
+        {
+            throw OutOfRange(nameof(MonthlyLossLimitPercent), "must be at least 0 and below MaxDrawdownPercent", Text(MonthlyLossLimitPercent));
         }
     }
 

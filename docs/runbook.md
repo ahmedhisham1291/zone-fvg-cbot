@@ -81,6 +81,17 @@ zone is unknown, for example after a parameter change. It keeps its stop and
 target, counts in the risk totals and is closed on Friday (spec 8.3 step 6).
 Nothing to do unless you want it closed early.
 
+**Monthly loss limit** (spec 4.2, row BF; `MonthlyLossLimitPercent`, default
+2). Once the account's closed result for the calendar month (Prague time)
+reaches -2% of the initial capital (-4,000 USD at 200,000), the bot opens
+nothing new until 00:00 Prague time on the first day of the next month and
+cancels its pending entry orders. It counts every closed trade of the account,
+commission and swap included, so both gold instances stop together. It never
+closes or changes a trade: open positions run to their stop, target or timed
+exit. There is no alert and the state stays Running; signals are journaled as
+skipped with `MonthlyLossLimit`, cancelled orders with `duty=monthly-limit`.
+Nothing is stored, so a restart cannot reset it. `0` switches it off.
+
 ## 3. Reading the daily summary
 
 ```

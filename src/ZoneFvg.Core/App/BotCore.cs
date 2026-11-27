@@ -30,6 +30,9 @@ namespace ZoneFvg.Core.App;
 /// day) or a bar series has a gap; otherwise Running. Only Running places entries.</para>
 /// <para>In a backtest with <see cref="BotParameters.BacktestHaltsLogOnly"/> (REC-014) the halts and
 /// the daily budget block are only journaled as would-halt or would-block; live this never applies.</para>
+/// <para>With MonthlyLossLimitPercent above 0 (RSK-020) the pending entry orders are cancelled, at every M15
+/// close and after a recovery, while the closed loss of the CE(S)T month is at the limit; the state is not
+/// changed by it, and new entries are refused by the pre-trade check. With 0 nothing of it runs.</para>
 /// <para>With <see cref="BotParameters.Breakout"/> set (REC-017) the instance runs in Breakout mode: the
 /// signal engine, the replay of recovery, the pre-trade filters and the parameter hash use the breakout
 /// parameters, and the start line ends with <c>mode=Breakout</c>. The engine then keeps no zones and no
@@ -106,6 +109,9 @@ public sealed class BotCore
     private readonly OrderManager _orders;
     private readonly TradeManager _trades;
     private readonly AccountGuard _guard;
+
+    // RSK-020: the monthly loss limit's month status, used only with MonthlyLossLimitPercent above 0.
+    private readonly RiskEngine _riskEngine;
     private readonly SafetyActions _safety;
     private readonly TradeJournal _tradeJournal;
     private readonly RecoveryService _recovery;
@@ -200,6 +206,7 @@ public sealed class BotCore
         _orders = new OrderManager(broker, _requests, _events, _haltsLogOnly);
         _trades = new TradeManager(_symbol, parameters.Execution, broker, _requests, _events);
         _guard = new AccountGuard(_symbol, parameters.Risk, broker);
+        _riskEngine = new RiskEngine(parameters.Risk);
         _safety = new SafetyActions(_symbol, parameters.Execution, broker, _requests, _events);
         var tradeEvents = new CoreTradeEvents(this);
         _tradeJournal = new TradeJournal(_symbol, parameters.Risk, broker, store, tradeEvents);
@@ -447,6 +454,7 @@ public sealed class BotCore
         JournalActions("protection", _trades.EnsureProtection());
         GuardStatus guard = _guard.Evaluate(now);
         ApplyGuard(guard, now, false);
+        MonthlyLimitDuty(now);
         if (_machine.State == BotState.Halted)
         {
             _trades.CancelEntryOrders("halted");
@@ -789,6 +797,7 @@ public sealed class BotCore
         }
 
         ApplyStoredBudgetBlock(now);
+        MonthlyLimitDuty(now);
 
         UpdateCalendar(now);
         ApplyState("recovery complete", now);
@@ -850,6 +859,38 @@ public sealed class BotCore
         {
             _riskDataAlertSent = true;
             Alert(AlertKind.RiskDataUnavailable, "no new entries: " + guard.Text, now);
+        }
+    }
+
+    // RSK-020 (spec 4.2, row BF): with the monthly loss limit on, once the month's closed loss reaches it the
+    // pending entry orders are cancelled through the path of the exhausted daily budget (RSK-006). Open
+    // positions are not touched; new entries are refused by the pre-trade check. Nothing is stored: the month
+    // status is rebuilt from broker history each time. Broker data that cannot be used cancels nothing and is
+    // journaled; the pre-trade check then refuses new entries (architecture section 10, "Bad broker data").
+    private void MonthlyLimitDuty(DateTime now)
+    {
+        if (!(_risk.MonthlyLossLimitPercent > 0.0))
+        {
+            return;
+        }
+
+        MonthlyLossStatus status;
+        try
+        {
+            DateTime monthStart = CestClock.StartOfCestMonthUtc(now);
+            IReadOnlyList<ClosedTradeInfo> history = _broker.GetHistory(monthStart) ?? throw new InvalidOperationException("The broker returned no history.");
+            var snapshot = new RiskSnapshot(now, _broker.GetAccount(), Array.Empty<PositionInfo>(), Array.Empty<PendingOrderInfo>(), history, monthStart, Array.Empty<SymbolInfo>());
+            status = _riskEngine.MonthlyLoss(snapshot);
+        }
+        catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
+        {
+            Write("risk", ("event", "monthly-limit-unavailable"), ("reason", exception.GetType().Name + ": " + OneLine(exception.Message)));
+            return;
+        }
+
+        if (status.Reached)
+        {
+            JournalActions("monthly-limit", _trades.CancelEntryOrders("monthly loss limit reached"));
         }
     }
 

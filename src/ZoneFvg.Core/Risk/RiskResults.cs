@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using ZoneFvg.Core.Domain;
 
@@ -164,4 +165,42 @@ public sealed class DailyBudgetStatus
 
     /// <summary>DailyLossLimitPercent x InitialCapital / 100.</summary>
     public double Limit { get; }
+}
+
+/// <summary>
+/// State of the monthly loss limit (RSK-020): S, the balance at 00:00 CE(S)T on the first day of
+/// the current CE(S)T calendar month rebuilt from history, the current balance, the closed loss
+/// S - balance, the limit MonthlyLossLimitPercent x InitialCapital / 100 and whether it is reached.
+/// </summary>
+public sealed class MonthlyLossStatus
+{
+    internal MonthlyLossStatus(DateTime monthStartUtc, double monthStartBalance, double balance, double limit)
+    {
+        MonthStartUtc = monthStartUtc;
+        MonthStartBalance = monthStartBalance;
+        Balance = balance;
+        Loss = monthStartBalance - balance;
+        Limit = limit;
+
+        // Off (0) is never reached. On: equal counts (PriceMath tolerance), and a not-positive S counts as reached (fail closed).
+        Reached = limit > 0.0 && (!(monthStartBalance > 0.0) || !PriceMath.LessThan(Loss, limit, PriceMath.DefaultTolerance));
+    }
+
+    /// <summary>00:00 CE(S)T on the first day of the current CE(S)T month, kind UTC.</summary>
+    public DateTime MonthStartUtc { get; }
+
+    /// <summary>S: the balance at <see cref="MonthStartUtc"/> (RSK-007's rule applied to the month).</summary>
+    public double MonthStartBalance { get; }
+
+    /// <summary>The current account balance.</summary>
+    public double Balance { get; }
+
+    /// <summary>S - balance: the closed loss of the month (negative for a profit).</summary>
+    public double Loss { get; }
+
+    /// <summary>MonthlyLossLimitPercent x InitialCapital / 100; 0 when the limit is off.</summary>
+    public double Limit { get; }
+
+    /// <summary>True when the limit is on and the loss is at least the limit, or S is not positive.</summary>
+    public bool Reached { get; }
 }

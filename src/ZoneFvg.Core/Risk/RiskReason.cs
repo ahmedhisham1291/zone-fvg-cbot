@@ -50,4 +50,7 @@ public enum RiskReason
 
     /// <summary>The account already has the most entries allowed in this CE(S)T day (RSK-010).</summary>
     AccountEntryLimitReached,
+
+    /// <summary>The closed loss of the CE(S)T calendar month is at or beyond MonthlyLossLimitPercent of initial capital (RSK-020).</summary>
+    MonthlyLossLimitReached,
 }

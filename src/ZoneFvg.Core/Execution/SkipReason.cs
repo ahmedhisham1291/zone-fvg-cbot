@@ -137,4 +137,7 @@ public enum SkipReason
 
     /// <summary>The confirming bar of a Choch signal overlaps a news window of the symbol (NWS-015).</summary>
     NewsChochBar,
+
+    /// <summary>The closed loss of the CE(S)T calendar month has reached the monthly loss limit (RSK-020).</summary>
+    MonthlyLossLimit,
 }

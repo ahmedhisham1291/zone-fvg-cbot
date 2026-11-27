@@ -42,6 +42,8 @@ public static class SkipReasons
                 return SkipReason.SymbolEntryLimitReached;
             case RiskReason.AccountEntryLimitReached:
                 return SkipReason.AccountEntryLimitReached;
+            case RiskReason.MonthlyLossLimitReached:
+                return SkipReason.MonthlyLossLimit;
             default:
                 throw new ArgumentOutOfRangeException(nameof(reason), "Only a refusal reason maps to a skip reason.");
         }
