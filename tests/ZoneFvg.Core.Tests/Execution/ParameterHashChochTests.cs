@@ -124,7 +124,7 @@ public class ParameterHashChochTests
 
         string start = Assert.Single(choch.Journal.Lines("start"));
         Assert.Contains(" hash=" + ChochBotData.Hash + " ", start, StringComparison.Ordinal);
-        Assert.EndsWith(" mode=ZoneFvg model=Choch", start, StringComparison.Ordinal);
+        Assert.EndsWith(" mode=ZoneFvg model=Choch brake=off", start, StringComparison.Ordinal);
         Assert.DoesNotContain(" mode=", Assert.Single(fvg.Journal.Lines("start")), StringComparison.Ordinal);
         Assert.DoesNotContain(" model=", Assert.Single(fvg.Journal.Lines("start")), StringComparison.Ordinal);
     }

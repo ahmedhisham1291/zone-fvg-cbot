@@ -107,7 +107,7 @@ public class Sig034SessionRangeScenarios
 
         string start = Assert.Single(h.Journal.Lines("start"));
         Assert.Contains(" hash=3f0f30a3 ", start, StringComparison.Ordinal);
-        Assert.EndsWith(" mode=SessionRange", start, StringComparison.Ordinal);
+        Assert.EndsWith(" mode=SessionRange brake=off", start, StringComparison.Ordinal);
         Assert.Equal(Data.Hash, h.Core.LastReport!.ParameterHash);
         Assert.Empty(h.Core.ZoneSnapshot);
     }

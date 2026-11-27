@@ -533,9 +533,10 @@ public class Rec017BreakoutModeScenarios
         string withMode = Assert.Single(breakout.Journal.Lines("start"));
         string without = Assert.Single(zoneFvg.Journal.Lines("start"));
 
-        Assert.EndsWith(" mode=Breakout", withMode, StringComparison.Ordinal);
+        Assert.EndsWith(" mode=Breakout brake=off", withMode, StringComparison.Ordinal);
         Assert.DoesNotContain("mode=", without, StringComparison.Ordinal);
-        Assert.Equal(without.Replace(" hash=f681dff2 ", " hash=119a3864 ", StringComparison.Ordinal) + " mode=Breakout", withMode);
+        Assert.EndsWith(" brake=off", without, StringComparison.Ordinal);
+        Assert.Equal(without[..^" brake=off".Length].Replace(" hash=f681dff2 ", " hash=119a3864 ", StringComparison.Ordinal) + " mode=Breakout brake=off", withMode);
         ScenarioAssert.Global(breakout.Broker);
     }
 
@@ -551,7 +552,7 @@ public class Rec017BreakoutModeScenarios
         IReadOnlyList<string> lines = h.Journal.Lines("start");
         Assert.Equal(2, lines.Count);
         Assert.Contains(" start event=reconnect ", lines[1], StringComparison.Ordinal);
-        Assert.EndsWith(" mode=Breakout", lines[1], StringComparison.Ordinal);
+        Assert.EndsWith(" mode=Breakout brake=off", lines[1], StringComparison.Ordinal);
         ScenarioAssert.Global(h.Broker);
     }
 

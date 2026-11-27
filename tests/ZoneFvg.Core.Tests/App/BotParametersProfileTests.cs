@@ -79,7 +79,7 @@ public class BotParametersProfileTests
         h.Start(RecoveryData.Activation, UsdJpyParameters(UsdJpy(minStopByHand: true)));
 
         Assert.EndsWith(
-            " profile=Fx pipSize=0.01 maxSpreadPips=1.5 minStopPips=8 chochMinStopPips=5 maxVolumeUnits=3000000 auto=MaxSpreadPips,ChochMinStopPips,MaxVolumeUnits",
+            " profile=Fx pipSize=0.01 maxSpreadPips=1.5 minStopPips=8 chochMinStopPips=5 maxVolumeUnits=3000000 auto=MaxSpreadPips,ChochMinStopPips,MaxVolumeUnits brake=off",
             Assert.Single(h.Journal.Lines("start")),
             StringComparison.Ordinal);
     }
@@ -91,7 +91,7 @@ public class BotParametersProfileTests
         var h = new BotHarness();
         h.Start(RecoveryData.Activation, UsdJpyParameters(UsdJpy(minStopByHand: false, allByHand: true)));
 
-        Assert.EndsWith(" maxVolumeUnits=3000000 auto=none", Assert.Single(h.Journal.Lines("start")), StringComparison.Ordinal);
+        Assert.EndsWith(" maxVolumeUnits=3000000 auto=none brake=off", Assert.Single(h.Journal.Lines("start")), StringComparison.Ordinal);
     }
 
     [Fact]
