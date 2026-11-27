@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.19 · 27 November 2026 (owner request of 27 November 2026, "And add -2% monthly stop as you mentioned before": a monthly loss limit, row BF. v0.18 of the same day, "Sure": a fourth entry mode, Overnight, for a second gold instance, and the drawdown brake off by default, rows AZ to BE. v0.17 of the same day, "Yup do this": SessionRange decides its direction from the D1 EMA(20) against the D1 EMA(50), row AY. v0.16 of the same day: SessionRange on gold becomes the default setup, with a fixed 0.75% risk per trade and a drawdown brake, rows AS to AX. v0.15 of 26 November 2026, owner request of 26 November 2026: an offline backtest lab that runs the bot's own core over about six years of downloaded history in CI, searches entry settings and compares money-management plans against a target of about 1% a month, section 12.5, rows AH to AR; the trading rules do not change. v0.14 of 24 November 2026, v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
+Version 0.20 · 27 November 2026 (owner decision of 27 November 2026, "Yup": the account becomes an FTMO Instant account of 100,000 USD, rows BG to BM, section 15.8. v0.19 of the same day, "And add -2% monthly stop as you mentioned before": a monthly loss limit, row BF. v0.18 of the same day, "Sure": a fourth entry mode, Overnight, for a second gold instance, and the drawdown brake off by default, rows AZ to BE. v0.17 of the same day, "Yup do this": SessionRange decides its direction from the D1 EMA(20) against the D1 EMA(50), row AY. v0.16 of the same day: SessionRange on gold becomes the default setup, with a fixed 0.75% risk per trade and a drawdown brake, rows AS to AX. v0.15 of 26 November 2026, owner request of 26 November 2026: an offline backtest lab that runs the bot's own core over about six years of downloaded history in CI, searches entry settings and compares money-management plans against a target of about 1% a month, section 12.5, rows AH to AR; the trading rules do not change. v0.14 of 24 November 2026, v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
 
 ## 0. What changed in v0.2
 
@@ -155,6 +155,20 @@ Evidence (the search's simulation, gold, SessionRange at 0.75% with the 20/50 di
 | Topic | Decision | Section |
 |---|---|---|
 | BF. Monthly loss limit | New account limit `MonthlyLossLimitPercent` (cBot default **2**; 0 = off). Let S be the account balance at 00:00 CE(S)T on the first day of the current calendar month (CE(S)T), rebuilt from the current balance and the trades closed since then as RSK-007 does for the day. When S − `Account.Balance` is at least `MonthlyLossLimitPercent` / 100 x `InitialCapital` (equal counts), no new entry is allowed until 00:00 CE(S)T on the first day of the next month, and pending entry orders are cancelled, as for the daily budget. Open positions keep their stop, target and timed exit; the limit never closes a trade. Account-wide: it counts every closed trade of the account, so both gold instances stop together. Nothing is remembered; a restart cannot reset it. The other limits of 4.2 are unchanged | 4.2, 7 |
+
+**Changes in v0.20 (owner decision of 27 November 2026: "No i will buy it funded already", then "You can search for the rules in ftmo" and "Yup" to FTMO Instant 100,000 USD)**
+
+FTMO Instant's rules as read on FTMO's Trading Objectives page on 27 November 2026 (section 15.8): Maximum Daily Loss = balance at 00:00 CE(S)T minus 3% of the initial capital, breached on equity; Maximum Loss = 10% of the initial capital below the highest closed-trade balance (or the initial capital if higher), recalculated in real time, never falling and not reset by a reward withdrawal; Consistency: the best day (closed trades) at most 30% of the total profit since the last reward, a condition for rewards, not a breach; one Instant account at a time, at most 100,000 USD. In the search's simulation the plan (SessionRange 0.75%, Overnight 1.0%, monthly limit 2%) had a worst day of −1.8% and a largest drawdown of 6.2% on closed balance; from a fresh start the 30% consistency condition was met after a median of about 150 days (90th percentile about 450 days).
+
+| Topic | Decision | Section |
+|---|---|---|
+| BG. Account | FTMO Instant, 100,000 USD (replaces the 2-Step Swing 200,000 USD of v0.12 as the account the bot is set for). The cBot default `InitialCapital` becomes **100,000**. Every percent stays a percent of `InitialCapital` | 1, 7, 15 |
+| BH. FTMO limits | cBot defaults `FtmoDailyLossPercent` **3** and `FtmoMaxLossPercent` **10**, and a new `FtmoMaxLossMode`: `Static` (the 2-Step rule as before) or `TrailingBalance` (cBot default, FTMO Instant). Core defaults stay 5, 10 and Static, so every existing decision is unchanged | 4.2, 7, 15.8 |
+| BI. Emergency guard on a trailing floor | With `TrailingBalance` the guard's overall condition is equity at or below P − (`FtmoMaxLossPercent` − `FtmoGuardBufferPercent`) / 100 x `InitialCapital`, where P is the larger of `InitialCapital` and the highest end-of-trade balance since `RiskEpochDate` (the kill switch's history). The daily condition is unchanged in form (M − (3 − buffer)%). cBot default `FtmoGuardBufferPercent` becomes **0.5**, so the guard acts at −2.5% for the day and 9.5% below P overall, and does not fire on a day that the 2% daily budget allows. If P cannot be computed the overall condition falls back to the static form from `InitialCapital` (fail closed: it is never looser than the static floor) | 4.2, 15.4, 15.8 |
+| BJ. Epoch and withdrawals on Instant | FTMO's floor never resets, so on this account `RiskEpochDate` stays the date the account started; it is not moved after a reward. A withdrawal lowers the balance but not the peak: the kill switch (8% below the peak) and the guard both count it as drawdown, as FTMO does. Runbook rule: withdraw only so much that the balance stays at least about 5% above the kill switch line (peak x 0.92) | 4.2, 15.8 |
+| BK. Consistency readout | Information only, no trading effect: once per CE(S)T day and at start the bot writes a journal line with the total closed profit since `RewardPeriodStartDate` (new text parameter, `yyyy-MM-dd`, empty = `RiskEpochDate`; the owner sets it to the date of his last reward), the best CE(S)T day and its profit, their ratio, and whether the 30% condition is met (`ConsistencyMaxPercent`, cBot default 30; 0 switches the line off) | 11, 15.8 |
+| BL. Daily budget and kill switch | Unchanged: daily budget 2% (inside FTMO's 3%), kill switch 8% below the peak (inside the 10% trailing floor while the peak is below 125,000), monthly limit 2% | 4.2, 15.4 |
+| BM. Files and guides | The parameter files carry `InitialCapital=100000.0`, `FtmoDailyLossPercent=3.0`, `FtmoMaxLossPercent=10.0`, `FtmoMaxLossMode=TrailingBalance`, `FtmoGuardBufferPercent=0.5`, `ConsistencyMaxPercent=30.0` and `RewardPeriodStartDate=` (empty). The backtest guide's starting capital becomes 100,000 | 7, 10.2, 12.1 |
 
 ## 1. Purpose and scope
 
@@ -846,10 +860,13 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | DailyLossLimitPercent | 2 (1.5 before v0.12) | Daily stop | Fixed |
 | MaxDrawdownPercent | 8 | Kill switch | Fixed |
 | MonthlyLossLimitPercent (new in 0.19) | 2 | Monthly loss limit of 4.2 (row BF); 0 = off; at least 0 and below `MaxDrawdownPercent` | Fixed |
-| InitialCapital (new in 0.6) | 200,000 (100,000 before v0.12) | Base for FTMO percentages; in a backtest it must equal the starting capital | Fixed |
+| InitialCapital (new in 0.6) | 100,000 (FTMO Instant, row BG; 200,000 in v0.12 to v0.19, 100,000 before v0.12) | Base for FTMO percentages; in a backtest it must equal the starting capital | Fixed |
 | DayResetZone (new in 0.6) | Europe/Prague | Day boundary at 00:00 CE(S)T, as FTMO uses | Fixed |
-| FtmoDailyLossPercent / FtmoMaxLossPercent (new in 0.6) | 5 / 10 | FTMO's own limits for the 2-Step | Per product |
-| FtmoGuardBufferPercent (new in 0.6) | 1 | Distance from an FTMO floor at which the emergency guard acts | Fixed |
+| FtmoDailyLossPercent / FtmoMaxLossPercent (new in 0.6) | 3 / 10 (5 / 10 until v0.19; row BH) | FTMO's own limits; FTMO Instant from v0.20 | Per product |
+| FtmoMaxLossMode (new in 0.20) | TrailingBalance | `Static` (2-Step) or `TrailingBalance` (Instant): how the guard's overall floor is placed (row BI) | Per product |
+| FtmoGuardBufferPercent (new in 0.6) | 0.5 (1 until v0.19; row BI) | Distance from an FTMO floor at which the emergency guard acts | Fixed |
+| ConsistencyMaxPercent (new in 0.20) | 30 | Consistency readout of row BK; 0 = no readout | Fixed |
+| RewardPeriodStartDate (new in 0.20) | empty (= `RiskEpochDate`) | Start of the consistency count, the date of the last reward (row BK) | Set by hand after a reward |
 | MaxRequestsPerDay (new in 0.6) | 100 | Order requests per instance per day | Fixed |
 | RiskEpochDate (new) | First live day; empty in a backtest means the backtest's first day (added 23 November 2026) | Start date for drawdown measurement | Set manually live |
 | MaxEntriesPerSymbolPerDay (new) | 2 | Circuit breaker | Fixed |
@@ -1460,6 +1477,17 @@ The bot is not built or tested, and the first trade on the Challenge account has
 3. **Not advised:** activating now, either by hand or with an untested bot. Manual trades would also break the assumption that the account is used only by the bot.
 
 Before choosing option 2, ask FTMO support to confirm in writing that a never-activated Challenge can be renewed and whether renewal carries any cost or condition.
+
+### 15.8 FTMO Instant (v0.20, owner decision of 27 November 2026)
+
+| | FTMO Instant rule | Bot limit (100,000 USD) | Room left |
+|---|---|---|---|
+| Daily | Equity above the 00:00 CE(S)T balance minus 3,000 | Daily risk budget 2,000 (2%); emergency guard closes everything at minus 2,500 | 1,000 after the budget |
+| Overall | Equity above P − 10,000, P = highest closed-trade balance (at least 100,000), rising in real time, never falling, not reset by a reward | Kill switch 8% below P; emergency guard at P − 9,500 | 2,000 at the start |
+| Monthly | none | Monthly loss limit 2,000 (2%) | n/a |
+| Consistency | Best day at most 30% of total profit since the last reward, for rewards only | Journal readout (row BK) | n/a |
+
+Withdrawals: a reward lowers the balance and not P, so it uses up room under both the kill switch and FTMO's floor. Keep the balance at least about 5% above P x 0.92 after a withdrawal (row BJ). `RiskEpochDate` stays the account's start date.
 
 ## References
 

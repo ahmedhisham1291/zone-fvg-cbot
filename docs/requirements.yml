@@ -640,6 +640,26 @@ requirements:
       MonthlyLossLimitPercent=2.0; the start line is unchanged; the guides
       describe the limit.
 
+  - id: RSK-021
+    wp: WP45
+    spec: "4.2, 7, 15.8"
+    verify: unit
+    status: planned
+    text: >-
+      Emergency guard on a trailing FTMO floor (owner decision of
+      2026-11-27, rows BH and BI). The core's risk parameters gain
+      FtmoMaxLossMode, Static (core default: RSK-009 exactly as before) or
+      TrailingBalance. With TrailingBalance the guard's overall condition is
+      equity <= P - (FtmoMaxLossPercent - FtmoGuardBufferPercent) / 100 x
+      InitialCapital, where P = max(InitialCapital, highest end-of-trade
+      balance since RiskEpochDate from broker history, computed as for the
+      kill switch); when P cannot be computed the overall condition falls
+      back to the static one (never looser). The daily condition is unchanged.
+      Validation refuses, naming the parameter, a mode other than Static or
+      TrailingBalance, and an FtmoGuardBufferPercent that is not greater than
+      0 or not below FtmoDailyLossPercent. With Static every decision and
+      journal line is unchanged byte for byte.
+
   - id: NWS-001
     wp: WP05
     spec: "6.1"
@@ -2280,6 +2300,25 @@ requirements:
       and rr=<W / R of the signal's own levels, invariant format>. The lines
       of the other kinds are unchanged, byte for byte.
 
+  - id: OPS-012
+    wp: WP45
+    spec: "11, 15.8"
+    verify: unit
+    status: planned
+    text: >-
+      Consistency readout (owner decision of 2026-11-27, row BK). With
+      ConsistencyMaxPercent above 0 the core writes, at start and at the
+      first event of each CE(S)T day, one info journal line: consistency
+      since=<date> total=<USD> bestDay=<date> bestDayProfit=<USD>
+      ratio=<percent> limit=<ConsistencyMaxPercent> met=<yes|no>, from the
+      account's closed trades since 00:00 CE(S)T of RewardPeriodStartDate
+      (empty = RiskEpochDate), days by CE(S)T close date, profit net of
+      commission and swap; met is yes only when total > 0 and bestDayProfit
+      <= total x limit / 100 (PriceMath tolerance). Total not above 0 gives
+      ratio=NA met=no. A history read failure writes the line with
+      status=unavailable and nothing else. Information only: no trading
+      decision reads it. With 0 no line is written.
+
   - id: REC-020
     wp: WP37
     spec: "3.9, 8.3"
@@ -2536,6 +2575,25 @@ requirements:
       guides say that gold runs as two instances (SessionRange at 0.75% and
       Overnight at 1.0%), that the account limits are shared, and that the
       cost gate of row BD comes before the Challenge.
+
+  - id: PLT-022
+    wp: WP45
+    spec: "7, 15.8"
+    verify: unit
+    status: planned
+    text: >-
+      FTMO Instant defaults in the cBot (rows BG to BM). Defaults:
+      InitialCapital 100000.0, FtmoDailyLossPercent 3.0, FtmoMaxLossPercent
+      10.0, new FtmoMaxLossMode "TrailingBalance", FtmoGuardBufferPercent
+      0.5, new ConsistencyMaxPercent 30.0 and new RewardPeriodStartDate ""
+      (yyyy-MM-dd, parsed invariantly; empty means RiskEpochDate; a bad text
+      is refused at start naming it); all passed to the core and checked at
+      start. Every file under deploy/params carries these lines. The
+      runbook, deploy/README.md and docs/backtest-howto.md describe the
+      FTMO Instant account (section 15.8), starting capital 100,000 in a
+      backtest, RiskEpochDate kept at the account start, the withdrawal rule
+      of row BJ and how to read and reset the consistency line after a
+      reward.
 
   - id: LAB-001
     wp: WP40
