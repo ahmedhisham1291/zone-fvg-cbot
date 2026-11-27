@@ -1,6 +1,6 @@
 # Zone + FVG cBot: Technical Specification
 
-Version 0.17 · 27 November 2026 (owner request of 27 November 2026, "Yup do this": SessionRange decides its direction from the D1 EMA(20) against the D1 EMA(50), row AY. v0.16 of the same day: SessionRange on gold becomes the default setup, with a fixed 0.75% risk per trade and a drawdown brake, rows AS to AX. v0.15 of 26 November 2026, owner request of 26 November 2026: an offline backtest lab that runs the bot's own core over about six years of downloaded history in CI, searches entry settings and compares money-management plans against a target of about 1% a month, section 12.5, rows AH to AR; the trading rules do not change. v0.14 of 24 November 2026, v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
+Version 0.18 · 27 November 2026 (owner request of 27 November 2026, "Sure": a fourth entry mode, Overnight, for a second gold instance, and the drawdown brake off by default, rows AZ to BE. v0.17 of the same day, "Yup do this": SessionRange decides its direction from the D1 EMA(20) against the D1 EMA(50), row AY. v0.16 of the same day: SessionRange on gold becomes the default setup, with a fixed 0.75% risk per trade and a drawdown brake, rows AS to AX. v0.15 of 26 November 2026, owner request of 26 November 2026: an offline backtest lab that runs the bot's own core over about six years of downloaded history in CI, searches entry settings and compares money-management plans against a target of about 1% a month, section 12.5, rows AH to AR; the trading rules do not change. v0.14 of 24 November 2026, v0.13 of the same day, with the owner's request of 24 November 2026: new defaults, so that a backtest needs no manual setting except `LadderEnabled`, and an automatic per-symbol profile for the values that differ between the currency pairs and gold, rows AA to AG. v0.13: the Recovery plan uses eight positions with step columns, starts from 1% of initial capital per losing run and resets after eight losses, section 4.1.1)
 
 ## 0. What changed in v0.2
 
@@ -134,6 +134,19 @@ Evidence (the search's simulation on the owner's FTMO gold bars, May 2020 to Nov
 | Topic | Decision | Section |
 |---|---|---|
 | AY. Direction of SessionRange | New SessionRange parameter `RangeTrendFastEma` (cBot default **20**; 0 = off, the rule of v0.16). With a value above 0 the setup's side comes from the last closed D1 bar: buy when D1 EMA(`RangeTrendFastEma`) is above D1 EMA(`BiasEmaPeriod`, 50), sell when it is below, no setup when they are equal. The close against EMA(50) (3.1) is then not used by this mode. Allowed: 0, or from 2 to `BiasEmaPeriod` − 1. The EMAs are the bot's own D1 EMAs, computed as for 3.1. ZoneFvg, the Choch model and Breakout do not use it. The parameter hash of SessionRange gains the field only when it is not 0, so a configuration with 0 keeps its hash (`3f0f30a3`); the five parameter files carry `RangeTrendFastEma=20` | 3.8, 7 |
+
+**Changes in v0.18 (owner request of 27 November 2026, "Sure", answering the orchestrating session's proposal of the same day: add the overnight long as a second gold strategy and switch the brake off)**
+
+Evidence (the search's simulation on the owner's FTMO gold bars, May 2020 to November 2026; development years to October 2024): a buy at 18:15 New York held to 02:45 New York, Monday to Thursday evenings, stop 1 x ATR(D1): 1,342 trades, +23.0R, largest drawdown 5.4R, +15.6R in development and +7.5R in the holdout. Entered with a buy stop at the ask plus 0.10 USD that lives 60 minutes (the bot has no market order): 1,283 trades, +23.3R, drawdown 4.7R. Selling instead loses (−1.68R a month in development); the same hours in the day (08:00 to 16:30) lose; entries at 19:00 or later lose the effect in the holdout. **The effect depends on cost:** with a spread of 0.50 USD all day the total is +14.3R, with 0.80 USD +1.2R, with 1.20 USD −16.2R. The time rule comes from a published study on another broker's data (mql5 blog post 779464, October 2026); the owner's data confirms it on an overlapping period, so the forward test is the clean evidence. Together with SessionRange (row AY) at 0.75% and Overnight at 1.0%, brake off: +0.92% a month, every calendar year positive (2020 +0.3%, 2023 +3.9%), largest drawdown 6.4%, worst day −1.8%. With the 20/50 direction of row AY the brake lowered the return without lowering the drawdown (SessionRange alone at 1.0%: +0.69% a month and 5.7% with the brake, +0.84% and 5.6% without).
+
+| Topic | Decision | Section |
+|---|---|---|
+| AZ. Overnight mode | A fourth `EntryMode`, `Overnight`, described in 3.10: a buy of gold after the daily reopening, held to the early morning, closed by a timed exit. Buys only. It runs as a **second XAUUSD instance** beside the SessionRange instance, with its own parameter file. `EntryModel` must be Fvg (the refusal of Choch with another mode stays) | 3.10, 7 |
+| BA. Two instances on one symbol | The two instances never hold a position at the same time by their hours (Overnight 18:15 to 02:45 New York; SessionRange from the evaluation at 03:00 to its exit at 16:30). Each instance acts only on orders and positions whose signal id is of its own mode: it does not cancel, close, modify or time-exit the other's, and its one-position rule, recovery and replay are unchanged for its own. **Proposal:** if the bot's one-position-per-symbol check today counts every bot position of the symbol, it stays so (fail closed: an overlap skips an entry, it never doubles risk) | 3.3, 3.10, 5.3, 8.3 |
+| BB. Risk of the Overnight instance | Its parameter file sets `RiskPercent` = 1.0 (owner's choice of the plan "Asian 0.75% + overnight 1.0%"). Every account limit applies to both instances together as today: daily budget 2% and kill switch 8% are account-wide | 4.1, 4.2 |
+| BC. Brake off by default | The cBot default of `DrawdownBrakePercent` becomes **0** (off) and the five existing parameter files and the new one carry `DrawdownBrakePercent=0.0`. The brake stays available (RSK-019 unchanged); setting 3 switches it on again | 4.1, 7 |
+| BD. Cost gate | Before the Overnight instance trades on the Challenge account, the owner's Free Trial weeks must show gold's spread at the Overnight entries; the entries are made only while the spread is within `MaxSpreadPips` (automatic: 0.40 USD), as for every mode (EXE-018), and the journal line of each skipped or taken Overnight entry shows the spread. If most entries are skipped for spread, or the taken ones pay more than about 0.40 USD, the mode is not started on the Challenge | 3.6, 3.10, 13.4 |
+| BE. What does not change | SessionRange with the 20/50 direction stays the default `EntryMode` of the cBot; ZoneFvg, Choch and Breakout are unchanged; sizing plans, account limits, the FTMO guard and the news filter are unchanged and apply to the new mode | 3, 4, 6 |
 
 ## 1. Purpose and scope
 
@@ -390,6 +403,32 @@ Chosen with `EntryMode` = ZoneFvg and `EntryModel` = Choch. `EntryModel` = Choch
 **What stays the same.** One position or pending order per symbol, sizing and the ladder, every account limit, circuit breaker and sanity cap (including `MaxVolumeUnits`), the Friday rules, the news windows, idempotent placement, recovery, Friday close, alerts and the simulation tools. A trade ends at its stop, its target or the Friday close.
 
 **Trading window.** The owner trades all day. `SessionStartUtc` = 00:00 and `SessionEndUtc` = 24:00 is accepted from v0.11 and is the setting for this model in the parameter files and the backtest guide. From v0.14 it is the cBot's default, because Choch is the default model (row AA); the Fvg model and Breakout were specified and backtested with 07:00 to 17:00, which has to be set by hand for them.
+
+### 3.10 Overnight mode (v0.18, owner request of 27 November 2026)
+
+Chosen with `EntryMode` = Overnight. Buys only. Meant for XAUUSD alone, as a second instance beside SessionRange (row BA).
+
+**Trading day and New York time** as in 3.8. A trading day gives a signal only when it starts on a Monday, Tuesday, Wednesday or Thursday evening (New York date of its 17:00 start); Sunday and Friday evenings give none.
+
+**Evaluation.** At the first closed M15 bar of the trading day whose close time is at or after `NightEntryNy` (18:15) and before `NightLatestNy` (19:00). If there is no such bar, the day gives no signal. A setup exists only if ATR(D1) of the last closed D1 bar and ATR(M15) of the last closed M15 bar exist.
+
+**Order levels.**
+
+- **Entry:** a buy stop at that bar's close + the spread at placement + `NightEntryBufferAtr` (0.03) x ATR(M15). (The research used 0.10 USD; 0.03 x ATR(M15) is of that size on gold and scales with volatility.)
+- **Stop:** `NightStopAtr` (1.0) x ATR(D1) below the entry.
+- **Target:** `NightTargetR` (5.0) x stop distance above the entry, a safety value; the timed exit almost always comes first.
+- **Spread:** as in 3.7; the journal line of the entry shows the spread at placement (row BD).
+- **Order expiry:** `NightOrderMinutes` (60) after the close of the evaluation bar. A news window shortens it as for every order (section 6).
+
+**One signal per trading day.** After a setup, whatever becomes of its order, the trading day gives no further signal.
+
+**Timed exit.** At the first closed M15 bar whose close time is at or after `NightExitNy` (02:45 New York) of the trading day in the position's signal id, an open position of this mode is closed at market, with the rules of 3.8 "Timed exit" and "Reported trading hours". The Friday close of 5.5 applies too; on the days this mode trades it is never due before the timed exit.
+
+**Signal id.** `ON-yyyyMMdd`, from the date that names the trading day. It takes the place of the zone id in the label (5.2), in recovery (8.3), in the journal and in the trade log.
+
+**Skipped when** (besides the checks of 3.6 that apply): price has already reached the entry when the order is about to be placed; the spread check of 3.7.
+
+**What stays the same.** One position or pending order per symbol for the instance (row BA), sizing, every account limit and circuit breaker, the news windows, idempotent placement, recovery, alerts and the simulation tools.
 
 ## 4. Risk and position sizing
 
@@ -751,7 +790,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 
 | Parameter | Default | Role | Test range |
 |---|---|---|---|
-| EntryMode (new in 0.10) | SessionRange (ZoneFvg in v0.14 and v0.15, Breakout until v0.13; rows AA, AS) | Entry mode of the instance: Breakout, ZoneFvg or SessionRange (section 3) | Both are backtested |
+| EntryMode (new in 0.10) | SessionRange (ZoneFvg in v0.14 and v0.15, Breakout until v0.13; rows AA, AS) | Entry mode of the instance: Breakout, ZoneFvg, SessionRange or Overnight (section 3; Overnight from v0.18, row AZ) | Both are backtested |
 | EntryModel (new in 0.11) | Fvg (Choch in v0.14 and v0.15, Fvg until v0.13; rows AA, AS) | Trigger in ZoneFvg mode: Fvg or Choch (3.9). Choch with another EntryMode is refused, so Breakout and SessionRange need Fvg | Both are backtested |
 | RequireSweep (new in 0.11) | false | Choch: a sweep of an M15 swing must come before the change of character | Test false and true |
 | ChochWindowBars (new in 0.11) | 32 (proposal) | Choch: M15 bars after the touch in which the change of character must come | Fixed |
@@ -785,7 +824,7 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | MinRoomR | 1.5 | Clear space to opposing zone | Fixed |
 | CostToRiskMax (new) | 0.10 | Costs as a share of stop distance | Fixed |
 | RiskPercent | 0.75 (0.5 until v0.15; row AT) | Risk per trade; with `LadderEnabled` = false (the default from v0.14) every trade uses it, halved by the drawdown brake (4.1) | Fixed |
-| DrawdownBrakePercent (new in 0.16) | 3 | Drawdown brake of 4.1: distance below the peak balance, in percent of the peak, from which fixed sizing uses `RiskPercent` x `DrawdownBrakeFactor`; 0 = off. At least 0 and below `MaxDrawdownPercent` | Fixed |
+| DrawdownBrakePercent (new in 0.16) | 0 (3 in v0.16 and v0.17; row BC) | Drawdown brake of 4.1: distance below the peak balance, in percent of the peak, from which fixed sizing uses `RiskPercent` x `DrawdownBrakeFactor`; 0 = off. At least 0 and below `MaxDrawdownPercent` | Fixed |
 | DrawdownBrakeFactor (new in 0.16) | 0.5 | Drawdown brake: multiplier of `RiskPercent` while braked; greater than 0 and at most 1 | Fixed |
 | LadderEnabled | false (true until v0.13; row AB) | The ladder of RSK-013 on (true) or the fixed `RiskPercent` (false), with `SizingPlan` = Ladder. The one value the owner switches by hand | Both are backtested |
 | SizingPlan (new in 0.12) | Ladder | How the risk of a new trade is set: `Ladder` (RSK-013, unchanged) or `Recovery` (4.1.1) | Both are backtested |
@@ -821,6 +860,12 @@ In Breakout mode (v0.10) the zone and gap parameters produce no signals (SwingSt
 | RangeMinWidthAtr (added 23 November 2026) | 0.5 | SessionRange: smallest range, in ATR(D1) | Test 0 and 0.5 |
 | RangeStopAtr (added 23 November 2026) | 1.0 | SessionRange: stop distance, in ATR(H4) | Fixed |
 | RangeTrendFastEma (new in 0.17) | 20 | SessionRange: direction from D1 EMA(this) against D1 EMA(`BiasEmaPeriod`); 0 = close against EMA(`BiasEmaPeriod`) as in 3.1 (row AY) | Fixed |
+| NightEntryNy / NightLatestNy (new in 0.18) | 18:15 / 19:00 | Overnight: the evaluation bar closes at or after the first and before the second, New York time (3.10) | Fixed |
+| NightExitNy (new in 0.18) | 02:45 | Overnight: an open position is closed, New York time | Fixed |
+| NightEntryBufferAtr (new in 0.18) | 0.03 | Overnight: buy stop above close + spread, x ATR(M15) | Fixed |
+| NightStopAtr (new in 0.18) | 1.0 | Overnight: stop distance, x ATR(D1) | Fixed |
+| NightTargetR (new in 0.18) | 5.0 | Overnight: safety target, in R | Fixed |
+| NightOrderMinutes (new in 0.18) | 60 | Overnight: life of the buy stop after the evaluation bar | Fixed |
 | NewsBeforeMin / NewsAfterMin (new) | 30 / 30 | Window around events | Fixed |
 | NewsFailMode (new) | Block | Behaviour without calendar | Fixed |
 | NewsSources (new in 0.3) | ForexFactory | ForexFactory only until a second feed is added (owner decision 2026-11-14) | n/a |

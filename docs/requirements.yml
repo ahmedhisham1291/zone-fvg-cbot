@@ -2145,6 +2145,31 @@ requirements:
       under deploy/params carry RangeTrendFastEma=20 and their pinned
       hashes are updated; the guides name the new default.
 
+  - id: SIG-043
+    wp: WP43
+    spec: "3.10, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Overnight signal (owner request of 2026-11-27, rows AZ and BE). A
+      tracker in the core, fed closed M15 bars and the last closed D1 and
+      M15 ATRs, gives at most one buy setup per trading day (3.8's trading
+      day and New York time): only for trading days that start on a Monday
+      to Thursday evening (New York date of the 17:00 start), at the first
+      closed M15 bar whose close time is at or after NightEntryNy (18:15)
+      and before NightLatestNy (19:00); none when ATR(D1) or ATR(M15) is
+      missing or not a positive finite number (fail closed). Levels: entry =
+      bar close + spread at placement + NightEntryBufferAtr x ATR(M15);
+      stop = entry - NightStopAtr x ATR(D1); target = entry + NightTargetR x
+      stop distance; expiry NightOrderMinutes after the bar's close (news
+      windows shorten it as for every order). Signal id ON-yyyyMMdd from the
+      date that names the trading day. OvernightParameters hold the six
+      values with the defaults of spec 7 and are validated (times in range,
+      NightEntryNy before NightLatestNy before NightExitNy in trading-day
+      order, positive finite multiples, minutes from 1 to 180); a refusal
+      names the parameter. The parameter hash of this mode has the six
+      fields; no other mode's hash changes.
+
   - id: EXE-027
     wp: WP37
     spec: "3.9, 5.2"
@@ -2365,6 +2390,33 @@ requirements:
       those three, the start line and the hash text are exactly as before,
       byte for byte, so every pinned hash stays.
 
+  - id: EXE-033
+    wp: WP43
+    spec: "3.10, 5.2, 5.3, 5.5, 8.3"
+    verify: unit
+    status: planned
+    text: >-
+      Overnight execution (owner request of 2026-11-27, rows AZ, BA and
+      BD). The setup of SIG-043 is placed as a buy stop through the existing
+      placement path (pre-trade filters, sizing, account limits, idempotent
+      placement, unclear outcomes) with the ON- signal id in the label; it is
+      skipped when price has already reached the entry, and by the spread
+      check as in 3.7; the journal line of every taken or skipped Overnight
+      entry carries the spread at placement. Timed exit: at the first closed
+      M15 bar whose close time is at or after NightExitNy (02:45 New York) of
+      the trading day in the position's id, an open Overnight position is
+      closed at market, with the rules of the SessionRange timed exit
+      (EXE-024 to EXE-026: retries, market closed, reported trading hours).
+      Two instances on one symbol (row BA): an instance cancels, closes,
+      modifies and time-exits only orders and positions whose signal id is of
+      its own mode; a FakeBroker scenario with a SessionRange core and an
+      Overnight core on one XAUUSD account over several trading days shows
+      each trading its own hours, neither touching the other's order or
+      position, and recovery of each after a restart keeping the other's
+      untouched. If the one-position check counts positions of every mode,
+      an overlap skips the later entry (fail closed) and the scenario proves
+      that too.
+
   - id: PLT-018
     wp: WP39
     spec: "2, 3.9, 4.1, 7, 7.1, 12.1"
@@ -2435,6 +2487,28 @@ requirements:
       DrawdownBrakePercent=3.0 and DrawdownBrakeFactor=0.5;
       deploy/README.md, docs/runbook.md and docs/backtest-howto.md name the
       new defaults and say that only the XAUUSD instance is run with them.
+
+  - id: PLT-021
+    wp: WP43
+    spec: "3.10, 4.1, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Overnight in the cBot and the brake off by default (rows AZ, BB, BC).
+      The cBot accepts EntryMode "Overnight" (with EntryModel Fvg; Choch is
+      refused as for the other modes), declares NightEntryNy "18:15",
+      NightLatestNy "19:00", NightExitNy "02:45", NightEntryBufferAtr 0.03,
+      NightStopAtr 1.0, NightTargetR 5.0 and NightOrderMinutes 60, checks
+      them at start in every mode (a refusal names the parameter as cTrader
+      shows it) and passes them to the core in Overnight mode only. The
+      default of DrawdownBrakePercent becomes 0.0. The five existing files
+      under deploy/params carry DrawdownBrakePercent=0.0 and the seven new
+      lines; a new file deploy/params/XAUUSD-overnight carries the same
+      lines as the XAUUSD file except EntryMode=Overnight and
+      RiskPercent=1.0. The pinned hashes of the files are updated. The
+      guides say that gold runs as two instances (SessionRange at 0.75% and
+      Overnight at 1.0%), that the account limits are shared, and that the
+      cost gate of row BD comes before the Challenge.
 
   - id: LAB-001
     wp: WP40
