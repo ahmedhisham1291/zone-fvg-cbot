@@ -136,7 +136,7 @@ public class Wp45FtmoInstantScenarios
         BotHarness h = ConsistencyHarness(A);
         h.Start(A, WithRisk(r => r with { ConsistencyMaxPercent = 30.0 }));
 
-        string first = JournalFormat.Time(A) + " consistency since=2026-01-01 total=15000.00 bestDay=2026-02-10 bestDayProfit=6000.00 ratio=40.00 limit=30.00 met=no";
+        string first = JournalFormat.Time(A) + " consistency since=2026-01-01 total=15000 bestDay=2026-02-10 bestDayProfit=6000 ratio=40 limit=30 met=no";
         Assert.Equal(new[] { first }, h.Journal.Lines(ConsistencyReadout.Category));
 
         h.Timer(A.AddMinutes(1.0));
@@ -147,7 +147,7 @@ public class Wp45FtmoInstantScenarios
         h.Timer(NextDay.AddMinutes(1.0));
         h.Timer(NextDay.AddHours(12.0));
 
-        string second = JournalFormat.Time(NextDay) + " consistency since=2026-01-01 total=15000.00 bestDay=2026-02-10 bestDayProfit=6000.00 ratio=40.00 limit=30.00 met=no";
+        string second = JournalFormat.Time(NextDay) + " consistency since=2026-01-01 total=15000 bestDay=2026-02-10 bestDayProfit=6000 ratio=40 limit=30 met=no";
         Assert.Equal(new[] { first, second }, h.Journal.Lines(ConsistencyReadout.Category));
     }
 
@@ -224,7 +224,7 @@ public class Wp45FtmoInstantScenarios
         h.Start(A, WithRisk(r => r with { ConsistencyMaxPercent = 30.0, RewardPeriodStartDate = RewardDate }));
 
         string line = Assert.Single(h.Journal.Lines(ConsistencyReadout.Category));
-        Assert.Equal(JournalFormat.Time(A) + " consistency since=2026-02-01 total=10000.00 bestDay=2026-02-10 bestDayProfit=6000.00 ratio=60.00 limit=30.00 met=no", line);
+        Assert.Equal(JournalFormat.Time(A) + " consistency since=2026-02-01 total=10000 bestDay=2026-02-10 bestDayProfit=6000 ratio=60 limit=30 met=no", line);
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public class Wp45FtmoInstantScenarios
         BotHarness h = ConsistencyHarness(A);
         h.Start(A, WithRisk(r => r with { ConsistencyMaxPercent = 30.0, RewardPeriodStartDate = null }));
 
-        Assert.StartsWith(JournalFormat.Time(A) + " consistency since=2026-01-01 total=15000.00 ", Assert.Single(h.Journal.Lines(ConsistencyReadout.Category)), StringComparison.Ordinal);
+        Assert.StartsWith(JournalFormat.Time(A) + " consistency since=2026-01-01 total=15000 ", Assert.Single(h.Journal.Lines(ConsistencyReadout.Category)), StringComparison.Ordinal);
     }
 
     // ------------------------------------------------------------------ OPS-012: a history failure

@@ -304,7 +304,7 @@ change them yourself (section 7).
   balance at or above about 108,200 after the withdrawal.
 - **Consistency line.** Once a Prague day and at every start each instance
   writes, for example:
-  `consistency since=2026-12-01 total=4200.00 bestDay=2026-12-09 bestDayProfit=1500.00 ratio=35.71 limit=30.00 met=no`.
+  `consistency since=2026-12-01 total=4200 bestDay=2026-12-09 bestDayProfit=1500 ratio=35.71 limit=30 met=no`.
   `total` is the net closed profit of the whole account (commission and swap
   included) since 00:00 Prague time of `RewardPeriodStartDate` (empty: of
   `RiskEpochDate`); `bestDay` is the Prague day with the largest profit;

@@ -56,7 +56,7 @@ public class Ops012ConsistencyReadoutTests
         Assert.Equal(6000.0, result.BestDayProfit!.Value, 1e-9);
         Assert.Equal(60.0, result.RatioPercent!.Value, 1e-9);
         Assert.False(result.Met);
-        Assert.Equal("since=2026-03-01 total=10000.00 bestDay=2026-03-02 bestDayProfit=6000.00 ratio=60.00 limit=30.00 met=no", Line(result));
+        Assert.Equal("since=2026-03-01 total=10000 bestDay=2026-03-02 bestDayProfit=6000 ratio=60 limit=30 met=no", Line(result));
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class Ops012ConsistencyReadoutTests
 
         Assert.Equal(30.0, result.RatioPercent!.Value, 1e-9);
         Assert.True(result.Met);
-        Assert.Equal("since=2026-03-01 total=10000.00 bestDay=2026-03-02 bestDayProfit=3000.00 ratio=30.00 limit=30.00 met=yes", Line(result));
+        Assert.Equal("since=2026-03-01 total=10000 bestDay=2026-03-02 bestDayProfit=3000 ratio=30 limit=30 met=yes", Line(result));
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class Ops012ConsistencyReadoutTests
 
         Assert.Equal(new DateTime(2026, 3, 3), result.BestDay);
         Assert.False(result.Met);
-        Assert.Equal("since=2026-03-01 total=10000.00 bestDay=2026-03-03 bestDayProfit=3000.01 ratio=30.00 limit=30.00 met=no", Line(result));
+        Assert.Equal("since=2026-03-01 total=10000 bestDay=2026-03-03 bestDayProfit=3000.01 ratio=30 limit=30 met=no", Line(result));
     }
 
     [Fact]
@@ -104,8 +104,8 @@ public class Ops012ConsistencyReadoutTests
 
         Assert.Null(result.RatioPercent);
         Assert.False(result.Met);
-        Assert.Contains(" ratio=NA limit=30.00 met=no", Line(result), StringComparison.Ordinal);
-        Assert.Contains(" bestDay=2026-03-02 bestDayProfit=500.00 ", Line(result), StringComparison.Ordinal);
+        Assert.Contains(" ratio=NA limit=30 met=no", Line(result), StringComparison.Ordinal);
+        Assert.Contains(" bestDay=2026-03-02 bestDayProfit=500 ", Line(result), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class Ops012ConsistencyReadoutTests
         Assert.Equal(0.0, result.Total);
         Assert.Null(result.BestDay);
         Assert.Null(result.BestDayProfit);
-        Assert.Equal("since=2026-03-01 total=0.00 bestDay=NA bestDayProfit=NA ratio=NA limit=30.00 met=no", Line(result));
+        Assert.Equal("since=2026-03-01 total=0 bestDay=NA bestDayProfit=NA ratio=NA limit=30 met=no", Line(result));
     }
 
     [Fact]
@@ -218,11 +218,31 @@ public class Ops012ConsistencyReadoutTests
 
     [Fact]
     [Trait("Req", "OPS-012")]
-    public void Fields_OtherLimit_WrittenWithTwoDecimals()
+    public void Fields_OtherLimit_WrittenInRoundTripFormat()
     {
         ConsistencyResult result = ConsistencyReadout.Compute(new[] { OnDay(1, 2, 1000.0) }, Since, 12.5);
 
-        Assert.EndsWith(" ratio=100.00 limit=12.50 met=no", Line(result), StringComparison.Ordinal);
+        Assert.EndsWith(" ratio=100 limit=12.5 met=no", Line(result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Req", "OPS-012")]
+    public void Fields_MoneyAndRatio_RoundedTo2DecimalsHalfAwayFromZero()
+    {
+        // 1,500 of 4,200 is 35.714...%; 1,000.125 is exact in binary and rounds up to 1,000.13.
+        Assert.Equal(
+            "since=2026-03-01 total=4200 bestDay=2026-03-02 bestDayProfit=1500 ratio=35.71 limit=30 met=no",
+            Line(Compute(OnDay(1, 2, 1500.0), OnDay(2, 3, 1400.0), OnDay(3, 4, 1300.0))));
+        Assert.Contains(" bestDayProfit=1000.13 ", Line(Compute(OnDay(1, 2, 1000.125), OnDay(2, 3, 100.0))), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("Req", "OPS-012")]
+    public void Fields_TotalThatRoundsToMinusZero_WrittenAs0()
+    {
+        ConsistencyResult result = Compute(OnDay(1, 2, 0.001), OnDay(2, 3, -0.004));
+
+        Assert.Equal("since=2026-03-01 total=0 bestDay=2026-03-02 bestDayProfit=0 ratio=NA limit=30 met=no", Line(result));
     }
 
     [Fact]

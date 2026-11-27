@@ -86,7 +86,8 @@ public static class ConsistencyReadout
     /// <summary>
     /// The fields of the journal line (OPS-012), in this order: <c>since=yyyy-MM-dd total=&lt;USD&gt;
     /// bestDay=yyyy-MM-dd bestDayProfit=&lt;USD&gt; ratio=&lt;percent or NA&gt; limit=&lt;percent&gt;
-    /// met=&lt;yes|no&gt;</c>, money and percents rounded to 2 decimals, NA for a missing value.
+    /// met=&lt;yes|no&gt;</c>. Numbers in the invariant round-trip ("R") format: money and the ratio
+    /// after rounding to 2 decimals (half away from zero), the limit as given; NA for a missing value.
     /// </summary>
     /// <param name="result">The readout.</param>
     /// <returns>The keys and values.</returns>
@@ -97,11 +98,11 @@ public static class ConsistencyReadout
         return new (string Key, string? Value)[]
         {
             ("since", Date(result.SinceDate)),
-            ("total", JournalFormat.Fixed(result.Total, 2)),
+            ("total", Rounded(result.Total)),
             ("bestDay", result.BestDay.HasValue ? Date(result.BestDay.Value) : JournalFormat.NotAvailable),
-            ("bestDayProfit", JournalFormat.Fixed(result.BestDayProfit, 2)),
-            ("ratio", JournalFormat.Fixed(result.RatioPercent, 2)),
-            ("limit", JournalFormat.Fixed(result.LimitPercent, 2)),
+            ("bestDayProfit", result.BestDayProfit.HasValue ? Rounded(result.BestDayProfit.Value) : JournalFormat.NotAvailable),
+            ("ratio", result.RatioPercent.HasValue ? Rounded(result.RatioPercent.Value) : JournalFormat.NotAvailable),
+            ("limit", result.LimitPercent.ToString("R", CultureInfo.InvariantCulture)),
             ("met", result.Met ? "yes" : "no"),
         };
     }
@@ -130,6 +131,13 @@ public static class ConsistencyReadout
         {
             throw new ArgumentException("A net profit is not a finite number.", "trades");
         }
+    }
+
+    private static string Rounded(double value)
+    {
+        // Rounded to 2 decimals, then the round-trip format; a rounded -0 is written as 0.
+        double rounded = Math.Round(value, 2, MidpointRounding.AwayFromZero);
+        return (rounded == 0.0 ? 0.0 : rounded).ToString("R", CultureInfo.InvariantCulture);
     }
 
     private static string Date(DateTime date)
