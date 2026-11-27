@@ -291,25 +291,37 @@ namespace cAlgo.Robots
         [Parameter("MaxDrawdownPercent", DefaultValue = 8.0, Group = "Risk")]
         public double MaxDrawdownPercent { get; set; }
 
-        /// <summary>Base for the FTMO percentages (RSK-004, PLT-017). Default 200,000 from spec v0.12.</summary>
-        [Parameter("InitialCapital", DefaultValue = 200000.0, Group = "Risk")]
+        /// <summary>Base for the FTMO percentages (RSK-004, PLT-017, PLT-022). Default 100,000 from spec v0.20 (FTMO Instant, row BG).</summary>
+        [Parameter("InitialCapital", DefaultValue = 100000.0, Group = "Risk")]
         public double InitialCapital { get; set; }
 
         /// <summary>Day boundary zone. Fixed: Europe/Prague, computed by the core's CestClock (RSK-012).</summary>
         [Parameter("DayResetZone", DefaultValue = "Europe/Prague", Group = "Risk")]
         public string DayResetZone { get; set; } = "Europe/Prague";
 
-        /// <summary>FTMO daily loss limit in percent (RSK-009).</summary>
-        [Parameter("FtmoDailyLossPercent", DefaultValue = 5.0, Group = "Risk")]
+        /// <summary>FTMO daily loss limit in percent (RSK-009, PLT-022). Default 3 from spec v0.20 (FTMO Instant, row BH).</summary>
+        [Parameter("FtmoDailyLossPercent", DefaultValue = 3.0, Group = "Risk")]
         public double FtmoDailyLossPercent { get; set; }
 
-        /// <summary>FTMO maximum loss in percent (RSK-009).</summary>
+        /// <summary>FTMO maximum loss in percent (RSK-009, PLT-022).</summary>
         [Parameter("FtmoMaxLossPercent", DefaultValue = 10.0, Group = "Risk")]
         public double FtmoMaxLossPercent { get; set; }
 
-        /// <summary>Emergency guard distance from an FTMO floor in percent (RSK-009).</summary>
-        [Parameter("FtmoGuardBufferPercent", DefaultValue = 1.0, Group = "Risk")]
+        /// <summary>How the guard's overall floor is placed: Static (2-Step) or TrailingBalance (FTMO Instant); read by the core's FtmoInstantText (RSK-021, PLT-022).</summary>
+        [Parameter("FtmoMaxLossMode", DefaultValue = "TrailingBalance", Group = "Risk")]
+        public string FtmoMaxLossMode { get; set; } = "TrailingBalance";
+
+        /// <summary>Emergency guard distance from an FTMO floor in percent (RSK-009, RSK-021, PLT-022). Default 0.5 from spec v0.20 (row BI).</summary>
+        [Parameter("FtmoGuardBufferPercent", DefaultValue = 0.5, Group = "Risk")]
         public double FtmoGuardBufferPercent { get; set; }
+
+        /// <summary>Consistency readout: the largest share of the profit the best day may have, in percent; 0 = no readout (OPS-012, PLT-022, row BK).</summary>
+        [Parameter("ConsistencyMaxPercent", DefaultValue = 30.0, Group = "Risk")]
+        public double ConsistencyMaxPercent { get; set; }
+
+        /// <summary>Start of the consistency count, yyyy-MM-dd (the date of the last reward); empty = RiskEpochDate; read by the core's FtmoInstantText (OPS-012, PLT-022).</summary>
+        [Parameter("RewardPeriodStartDate", DefaultValue = "", Group = "Risk")]
+        public string RewardPeriodStartDate { get; set; } = string.Empty;
 
         /// <summary>Order requests per instance per day (RSK-010).</summary>
         [Parameter("MaxRequestsPerDay", DefaultValue = 100, Group = "Risk")]
@@ -858,7 +870,12 @@ namespace cAlgo.Robots
                 InitialCapital = InitialCapital,
                 FtmoDailyLossPercent = FtmoDailyLossPercent,
                 FtmoMaxLossPercent = FtmoMaxLossPercent,
+
+                // RSK-021, OPS-012, PLT-022: the two texts are read in the core; a refusal names the parameter.
+                FtmoMaxLossMode = FtmoInstantText.MaxLossMode(FtmoMaxLossMode),
                 FtmoGuardBufferPercent = FtmoGuardBufferPercent,
+                ConsistencyMaxPercent = ConsistencyMaxPercent,
+                RewardPeriodStartDate = FtmoInstantText.RewardPeriodStart(RewardPeriodStartDate),
                 // PLT-014: an empty text is "not configured"; in a backtest the core's default is the CE(S)T date of
                 // the server time at start, live it is refused as before. Any other text is parsed as before.
                 RiskEpochDate = BacktestDefaults.RiskEpoch(ParameterText.OptionalDate(nameof(RiskEpochDate), RiskEpochDate), isBacktest, ServerTimeUtc()),

@@ -244,17 +244,18 @@ symbol, before the laptop stage, write into the files:
   file carries the values of the judged run and nothing else differs.
 - Never copy the backtest-only values into a live file. `NewsEnabled`,
   `InitialCapital` and `DrawObjects` stay at their defaults (news on,
-  200000 from spec v0.12, no drawings), and `RiskEpochDate` is the date step 10.3 names,
+  100000 from spec v0.20, the FTMO Instant account, no drawings), and `RiskEpochDate` is the date step 10.3 names,
   not the backtest's start date. The parameter hash does not cover the news
   and risk values, so it cannot catch this mistake.
 - Every other value stays at its default, except the values that step 10.3
   and "Gold (XAUUSD)" below tell you to set. The risk defaults of spec v0.12,
   v0.14 and v0.16 (owner decisions and requests of 2026-11-24 and
-  2026-11-27): `InitialCapital=200000.0`,
+  2026-11-27): `InitialCapital=100000.0` (FTMO Instant from spec v0.20, see
+  "FTMO Instant account" below),
   `DailyLossLimitPercent=2.0`, the monthly loss limit
   `MonthlyLossLimitPercent=2.0` (spec v0.19, row BF: once the account's closed
   result for the Prague-time calendar month reaches -2% of the initial capital,
-  -4,000 USD at 200,000, no new entry until the next month and pending entry
+  -2,000 USD at 100,000, no new entry until the next month and pending entry
   orders are cancelled; it counts every closed trade of the account, so both
   gold instances stop together; it never closes a trade; `0` switches it off),
   `MaxVolumeUnits=0.0` (automatic: 3,000,000
@@ -820,7 +821,7 @@ service user.
 
 | Parameter | What to put |
 |---|---|
-| `RiskEpochDate` | The first day of this account, `yyyy-MM-dd`. It means 00:00 Prague time that day (architecture section 10). Same value in all five files. Runbook: "Changing RiskEpochDate" |
+| `RiskEpochDate` | The first day of this account, `yyyy-MM-dd`. It means 00:00 Prague time that day (architecture section 10). Same value in every file. On the FTMO Instant account it stays that first day, also after a reward. Runbook: "Changing RiskEpochDate" |
 | `NewsFeedUrl` | The Forex Factory weekly calendar export address (JSON) you used on the laptop. Same in all five files |
 | `TelegramBotToken`, `TelegramChatId` | From your Telegram bot (spec 11). Same in all five files |
 | `HeartbeatUrl` | One check per symbol at your heartbeat-monitoring service, so an alert names the symbol that stopped |
@@ -838,6 +839,50 @@ safely (no calendar means no entries; failed alerts are logged).
 ```bash
 chmod 600 /opt/zfvg/params/*/bot.cbotset
 ```
+
+### FTMO Instant account (spec 15.8)
+
+From spec v0.20 (owner decision of 27 November 2026) the files are set for
+an FTMO Instant account of 100,000 USD. Every file under `deploy/params/`
+carries these lines; leave them as they are:
+
+| Line | Meaning |
+|---|---|
+| `InitialCapital=100000.0` | The account size; every percent below is a percent of it |
+| `FtmoDailyLossPercent=3.0` | FTMO Instant's daily limit: equity must stay above the 00:00 Prague balance minus 3,000 |
+| `FtmoMaxLossPercent=10.0` | FTMO Instant's maximum loss: equity must stay above P minus 10,000 |
+| `FtmoMaxLossMode=TrailingBalance` | P is the highest closed-trade balance since `RiskEpochDate`, at least 100,000; it rises, never falls and is not reset by a reward. `Static` is the 2-Step rule (a fixed floor from `InitialCapital`) |
+| `FtmoGuardBufferPercent=0.5` | The emergency guard closes everything and halts 500 USD before either floor: at the 00:00 balance minus 2,500, or at P minus 9,500. If P cannot be read it uses the static floor (90,500), which is never looser |
+| `ConsistencyMaxPercent=30.0` | The daily `consistency` journal line: is the best Prague day at most 30% of the profit since the last reward? Information only. `0` switches the line off |
+| `RewardPeriodStartDate=` | Empty: the line counts from `RiskEpochDate`. After each reward set it to the reward's date, `yyyy-MM-dd` |
+
+The daily budget (2%, 2,000 USD), the kill switch (8% below P) and the
+monthly loss limit (2%, 2,000 USD) are unchanged in percent.
+
+- `RiskEpochDate` stays the account's first day; do not move it after a
+  reward, because FTMO's floor does not reset either.
+- A reward (withdrawal) lowers the balance but not P. Withdraw only so much
+  that the balance stays at least about 5% above P x 0.92, the kill switch
+  line.
+- After each reward, set `RewardPeriodStartDate` to that date in every file,
+  only while the bot is flat (no open position and no pending order of the
+  bot): stop, edit, start, as for `RiskEpochDate` (runbook section 5). How to
+  read the line: runbook section 9.
+
+### FTMO 2-Step Challenge (spec row BN)
+
+For the owner's FTMO 2-Step Challenge of 200,000 USD, copy the two gold
+files `xauusd-challenge2step.cbotset.example` (SessionRange) and
+`xauusd-overnight-challenge2step.cbotset.example` (Overnight) instead of
+`xauusd` and `xauusd-overnight` into `params/xauusd/bot.cbotset` and
+`params/xauusd-overnight/bot.cbotset`. They equal the funded files except
+six lines: both risk 1.25% per trade (`RiskPercent=1.25`) with the monthly
+loss limit off (`MonthlyLossLimitPercent=0.0`), and the account limits are
+the 2-Step's: `InitialCapital=200000.0`, `FtmoDailyLossPercent=5.0` (5% of
+the 00:00 Prague balance per day), `FtmoMaxLossMode=Static` (a fixed 10%
+floor, 180,000) and `FtmoGuardBufferPercent=1.0`. After passing the
+Challenge and the Verification, switch to the funded files (`xauusd`,
+`xauusd-overnight`), with a new `RiskEpochDate`, while the bot is flat.
 
 ### Gold (XAUUSD)
 

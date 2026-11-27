@@ -64,7 +64,7 @@ public class Plt018CbotDefaultsTests
     [InlineData("[Parameter(\"LadderEnabled\", DefaultValue = false, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"RiskPercent\", DefaultValue = 0.75, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"SizingPlan\", DefaultValue = \"Ladder\", Group = \"Risk\")]")]
-    [InlineData("[Parameter(\"InitialCapital\", DefaultValue = 200000.0, Group = \"Risk\")]")]
+    [InlineData("[Parameter(\"InitialCapital\", DefaultValue = 100000.0, Group = \"Risk\")]")]
     [InlineData("[Parameter(\"NewsEnabled\", DefaultValue = true, Group = \"News\")]")]
     public void Bot_Defaults_AreThoseOfSpecV014(string declaration)
     {
