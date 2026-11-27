@@ -53,7 +53,8 @@ build from WP39 on, the defaults are the setup your backtests showed best:
 `EntryMode` ZoneFvg, `EntryModel` Choch, `ChochUseBias` true (the D1 trend
 filter), all day (`SessionStartUtc` 00:00, `SessionEndUtc` 24:00), a fixed
 0.5% risk per trade (`LadderEnabled` false), `SizingPlan` Ladder,
-`InitialCapital` 200000, and the four values that differ between the
+`InitialCapital` 100000 (the FTMO Instant account from spec v0.20; 200000
+from WP38 to WP44), and the four values that differ between the
 currency pairs and gold (`MaxSpreadPips`, `MinStopPips`,
 `ChochMinStopPips`, `MaxVolumeUnits`) at 0, which means automatic: the bot
 works them out from the symbol and the pip size cTrader reports (spec
@@ -66,7 +67,7 @@ of 0.01. Then a backtest is:
    **LadderEnabled**: `false` (the default) for a fixed 0.5% per trade,
    `true` for the ladder.
 3. cTrader's own backtest settings as in step 7: Starting capital
-   `200000`, the period, the data, the commission.
+   `100000`, the period, the data, the commission.
 4. Steps 8 to 10 (run, save the Log, extract).
 
 Check the `start` line of the Log: it ends with `mode=ZoneFvg model=Choch`
@@ -160,13 +161,18 @@ step 1).
      equal to SessionEndUtc, = off). Put the values into the file names, for
      example `eurusd-breakout-t200-c0800-dev.csv`. In ZoneFvg mode they are
      not used.
-   - **InitialCapital:** 200000 (your 200,000 USD account, owner decision of
-     24 November 2026; the cBot's default from WP38 on, 100000 before), the
-     same number as the Starting capital in step 7. With a different
-     starting capital the FTMO emergency guard fires at once (10,000
-     against 200,000 is already 95% below), and from WP22 on the bot
-     refuses to start and says why in the Log. With a build before WP38
-     type 200000 by hand.
+   - **InitialCapital:** 100000 (your FTMO Instant account of 100,000 USD,
+     owner decision of 27 November 2026, spec 15.8; the cBot's default from
+     WP45 on, 200000 from WP38 to WP44, 100000 before), the same number as
+     the Starting capital in step 7. With a different starting capital the
+     FTMO emergency guard fires at once (10,000 against 100,000 is already
+     90% below), and from WP22 on the bot refuses to start and says why in
+     the Log. With a build from WP38 to WP44 type 100000 by hand. The other
+     FTMO Instant values (`FtmoDailyLossPercent` 3, `FtmoMaxLossMode`
+     TrailingBalance, `FtmoGuardBufferPercent` 0.5, `ConsistencyMaxPercent`
+     30, `RewardPeriodStartDate` empty) stay at their defaults; in a
+     backtest the guard only writes `would-halt` lines (step 11), and the
+     `consistency` line is written once a day and at the start.
    - **SizingPlan:** leave it at `Ladder` (the default) for these series.
      The Recovery plan is backtested as Part 7 describes.
    - **LadderEnabled:** from WP39 on the default is `false`: every trade
@@ -205,8 +211,8 @@ step 1).
 7. Open the **Backtesting** tab of that instance (to the right of the chart
    tab) and click the cog icon. Settings (spec 12.1):
    - **Data:** tick data from server.
-   - **Starting capital:** 200000 (the planned capital), equal to the
-     InitialCapital parameter of step 6.
+   - **Starting capital:** 100000 (the planned capital, FTMO Instant),
+     equal to the InitialCapital parameter of step 6.
    - **Commission:** the commission of your FTMO account per million units.
      If you do not know it, write down what you used.
    - **Spread:** leave the default unless the developer said otherwise.
@@ -260,7 +266,7 @@ step 1).
    **Monthly loss limit (from WP44 on).** `MonthlyLossLimitPercent` (default
    2) is not one of these: a backtest applies it as the live bot does. Once
    the account's closed result for the Prague-time calendar month reaches -2%
-   of the initial capital (-4,000 USD at 200,000), the bot opens nothing new
+   of the initial capital (-2,000 USD at 100,000), the bot opens nothing new
    until the first day of the next month and cancels its pending entry
    orders; it counts every closed trade of the account (both gold instances
    together in live trading), never closes a trade, and the Log shows the
@@ -333,7 +339,13 @@ of the two modes in one command, except as `--benchmark` in step 15.
 
     Write down the 1st and 5th percentile of the 30-trade average R: live
     edge monitoring uses them (spec 13.3).
-14. **FTMO challenge simulation** at 0.5%, 0.75% and 1% risk (step 9):
+14. **FTMO challenge simulation** at 0.5%, 0.75% and 1% risk (step 9).
+    The `sim` tools still default to the 2-Step account of 200,000
+    (`--initial-capital 200000`, `--daily-loss 5`); for a backtest on the
+    FTMO Instant account add `--initial-capital 100000` to the `combine`,
+    `montecarlo`, `ftmo` and `accept` commands, and `--daily-loss 3` to
+    `ftmo` and `accept`. The simulation's overall floor is static, not FTMO
+    Instant's trailing floor, so read its breach rate as a lower bound:
 
     ```
     dotnet run --project tools/sim -- ftmo --log eurusd-breakout-dev.csv --log gbpusd-breakout-dev.csv --log usdjpy-breakout-dev.csv --log audusd-breakout-dev.csv --seed 1
@@ -470,7 +482,7 @@ step 4.
     those of the close against the EMA(50); the default 20 (spec v0.17,
     row AY) takes the side from the D1 EMA(20) against the D1 EMA(50).
     Leave `InitialCapital`
-    (200000), `RiskEpochDate` (empty) and `NewsEnabled` (true) as in step 6.
+    (100000), `RiskEpochDate` (empty) and `NewsEnabled` (true) as in step 6.
     The news filter is then off for this run, as in the search (the `start`
     line shows `news=disabled`). Before WP39 set `MaxVolumeUnits` to
     1000, as in the gold file (the cBot's default was the forex value);
@@ -483,7 +495,7 @@ step 4.
       This setting should give results near the second line of figures in
       step 22 ("cTrader's fills"). Tick data from server comes nearer the
       first line (the search's own fills).
-    - **Starting capital:** 200000.
+    - **Starting capital:** 100000.
     - **Commission:** the commission of your FTMO account for XAUUSD.
       Write down what you used.
     - **Spread:** 0.30 USD, the spread the search assumed. cTrader takes
@@ -722,8 +734,8 @@ Two ways to see what Recovery would have done:
       `SanityCapEnabled` (false), `OpenRiskCapEnabled` (false),
       `CurrencyCapEnabled` (false), `DailyLossLimitPercent` (2),
       `MaxVolumeUnits` (3000000, gold 1000; from WP39 on 0, automatic,
-      which gives the same numbers) and `InitialCapital` (200000)
-      at their defaults; Starting capital 200000. `LadderEnabled` is not
+      which gives the same numbers) and `InitialCapital` (100000)
+      at their defaults; Starting capital 100000. `LadderEnabled` is not
       read with `Recovery`.
     Put the plan into the file names, for example
     `eurusd-breakout-recovery-dev.csv`. The `start` line of the Log ends

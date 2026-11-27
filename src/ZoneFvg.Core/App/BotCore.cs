@@ -47,6 +47,9 @@ namespace ZoneFvg.Core.App;
 /// <para>With SizingPlan Ladder and LadderEnabled false (fixed sizing, PLT-020, RSK-019) the start line
 /// ends, after every other field, with <c>brake=&lt;DrawdownBrakePercent&gt;/&lt;DrawdownBrakeFactor&gt;</c>,
 /// or <c>brake=off</c> when DrawdownBrakePercent is 0.</para>
+/// <para>With ConsistencyMaxPercent above 0 (OPS-012) the line <c>consistency since=... met=...</c> is
+/// written at start and at the first event (timer, M15 bar or trade event) of each later CE(S)T day.
+/// Information only: no trading decision reads it.</para>
 /// </remarks>
 public sealed class BotCore
 {
@@ -162,6 +165,9 @@ public sealed class BotCore
 
     // EXE-025: the day of the last "deferred" line of the timed exit, one line per day.
     private DateTime? _rangeExitDeferredDay;
+
+    // OPS-012: the start of the CE(S)T day of the last consistency readout; journal only, never read by a trading decision.
+    private DateTime? _consistencyDayUtc;
 
     /// <summary>
     /// Creates the core of one instance (docs/architecture.md section 3). Validates every
@@ -405,6 +411,8 @@ public sealed class BotCore
         {
             RecordStart(now);
         }
+
+        ConsistencyDuty(now);
         if (_newsEnabled)
         {
             RefreshNews(now);
@@ -484,6 +492,7 @@ public sealed class BotCore
         CountZoneOutcomes(timeFrame, close, _engine.LastActivity);
         CheckRequestLimit(now);
         TouchLastSeen(now);
+        ConsistencyDuty(now);
     }
 
     // OPS-009, journal only: at the first live M15 bar of a later CE(S)T day the earlier days are written,
@@ -514,6 +523,7 @@ public sealed class BotCore
             // In every state (WP09): the daily summary and the inactivity check, whose alerts go out in the pump below.
             _ops.Summary.Pump(now, () => SummaryInput(now));
             CheckInactivity(now);
+            ConsistencyDuty(now);
         }
         finally
         {
@@ -659,6 +669,41 @@ public sealed class BotCore
         WeekendDuty();
         RecordTrades(now);
         CheckRequestLimit(now);
+        ConsistencyDuty(now);
+    }
+
+    // OPS-012 (row BK), information only: with ConsistencyMaxPercent above 0, at start and at the first event of
+    // each later CE(S)T day, one line from the account's closed trades since 00:00 CE(S)T of RewardPeriodStartDate
+    // (empty: RiskEpochDate). The history is read for it once per day, also when the read fails. Nothing here
+    // can reach a trading decision: every failure of the read or of the data ends in the status=unavailable
+    // line, which is the journal record of it, and is not counted as an error (an error count can halt, RSK-010).
+    private void ConsistencyDuty(DateTime now)
+    {
+        if (!(_risk.ConsistencyMaxPercent > 0.0))
+        {
+            return;
+        }
+
+        DateTime day = CestClock.StartOfCestDayUtc(now);
+        if (_consistencyDayUtc == day)
+        {
+            return;
+        }
+
+        _consistencyDayUtc = day;
+        DateTime since = _risk.RewardPeriodStartDate ?? _risk.RiskEpochDate;
+        IReadOnlyList<(string Key, string? Value)> fields;
+        try
+        {
+            IReadOnlyList<ClosedTradeInfo> history = _broker.GetHistory(CestClock.StartOfCestDateUtc(since)) ?? throw new InvalidOperationException("The broker returned no history.");
+            fields = ConsistencyReadout.Fields(ConsistencyReadout.Compute(history, since, _risk.ConsistencyMaxPercent));
+        }
+        catch (Exception)
+        {
+            fields = ConsistencyReadout.UnavailableFields(since);
+        }
+
+        Write(ConsistencyReadout.Category, fields.ToArray());
     }
 
     private void RecordTrades(DateTime now)

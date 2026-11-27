@@ -50,9 +50,9 @@ Friday close still runs).
 | `SanityCap` | A trade was refused: volume above `MaxVolumeUnits` (automatic by default: 3,000,000 units; gold 1,000 ounces; spec 7.1), stop or target on the wrong side, or, only if `SanityCapEnabled` is on (off by default), risk above `SanityCapPercent` (0.55%) of balance (spec 4.3). The open-risk cap and the currency cap are off by default too (`OpenRiskCapEnabled`, `CurrencyCapEnabled`) | Nothing to do now; no order was sent. Send the log to the developer: it means a calculation looked wrong |
 | `StopLossMissing` | A bot position has no stop loss, or it was closed because the stop could not be set | **Urgent.** Open the cTrader app now. If the position is still open without a stop, set the stop yourself from the planned stop in the alert or close the position. No new entries are placed while any bot position lacks a stop |
 | `StopLossRepaired` | A missing stop was set again from the trade's comment | Check in the app that the stop is where planned. Find out who or what removed it |
-| `DailyLimit` | The daily risk budget (2% of initial capital, 4,000 USD on 200,000, measured from 00:00 Prague balance, all symbols together) is used up. Pending orders cancelled; no entries until the next Prague day | Nothing. Read the daily summary next morning |
+| `DailyLimit` | The daily risk budget (2% of initial capital, 2,000 USD on the 100,000 FTMO Instant account, measured from 00:00 Prague balance, all symbols together) is used up. Pending orders cancelled; no entries until the next Prague day | Nothing. Read the daily summary next morning |
 | `KillSwitch` | Drawdown from the highest closing balance since `RiskEpochDate` reached 8%. The bot is **Halted** until you set a new `RiskEpochDate` (spec 4.2, 8.5) | Do not resume the same day. Review the trades with the developer. Resume only by section 5, after a decision |
-| `EmergencyGuard` | Equity came within 2,000 USD (1% of the 200,000 initial capital) of an FTMO floor. The bot closed all positions, cancelled orders and **Halted** (spec 4.2) | Check in the app that everything is closed. Stop all containers (`docker compose stop`) until reviewed with the developer. Resume by section 5 |
+| `EmergencyGuard` | Equity came within 500 USD (0.5% of the 100,000 initial capital) of an FTMO floor: 2,500 USD below the 00:00 Prague balance, or 9,500 USD below the highest closed balance (section 9). The bot closed all positions, cancelled orders and **Halted** (spec 4.2, 15.8) | Check in the app that everything is closed. Stop all containers (`docker compose stop`) until reviewed with the developer. Resume by section 5 |
 | `CircuitBreaker` | Too many entries or order requests (spec 4.3). The request limit halts the instance until you restart it | Send the log to the developer before restarting. Restart one symbol with `docker compose restart <symbol>` only after the cause is understood |
 | `ErrorStorm` | 5 or more unhandled errors in an hour; Halted until the next Prague day or a restart (spec 8.5) | Send the log of the last hour (`docker compose logs --since 1h <symbol>`) to the developer. Do not restart in a loop |
 | `NewsFeedDown` | A calendar download failed or was rejected; the earlier good data is kept | Nothing at first. If it lasts more than a day, check that the Forex Factory export address still works in a browser |
@@ -83,7 +83,7 @@ Nothing to do unless you want it closed early.
 
 **Monthly loss limit** (spec 4.2, row BF; `MonthlyLossLimitPercent`, default
 2). Once the account's closed result for the calendar month (Prague time)
-reaches -2% of the initial capital (-4,000 USD at 200,000), the bot opens
+reaches -2% of the initial capital (-2,000 USD at 100,000), the bot opens
 nothing new until 00:00 Prague time on the first day of the next month and
 cancels its pending entry orders. It counts every closed trade of the account,
 commission and swap included, so both gold instances stop together. It never
@@ -113,7 +113,7 @@ Uptime 1.00:00:00, restarts 0
 | Trades, net, net R | Trades closed that Prague day, money after commission and swap, result in R. "R known for" counts trades whose plan was found | Net R far below -3 in one day should not happen (daily budget); tell the developer |
 | Balance, equity | At summary time | Equity much lower than balance means open trades are losing |
 | Drawdown | From the highest closing balance since `RiskEpochDate` | Kill switch at 8% |
-| Room to FTMO floors | Distance from equity to the FTMO daily floor (00:00 Prague balance minus 5%) and overall floor (90% of initial capital) | Emergency guard acts at 2,000 USD room (1% of the 200,000 initial capital) |
+| Room to FTMO floors | Distance from equity to the FTMO daily floor (00:00 Prague balance minus `FtmoDailyLossPercent`, 3% on FTMO Instant) and to the static overall floor (90% of initial capital). On FTMO Instant the real overall floor trails the highest closed balance (section 9): the `Started` report and every guard line name it as `(trailing, peak ...)` | Emergency guard acts at 500 USD room (0.5% of the 100,000 initial capital) |
 | Target progress | Profit against `ProfitTargetPercent` | |
 | Skips | Signals not taken, by reason | `SpreadTooWide` or `NewsCalendarUnavailable` every day means a setting or the feed needs a look |
 | Calendar | News data status: `Available` or `Unavailable` | `Unavailable` for more than a day: see `CalendarUnavailable` |
@@ -147,7 +147,9 @@ It is a date, `yyyy-MM-dd`, meaning 00:00 Prague time on that day
 When to change it:
 
 - at the start of each new account: the Free Trial, the Challenge, the
-  Verification and the FTMO Account each start with their own first day;
+  Verification and the FTMO Account each start with their own first day.
+  On the **FTMO Instant** account it stays the account's first day: it is not
+  moved after a reward (section 9);
 - to resume after `KillSwitch` or `EmergencyGuard`, once you and the developer
   have decided the bot may trade again. Setting a later date forgets the old
   peak, so it is a deliberate risk decision, never a routine fix.
@@ -255,8 +257,8 @@ change, or once a month, before it takes effect:
 
 1. Read the change in the FTMO client area.
 2. Compare it with spec 15.2 and with these parameters: `InitialCapital`,
-   `FtmoDailyLossPercent`, `FtmoMaxLossPercent`, `FtmoGuardBufferPercent`,
-   `DayResetZone` (FTMO's day boundary), `ProfitTargetPercent`,
+   `FtmoDailyLossPercent`, `FtmoMaxLossPercent`, `FtmoMaxLossMode`,
+   `FtmoGuardBufferPercent`, `ConsistencyMaxPercent`, `DayResetZone` (FTMO's day boundary), `ProfitTargetPercent`,
    `MaxRequestsPerDay`, `MaxVolumeUnits` (FTMO's lot cap), and the rules on
    news, weekends, inactivity and VPS location.
 3. If anything differs, or you are not sure: stop the bot when it is flat
@@ -272,3 +274,46 @@ change, or once a month, before it takes effect:
   but check before you paste.
 - Fault-injection and first-start results:
   `docs/test-records/WP11-fault-injection.md`.
+
+## 9. FTMO Instant account (100,000 USD, spec 15.8)
+
+The bot is set for an FTMO Instant account of 100,000 USD (spec v0.20, rows
+BG to BM). FTMO's rules and the bot's limits inside them:
+
+| | FTMO Instant rule | Bot limit | Room left |
+|---|---|---|---|
+| Daily | Equity above the 00:00 Prague balance minus 3,000 | Daily risk budget 2,000 (2%); the emergency guard closes everything at minus 2,500 | 1,000 after the budget |
+| Overall | Equity above P minus 10,000; P is the highest closed-trade balance (at least 100,000), it rises in real time, never falls and is not reset by a reward | Kill switch 8% below P; the emergency guard closes everything at P minus 9,500 | 2,000 at the start |
+| Monthly | none | Monthly loss limit 2,000 (2%) | n/a |
+| Consistency | Best day at most 30% of the total profit since the last reward; a condition for a reward, not a breach | The daily `consistency` journal line | n/a |
+
+The parameter files carry `InitialCapital=100000.0`,
+`FtmoDailyLossPercent=3.0`, `FtmoMaxLossPercent=10.0`,
+`FtmoMaxLossMode=TrailingBalance`, `FtmoGuardBufferPercent=0.5`,
+`ConsistencyMaxPercent=30.0` and `RewardPeriodStartDate=` (empty). Do not
+change them yourself (section 7).
+
+- **`RiskEpochDate` stays the account's first day.** FTMO's floor never
+  resets, so the bot's peak must not either. Do not move it after a reward.
+  If the bot cannot read the history it needs for P, the guard falls back to
+  the static floor (90,500 at 100,000), which is never looser.
+- **Withdrawals (rewards).** A withdrawal lowers the balance but not P, so it
+  uses room under both the kill switch and FTMO's floor. Withdraw only so much
+  that the balance stays at least about 5% above P x 0.92 (the kill switch
+  line). Example: with P at 112,000 the kill switch line is 103,040; keep the
+  balance at or above about 108,200 after the withdrawal.
+- **Consistency line.** Once a Prague day and at every start each instance
+  writes, for example:
+  `consistency since=2026-12-01 total=4200.00 bestDay=2026-12-09 bestDayProfit=1500.00 ratio=35.71 limit=30.00 met=no`.
+  `total` is the net closed profit of the whole account (commission and swap
+  included) since 00:00 Prague time of `RewardPeriodStartDate` (empty: of
+  `RiskEpochDate`); `bestDay` is the Prague day with the largest profit;
+  `ratio` is its share of `total` in percent (`NA` while `total` is not above
+  0); `met=yes` means the 30% condition for a reward is met. It is
+  information only: it never changes an order. `status=unavailable` means the
+  history could not be read that day; nothing else happens.
+- **After each reward**, set `RewardPeriodStartDate` to the date of that
+  reward (`yyyy-MM-dd`) in every parameter file, the same way as section 5
+  (stop, edit, start), and only while the bot is flat: no open position and no
+  pending order of the bot. The next `consistency` lines then count from that
+  day.

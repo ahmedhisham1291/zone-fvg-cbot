@@ -52,14 +52,18 @@ public sealed class GuardStatus
     /// </summary>
     public bool EntriesAllowed => DataProblem == null && Emergency != null && KillSwitch != null && Budget != null;
 
-    /// <summary>A one-line invariant summary for the journal and the recovery report (REC-010).</summary>
+    /// <summary>
+    /// A one-line invariant summary for the journal and the recovery report (REC-010). With
+    /// FtmoMaxLossMode TrailingBalance the emergency part ends with the peak P and the floor used
+    /// (RSK-021); in static mode the text is as before.
+    /// </summary>
     public string Text
     {
         get
         {
             string emergency = Emergency == null
                 ? "unknown"
-                : (EmergencyFires ? "CLOSE-ALL" : "ok") + " equity " + Number(Emergency.Equity) + " daily floor " + Number(Emergency.DailyFloor) + " overall floor " + Number(Emergency.OverallFloor);
+                : (EmergencyFires ? "CLOSE-ALL" : "ok") + " equity " + Number(Emergency.Equity) + " daily floor " + Number(Emergency.DailyFloor) + " overall floor " + Number(Emergency.OverallFloor) + TrailingText(Emergency);
             string kill = KillSwitch == null
                 ? "unknown"
                 : (KillSwitchFires ? "HALT" : "ok") + " peak " + Number(KillSwitch.Peak) + " drawdown " + Number(KillSwitch.DrawdownMoney) + " limit " + Number(KillSwitch.LimitMoney);
@@ -73,6 +77,17 @@ public sealed class GuardStatus
     private static string Number(double value)
     {
         return double.IsNaN(value) ? "unknown" : value.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    // RSK-021: only in trailing mode the text names P and which floor was used; in static mode it is unchanged byte for byte.
+    private static string TrailingText(EmergencyDecision emergency)
+    {
+        if (emergency.MaxLossMode != FtmoMaxLossMode.TrailingBalance)
+        {
+            return string.Empty;
+        }
+
+        return emergency.TrailingFloorUsed ? " (trailing, peak " + Number(emergency.Peak) + ")" : " (trailing, peak unknown: static floor)";
     }
 }
 

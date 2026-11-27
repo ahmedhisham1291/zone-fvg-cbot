@@ -207,6 +207,22 @@ public class Rsk021TrailingGuardTests
         Assert.Equal(FtmoMaxLossMode.TrailingBalance, decision.MaxLossMode);
     }
 
+    [Fact]
+    [Trait("Req", "RSK-021")]
+    public void EmergencyGuard_TrailingPeakNotPositive_StaticFloor()
+    {
+        // Broken history: the balance at the epoch is 1,000 - 5,000 = -4,000 and the only balance after a close is -1,
+        // so the peak is not positive and P is not computable. The static floor 90,500 applies (fail closed).
+        ClosedTradeInfo[] history = { Closed(1, Utc(2026, 1, 5, 12), 5000.0, -1.0) };
+
+        EmergencyDecision decision = Guard(Trailing, Snapshot(1000.0, 1000.0, history));
+
+        Assert.True(double.IsNaN(decision.Peak));
+        Assert.False(decision.TrailingFloorUsed);
+        Assert.Equal(90500.0, decision.OverallFloor, 1e-6);
+        Assert.Equal(EmergencyAction.CloseAllAndHalt, decision.Action);
+    }
+
     [Theory]
     [Trait("Req", "RSK-021")]
     [InlineData(90500.0, EmergencyAction.CloseAllAndHalt)]

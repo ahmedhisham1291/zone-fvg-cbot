@@ -1,6 +1,7 @@
 # Zone + FVG cBot
 
-A cTrader cBot for an FTMO 2-Step (Swing) account, built by AI coding agents
+A cTrader cBot for an FTMO Instant account of 100,000 USD (spec v0.20; an
+FTMO 2-Step Swing account before), built by AI coding agents
 under a strict process: numbered requirements, tests first, an independent
 validator agent, CI gates, and an orchestrating session that merges when the
 gates are green and reports every merge to the owner.

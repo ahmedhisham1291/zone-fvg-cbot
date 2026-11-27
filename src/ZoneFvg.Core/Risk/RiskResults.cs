@@ -101,7 +101,7 @@ public enum EmergencyAction
 /// <summary>Decision of the FTMO emergency guard (RSK-009), with the floor or floors that were reached.</summary>
 public sealed class EmergencyDecision
 {
-    internal EmergencyDecision(bool dayStartBalanceKnown, bool dailyFloorReached, bool overallFloorReached, double equity, double dailyFloor, double overallFloor)
+    internal EmergencyDecision(bool dayStartBalanceKnown, bool dailyFloorReached, bool overallFloorReached, double equity, double dailyFloor, double overallFloor, FtmoMaxLossMode maxLossMode, double peak)
     {
         DayStartBalanceKnown = dayStartBalanceKnown;
         DailyFloorReached = dailyFloorReached;
@@ -109,7 +109,25 @@ public sealed class EmergencyDecision
         Equity = equity;
         DailyFloor = dailyFloor;
         OverallFloor = overallFloor;
+        MaxLossMode = maxLossMode;
+        Peak = peak;
     }
+
+    /// <summary>The FtmoMaxLossMode the decision was made in (RSK-021).</summary>
+    public FtmoMaxLossMode MaxLossMode { get; }
+
+    /// <summary>
+    /// P of RSK-021: the larger of InitialCapital and the kill switch's peak balance, from which the
+    /// trailing overall floor was placed; NaN in static mode and when P could not be computed.
+    /// </summary>
+    public double Peak { get; }
+
+    /// <summary>
+    /// True when the overall floor is the trailing one, P - (FtmoMaxLossPercent -
+    /// FtmoGuardBufferPercent) x InitialCapital / 100 (RSK-021); false when it is the static floor
+    /// of RSK-009, in static mode or because P could not be computed.
+    /// </summary>
+    public bool TrailingFloorUsed => !double.IsNaN(Peak);
 
     /// <summary><see cref="EmergencyAction.CloseAllAndHalt"/> when either floor is reached, otherwise <see cref="EmergencyAction.None"/>.</summary>
     public EmergencyAction Action => DailyFloorReached || OverallFloorReached ? EmergencyAction.CloseAllAndHalt : EmergencyAction.None;
@@ -132,7 +150,10 @@ public sealed class EmergencyDecision
     /// <summary>M - (FtmoDailyLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100; NaN when M is unknown.</summary>
     public double DailyFloor { get; }
 
-    /// <summary>InitialCapital - (FtmoMaxLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100.</summary>
+    /// <summary>
+    /// InitialCapital - (FtmoMaxLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100; with the
+    /// trailing floor of RSK-021 (<see cref="TrailingFloorUsed"/>) P in place of the first InitialCapital.
+    /// </summary>
     public double OverallFloor { get; }
 }
 

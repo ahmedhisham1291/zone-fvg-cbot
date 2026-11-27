@@ -62,6 +62,27 @@ public sealed record RiskParameters
     public double FtmoGuardBufferPercent { get; init; } = 1.0;
 
     /// <summary>
+    /// How the emergency guard places its overall floor (RSK-021, rows BH and BI): Static (RSK-009,
+    /// the default) or TrailingBalance (FTMO Instant: P - (FtmoMaxLossPercent -
+    /// FtmoGuardBufferPercent) / 100 x InitialCapital, P from the kill switch's peak).
+    /// </summary>
+    public FtmoMaxLossMode FtmoMaxLossMode { get; init; } = FtmoMaxLossMode.Static;
+
+    /// <summary>
+    /// The consistency readout of OPS-012 (row BK): the largest share of the total closed profit
+    /// that the best CE(S)T day may have, in percent. Default 0: no readout. From 0 to 100.
+    /// Information only; no trading decision reads it.
+    /// </summary>
+    public double ConsistencyMaxPercent { get; init; }
+
+    /// <summary>
+    /// Start of the consistency count of OPS-012 (row BK): a date meaning 00:00 CE(S)T on that day,
+    /// given as a date with time 00:00:00 and kind UTC, as <see cref="RiskEpochDate"/>. Default null:
+    /// <see cref="RiskEpochDate"/> is used.
+    /// </summary>
+    public DateTime? RewardPeriodStartDate { get; init; }
+
+    /// <summary>
     /// Start of drawdown measurement for the kill switch (RSK-008): a date meaning 00:00 Prague time
     /// (CE(S)T) on that day (architecture section 10). Give it as a date with time 00:00:00 and kind
     /// UTC. Set manually; the default (kind Unspecified) is rejected by <see cref="Validate"/>.
@@ -165,7 +186,7 @@ public sealed record RiskParameters
     /// <summary>
     /// Checks every value and throws for the first one that is out of range, in the order the
     /// parameters were added (the drawdown brake values of RSK-019, then the monthly loss limit of
-    /// RSK-020 last). The message names the
+    /// RSK-020, then the FTMO Instant values of RSK-021 and OPS-012 last). The message names the
     /// parameter, its allowed range and the rejected value in invariant formatting.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range. The exception's parameter name is the name of the parameter.</exception>
@@ -228,6 +249,43 @@ public sealed record RiskParameters
         if (!double.IsFinite(MonthlyLossLimitPercent) || MonthlyLossLimitPercent < 0.0 || MonthlyLossLimitPercent >= MaxDrawdownPercent)
         {
             throw OutOfRange(nameof(MonthlyLossLimitPercent), "must be at least 0 and below MaxDrawdownPercent", Text(MonthlyLossLimitPercent));
+        }
+
+        // RSK-021, OPS-012: checked after every value that existed before, so their refusals are unchanged.
+        ValidateFtmoInstant();
+    }
+
+    /// <summary>
+    /// The values of WP45, in this order (RSK-021, OPS-012, PLT-022): FtmoMaxLossMode Static or
+    /// TrailingBalance; with TrailingBalance an FtmoGuardBufferPercent greater than 0 (that it is
+    /// below FtmoDailyLossPercent is checked for every mode before); ConsistencyMaxPercent from 0 to
+    /// 100; RewardPeriodStartDate, when set, a date of kind UTC without a time of day.
+    /// </summary>
+    private void ValidateFtmoInstant()
+    {
+        if (FtmoMaxLossMode != FtmoMaxLossMode.Static && FtmoMaxLossMode != FtmoMaxLossMode.TrailingBalance)
+        {
+            throw OutOfRange(nameof(FtmoMaxLossMode), "must be Static or TrailingBalance", ((int)FtmoMaxLossMode).ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (FtmoMaxLossMode == FtmoMaxLossMode.TrailingBalance && !(FtmoGuardBufferPercent > 0.0))
+        {
+            // The static mode keeps the rule of RSK-009 (a buffer of 0 allowed), so its decisions stay as before.
+            throw OutOfRange(nameof(FtmoGuardBufferPercent), "must be greater than 0 and below FtmoDailyLossPercent with FtmoMaxLossMode TrailingBalance", Text(FtmoGuardBufferPercent));
+        }
+
+        if (!double.IsFinite(ConsistencyMaxPercent) || ConsistencyMaxPercent < 0.0 || ConsistencyMaxPercent > 100.0)
+        {
+            throw OutOfRange(nameof(ConsistencyMaxPercent), "must be at least 0 and at most 100", Text(ConsistencyMaxPercent));
+        }
+
+        if (RewardPeriodStartDate.HasValue)
+        {
+            DateTime date = RewardPeriodStartDate.Value;
+            if (date.Kind != DateTimeKind.Utc || date.TimeOfDay != TimeSpan.Zero)
+            {
+                throw OutOfRange(nameof(RewardPeriodStartDate), "must be a date of kind UTC without a time of day", date.ToString("o", CultureInfo.InvariantCulture));
+            }
         }
     }
 

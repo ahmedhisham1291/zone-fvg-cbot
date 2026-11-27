@@ -7,7 +7,7 @@ using ZoneFvg.Core.Execution.Ports;
 namespace ZoneFvg.Core.Risk;
 
 /// <summary>
-/// Account-level risk limits (RSK-003 to RSK-009, RSK-020) and the entry counts of RSK-010, as pure
+/// Account-level risk limits (RSK-003 to RSK-009, RSK-020, RSK-021) and the entry counts of RSK-010, as pure
 /// functions of a <see cref="RiskSnapshot"/> and the parameters (RSK-011). The engine never calls
 /// the broker and keeps nothing between calls; its only field is the validated parameter set.
 /// </summary>
@@ -207,12 +207,17 @@ public sealed class RiskEngine
     }
 
     /// <summary>
-    /// FTMO emergency guard (RSK-009): CloseAllAndHalt when equity is at or below
-    /// M - (FtmoDailyLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100, or at or below
+    /// FTMO emergency guard (RSK-009, RSK-021): CloseAllAndHalt when equity is at or below
+    /// M - (FtmoDailyLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100, or at or below the
+    /// overall floor. In static mode (RSK-009) the overall floor is
     /// InitialCapital - (FtmoMaxLossPercent - FtmoGuardBufferPercent) x InitialCapital / 100
-    /// (which equals InitialCapital x (1 - (FtmoMaxLossPercent - FtmoGuardBufferPercent) / 100)).
-    /// With defaults: M - 8,000 and 182,000 on 200,000 (RSK-009, RSK-018). When the history does not reach back far enough to
-    /// compute M, only the second (static) floor is checked and the daily floor is reported as
+    /// (which equals InitialCapital x (1 - (FtmoMaxLossPercent - FtmoGuardBufferPercent) / 100));
+    /// with defaults: M - 8,000 and 182,000 on 200,000 (RSK-009, RSK-018). With
+    /// <see cref="FtmoMaxLossMode.TrailingBalance"/> (RSK-021) it is P - (FtmoMaxLossPercent -
+    /// FtmoGuardBufferPercent) x InitialCapital / 100, with P the larger of InitialCapital and
+    /// <see cref="PeakBalance"/>; when P cannot be computed (not a positive finite number) the
+    /// static floor applies, which is never looser. When the history does not reach back far
+    /// enough to compute M, only the static floor is checked and the daily floor is reported as
     /// unknown; new trades are refused in that case by <see cref="CheckNewTrade"/>.
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
@@ -229,10 +234,11 @@ public sealed class RiskEngine
 
         double capital = _parameters.InitialCapital;
         double dailyFloor = DayStart(snapshot) - ((_parameters.FtmoDailyLossPercent - _parameters.FtmoGuardBufferPercent) * capital / 100.0);
-        double overallFloor = OverallFloor();
+        double peak = TrailingPeak(snapshot);
+        double overallFloor = double.IsNaN(peak) ? OverallFloor() : OverallFloorBelow(peak);
         bool daily = !PriceMath.GreaterThan(equity, dailyFloor, PriceMath.DefaultTolerance);
         bool overall = !PriceMath.GreaterThan(equity, overallFloor, PriceMath.DefaultTolerance);
-        return new EmergencyDecision(true, daily, overall, equity, dailyFloor, overallFloor);
+        return new EmergencyDecision(true, daily, overall, equity, dailyFloor, overallFloor, _parameters.FtmoMaxLossMode, peak);
     }
 
     /// <summary>
@@ -366,13 +372,34 @@ public sealed class RiskEngine
     {
         double overallFloor = OverallFloor();
         bool overall = !PriceMath.GreaterThan(equity, overallFloor, PriceMath.DefaultTolerance);
-        return new EmergencyDecision(false, false, overall, equity, double.NaN, overallFloor);
+        return new EmergencyDecision(false, false, overall, equity, double.NaN, overallFloor, _parameters.FtmoMaxLossMode, double.NaN);
     }
 
     private double OverallFloor()
     {
+        return OverallFloorBelow(_parameters.InitialCapital);
+    }
+
+    private double OverallFloorBelow(double reference)
+    {
         double capital = _parameters.InitialCapital;
-        return capital - ((_parameters.FtmoMaxLossPercent - _parameters.FtmoGuardBufferPercent) * capital / 100.0);
+        return reference - ((_parameters.FtmoMaxLossPercent - _parameters.FtmoGuardBufferPercent) * capital / 100.0);
+    }
+
+    /// <summary>
+    /// P of RSK-021 in trailing mode: the larger of InitialCapital and <see cref="PeakBalance"/>, the
+    /// same function the kill switch uses. NaN in static mode, and NaN when the peak is not a positive
+    /// finite number, so that the caller falls back to the static floor (fail closed).
+    /// </summary>
+    private double TrailingPeak(RiskSnapshot snapshot)
+    {
+        if (_parameters.FtmoMaxLossMode != FtmoMaxLossMode.TrailingBalance)
+        {
+            return double.NaN;
+        }
+
+        double peak = PeakBalance(snapshot);
+        return double.IsFinite(peak) && peak > 0.0 ? Math.Max(_parameters.InitialCapital, peak) : double.NaN;
     }
 
     private double DailyLimit()
