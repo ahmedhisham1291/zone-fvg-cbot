@@ -163,7 +163,7 @@ public class Plt020SessionRangeDefaultsTests
         TimeSpan startUtc = ChochText.SessionStartUtc("00:00");
         TimeSpan endUtc = ChochText.SessionEndUtc("24:00");
         SymbolProfileResult profile = SymbolProfile.Resolve("XAUUSD", "XAU", "USD", pip, 0.0, 0.0, 0.0, 0.0, 0.0);
-        SessionRangeParameters sessionRange = SessionRangeText.Build("19:00", "03:00", "12:00", "16:30", 0.5, 1.0);
+        SessionRangeParameters sessionRange = SessionRangeText.Build("19:00", "03:00", "12:00", "16:30", 0.5, 1.0, 20);
         ChochParameters? choch = ChochText.Build(model, mode, false, 32, true, false, 0.1, profile.ChochMinStopPips, 2.0);
         var execution = new ExecutionParameters { SessionStartUtc = startUtc, SessionEndUtc = endUtc, MaxSpreadPips = profile.MaxSpreadPips, MinStopPips = profile.MinStopPips };
         var breakout = new BreakoutParameters { WindowStartUtc = startUtc, WindowEndUtc = endUtc, TrendSlowEmaPeriod = 200, LastConfirmUtc = TimeSpan.FromHours(8.0) };
@@ -233,7 +233,7 @@ public class Plt020SessionRangeDefaultsTests
     {
         BotParameters parameters = Defaults(pip);
 
-        Assert.Equal("469b1f35", ParameterHash.Compute(parameters.Signal, parameters.Execution, null, parameters.SessionRange, null, parameters.SymbolProfile));
+        Assert.Equal("2dea1bc3", ParameterHash.Compute(parameters.Signal, parameters.Execution, null, parameters.SessionRange, null, parameters.SymbolProfile));
     }
 
     [Fact]
@@ -243,7 +243,7 @@ public class Plt020SessionRangeDefaultsTests
         SymbolProfileResult profile = SymbolProfile.Resolve("EURUSD", "EUR", "USD", 0.0001, 0.0, 0.0, 0.0, 0.0, 0.0);
         var execution = new ExecutionParameters { SessionStartUtc = TimeSpan.Zero, SessionEndUtc = TimeSpan.FromHours(24.0), MaxSpreadPips = profile.MaxSpreadPips, MinStopPips = profile.MinStopPips };
 
-        Assert.Equal("f949f461", ParameterHash.Compute(new SignalParameters(), execution, null, new SessionRangeParameters(), null, profile));
+        Assert.Equal("3280d399", ParameterHash.Compute(new SignalParameters(), execution, null, new SessionRangeParameters { RangeTrendFastEma = 20 }, null, profile));
     }
 
     // ------------------------------------------------------------------ the start line and the hash
