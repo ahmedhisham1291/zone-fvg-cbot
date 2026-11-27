@@ -95,6 +95,21 @@ public static class CestClock
         return StartOfCestDayUtc(new DateTime(date.Year, date.Month, date.Day, 12, 0, 0, DateTimeKind.Utc));
     }
 
+    /// <summary>
+    /// The instant, in UTC, at which the CE(S)T calendar month containing <paramref name="utcNow"/>
+    /// began, that is 00:00 Central European time on its first day (RSK-012, RSK-020). The result
+    /// is never after <paramref name="utcNow"/>.
+    /// </summary>
+    /// <param name="utcNow">The instant. Its kind must be UTC.</param>
+    /// <returns>Local midnight of the first day of the month as a UTC instant, with kind UTC.</returns>
+    /// <exception cref="ArgumentException">The kind of <paramref name="utcNow"/> is not UTC.</exception>
+    public static DateTime StartOfCestMonthUtc(DateTime utcNow)
+    {
+        RequireUtc(utcNow, nameof(utcNow));
+        DateTime localWallClock = utcNow + UtcOffset(utcNow);
+        return StartOfCestDateUtc(new DateTime(localWallClock.Year, localWallClock.Month, 1, 0, 0, 0, DateTimeKind.Utc));
+    }
+
     private static DateTime LastSundayAtSwitchHour(int year, int month)
     {
         if (year < 1 || year > 9999)

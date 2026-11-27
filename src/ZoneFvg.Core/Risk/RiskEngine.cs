@@ -7,7 +7,7 @@ using ZoneFvg.Core.Execution.Ports;
 namespace ZoneFvg.Core.Risk;
 
 /// <summary>
-/// Account-level risk limits (RSK-003 to RSK-009) and the entry counts of RSK-010, as pure
+/// Account-level risk limits (RSK-003 to RSK-009, RSK-020) and the entry counts of RSK-010, as pure
 /// functions of a <see cref="RiskSnapshot"/> and the parameters (RSK-011). The engine never calls
 /// the broker and keeps nothing between calls; its only field is the validated parameter set.
 /// </summary>
@@ -97,7 +97,8 @@ public sealed class RiskEngine
     /// failure: input check, history and symbol data (fail closed), free margin (RSK-003), open
     /// risk (RSK-004, only with OpenRiskCapEnabled), currency exposure (RSK-005, only with
     /// CurrencyCapEnabled), daily risk budget (RSK-006), entries per symbol and per account in the
-    /// CE(S)T day (RSK-010).
+    /// CE(S)T day (RSK-010), and last the monthly loss limit (RSK-020, only with
+    /// MonthlyLossLimitPercent above 0).
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="trade">The sized trade with the broker's margin estimate.</param>
@@ -148,6 +149,12 @@ public sealed class RiskEngine
         }
 
         failure ??= CheckEntryCounts(snapshot, trade);
+        if (_parameters.MonthlyLossLimitPercent > 0.0)
+        {
+            // RSK-020: only when switched on (0 = off), after every check that existed before.
+            failure ??= CheckMonthlyLoss(snapshot);
+        }
+
         return failure ?? new RiskCheckResult(RiskReason.None, 0.0, 0.0, string.Empty);
     }
 
@@ -262,6 +269,35 @@ public sealed class RiskEngine
         ArgumentNullException.ThrowIfNull(snapshot);
         RequireHistory(snapshot);
         return new DailyBudgetStatus(DayStart(snapshot), WorstCaseEquity(snapshot), DailyLimit());
+    }
+
+    /// <summary>
+    /// State of the monthly loss limit (RSK-020): S = current balance minus the net result (profit,
+    /// commission, swap) of every account trade closed at or after 00:00 CE(S)T on the first day of
+    /// the current CE(S)T calendar month, as RSK-007 does for the day; nothing stored. The limit is
+    /// MonthlyLossLimitPercent x InitialCapital / 100, and is reached when S - balance is at least
+    /// the limit (equal counts) or S is not positive. With the limit 0 it is never reached.
+    /// </summary>
+    /// <param name="snapshot">The snapshot; its history must reach back to the month start.</param>
+    /// <returns>The month status.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is null.</exception>
+    /// <exception cref="ArgumentException">The history does not reach back to the month start.</exception>
+    public MonthlyLossStatus MonthlyLoss(RiskSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        DateTime monthStart = CestClock.StartOfCestMonthUtc(snapshot.ServerTimeUtc);
+        if (snapshot.HistorySinceUtc > monthStart)
+        {
+            throw new ArgumentException("The snapshot's history must reach back to " + monthStart.ToString("o", CultureInfo.InvariantCulture) + ".", nameof(snapshot));
+        }
+
+        return MonthStatus(snapshot, monthStart);
+    }
+
+    private MonthlyLossStatus MonthStatus(RiskSnapshot snapshot, DateTime monthStart)
+    {
+        double limit = _parameters.InitialCapital * _parameters.MonthlyLossLimitPercent / 100.0;
+        return new MonthlyLossStatus(monthStart, BalanceAt(snapshot, monthStart), snapshot.Account.Balance, limit);
     }
 
     private static double DayStart(RiskSnapshot snapshot)
@@ -572,6 +608,29 @@ public sealed class RiskEngine
         if (PriceMath.GreaterThan(used, limit, PriceMath.DefaultTolerance))
         {
             return new RiskCheckResult(RiskReason.DailyBudgetExceeded, used, limit, "worst-case daily loss " + Text(used) + " above " + Text(limit));
+        }
+
+        return null;
+    }
+
+    private RiskCheckResult? CheckMonthlyLoss(RiskSnapshot snapshot)
+    {
+        DateTime monthStart = CestClock.StartOfCestMonthUtc(snapshot.ServerTimeUtc);
+        if (snapshot.HistorySinceUtc > monthStart)
+        {
+            return new RiskCheckResult(RiskReason.HistoryIncomplete, 0.0, 0.0, "history must reach back to " + monthStart.ToString("o", CultureInfo.InvariantCulture));
+        }
+
+        MonthlyLossStatus status = MonthStatus(snapshot, monthStart);
+        if (!(status.MonthStartBalance > 0.0))
+        {
+            // Fail closed: a month-start balance that is not positive cannot be right.
+            return new RiskCheckResult(RiskReason.InvalidInput, status.MonthStartBalance, 0.0, "month-start balance " + Text(status.MonthStartBalance) + " must be greater than zero");
+        }
+
+        if (status.Reached)
+        {
+            return new RiskCheckResult(RiskReason.MonthlyLossLimitReached, status.Loss, status.Limit, "monthly closed loss " + Text(status.Loss) + " at or above " + Text(status.Limit) + ", month-start balance " + Text(status.MonthStartBalance));
         }
 
         return null;

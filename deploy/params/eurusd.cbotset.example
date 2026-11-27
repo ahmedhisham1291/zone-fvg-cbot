@@ -52,6 +52,7 @@ DrawdownBrakeFactor=0.5
 MaxOpenRiskPercent=1.5
 MaxPositionsPerCurrency=2
 DailyLossLimitPercent=2.0
+MonthlyLossLimitPercent=2.0
 MaxDrawdownPercent=8.0
 InitialCapital=200000.0
 DayResetZone=Europe/Prague

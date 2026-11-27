@@ -237,7 +237,13 @@ symbol, before the laptop stage, write into the files:
   and "Gold (XAUUSD)" below tell you to set. The risk defaults of spec v0.12,
   v0.14 and v0.16 (owner decisions and requests of 2026-11-24 and
   2026-11-27): `InitialCapital=200000.0`,
-  `DailyLossLimitPercent=2.0`, `MaxVolumeUnits=0.0` (automatic: 3,000,000
+  `DailyLossLimitPercent=2.0`, the monthly loss limit
+  `MonthlyLossLimitPercent=2.0` (spec v0.19, row BF: once the account's closed
+  result for the Prague-time calendar month reaches -2% of the initial capital,
+  -4,000 USD at 200,000, no new entry until the next month and pending entry
+  orders are cancelled; it counts every closed trade of the account, so both
+  gold instances stop together; it never closes a trade; `0` switches it off),
+  `MaxVolumeUnits=0.0` (automatic: 3,000,000
   units, gold 1,000 ounces), `RiskPercent=0.75` with `LadderEnabled=false`
   (a fixed 0.75% of balance per trade; `true` for the ladder, the one value
   you choose), the drawdown brake `DrawdownBrakePercent=3.0` and

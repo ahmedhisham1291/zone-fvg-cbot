@@ -13,7 +13,7 @@ namespace ZoneFvg.Core.Execution;
 
 /// <summary>
 /// Decides whether a signal becomes an order (EXE-001 to EXE-008, EXE-011, EXE-014, EXE-015,
-/// EXE-019, NWS-008, NWS-009, NWS-014, RSK-001 to RSK-006, RSK-013, RSK-016, RSK-017, RSK-019). Reads the
+/// EXE-019, NWS-008, NWS-009, NWS-014, RSK-001 to RSK-006, RSK-013, RSK-016, RSK-017, RSK-019, RSK-020). Reads the
 /// broker port at every call and keeps nothing between calls; its fields are the validated
 /// parameters and the ports.
 /// </summary>
@@ -26,7 +26,7 @@ namespace ZoneFvg.Core.Execution;
 /// Recovery amount of RSK-016 and RSK-017 when SizingPlan is Recovery, otherwise the fixed
 /// RiskPercent, halved by the drawdown brake of RSK-019 when it applies; the broker's
 /// maximum volume; the account limits of
-/// <see cref="RiskEngine.CheckNewTrade"/> (RSK-003 to RSK-006, RSK-010).</para>
+/// <see cref="RiskEngine.CheckNewTrade"/> (RSK-003 to RSK-006, RSK-010, and the monthly loss limit of RSK-020 when it is on).</para>
 /// <para>Levels: entry, stop and target are rounded to the broker's tick size
 /// (<see cref="PriceGrid.RoundToTick"/>, EXE-017); for a sell the current spread is added to the
 /// stop first (EXE-007). A symbol whose digits or tick size are not usable is skipped as
@@ -711,6 +711,12 @@ public sealed class PreTradeFilters
         double volume = c.Sizing!.VolumeUnits;
         double margin = _broker.EstimateMargin(c.Context.Symbol, c.Signal.Side, volume);
         DateTime since = HistoryStart(c.Now);
+        SkipRecord? unreadable = _riskParameters.MonthlyLossLimitPercent > 0.0 ? ReadMonthHistory(c, since) : null;
+        if (unreadable != null)
+        {
+            return unreadable;
+        }
+
         RiskSnapshot snapshot;
         try
         {
@@ -755,12 +761,40 @@ public sealed class PreTradeFilters
         return names.Select(name => name == c.Context.Symbol ? c.Info! : _broker.GetSymbol(name)).ToList();
     }
 
+    // RSK-020: with the monthly limit on, history not read yet is read here, and history that cannot be read
+    // refuses the entry (fail closed). With the limit 0 this is not called and the read is as before.
+    private SkipRecord? ReadMonthHistory(Candidate c, DateTime since)
+    {
+        if (c.History != null)
+        {
+            return null;
+        }
+
+        try
+        {
+            c.History = _broker.GetHistory(since);
+            return c.History == null ? c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, "The broker returned no history.") : null;
+        }
+        catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
+        {
+            return c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, exception.Message);
+        }
+    }
+
     private DateTime HistoryStart(DateTime now)
     {
-        // The risk engine needs history from the earlier of the day start and the epoch start (RSK-007, RSK-008).
+        // The risk engine needs history from the earlier of the day start and the epoch start (RSK-007, RSK-008),
+        // and with the monthly loss limit on also from the month start (RSK-020). With the limit 0 it is as before.
         DateTime dayStart = CestClock.StartOfCestDayUtc(now);
         DateTime epochStart = CestClock.StartOfCestDateUtc(_riskParameters.RiskEpochDate);
-        return epochStart < dayStart ? epochStart : dayStart;
+        DateTime start = epochStart < dayStart ? epochStart : dayStart;
+        if (_riskParameters.MonthlyLossLimitPercent > 0.0)
+        {
+            DateTime monthStart = CestClock.StartOfCestMonthUtc(now);
+            start = monthStart < start ? monthStart : start;
+        }
+
+        return start;
     }
 
     private PlannedOrder Build(Candidate c)

@@ -617,7 +617,7 @@ requirements:
     wp: WP44
     spec: "4.2, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Monthly loss limit (owner request of 2026-11-27, row BF). The core's
       risk parameters gain MonthlyLossLimitPercent (core default 0 = off, so

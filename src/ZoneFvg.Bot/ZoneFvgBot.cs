@@ -255,6 +255,10 @@ namespace cAlgo.Robots
         [Parameter("DailyLossLimitPercent", DefaultValue = 2.0, Group = "Risk")]
         public double DailyLossLimitPercent { get; set; }
 
+        /// <summary>Monthly loss limit in percent of InitialCapital (RSK-020, spec v0.19 row BF); 0 switches it off.</summary>
+        [Parameter("MonthlyLossLimitPercent", DefaultValue = 2.0, Group = "Risk")]
+        public double MonthlyLossLimitPercent { get; set; }
+
         /// <summary>Kill switch drawdown in percent (RSK-008).</summary>
         [Parameter("MaxDrawdownPercent", DefaultValue = 8.0, Group = "Risk")]
         public double MaxDrawdownPercent { get; set; }
@@ -813,6 +817,9 @@ namespace cAlgo.Robots
                 MaxOpenRiskPercent = MaxOpenRiskPercent,
                 MaxPositionsPerCurrency = MaxPositionsPerCurrency,
                 DailyLossLimitPercent = DailyLossLimitPercent,
+
+                // RSK-020: the monthly loss limit; the core's validation refuses a value naming the parameter.
+                MonthlyLossLimitPercent = MonthlyLossLimitPercent,
                 MaxDrawdownPercent = MaxDrawdownPercent,
                 InitialCapital = InitialCapital,
                 FtmoDailyLossPercent = FtmoDailyLossPercent,
