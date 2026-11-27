@@ -2120,6 +2120,31 @@ requirements:
       this model. A change of character found while the engine is not ready
       consumes the zone and returns no signal, as in the Fvg model.
 
+  - id: SIG-042
+    wp: WP42
+    spec: "3.8, 7"
+    verify: unit
+    status: planned
+    text: >-
+      Direction of SessionRange from two D1 EMAs (owner request of
+      2026-11-27, row AY). SessionRangeParameters gain RangeTrendFastEma
+      (core default 0 = off: the setup's side comes from the bias of 3.1 as
+      before, and every existing decision, journal line and hash is
+      unchanged). Validation refuses, naming the parameter, a value that is
+      not 0 and not from 2 to BiasEmaPeriod - 1. With a value above 0 the
+      side of the trading day's setup comes from the last D1 bar closed at
+      the evaluation: long when D1 EMA(RangeTrendFastEma) is above D1
+      EMA(BiasEmaPeriod), short when below, no setup when equal within
+      PriceMath tolerance or when either EMA is not yet available (fail
+      closed); the close against EMA(BiasEmaPeriod) is not used. The EMAs
+      are computed with the same method and history as the bias EMA of
+      3.1. Only SessionRange uses it. The parameter hash of SessionRange
+      appends RangeTrendFastEma only when it is not 0. The cBot declares
+      RangeTrendFastEma with default 20 in the SessionRange group, passes it
+      to the core and refuses a bad value at start naming it; the five files
+      under deploy/params carry RangeTrendFastEma=20 and their pinned
+      hashes are updated; the guides name the new default.
+
   - id: EXE-027
     wp: WP37
     spec: "3.9, 5.2"
