@@ -182,6 +182,14 @@ public sealed class SignalEngine
     internal Bias RangeDirection { get; private set; }
 
     /// <summary>
+    /// The bias written into the journal's <c>bias=</c> field (OPS-001, SIG-042, orchestrating
+    /// session's answer of 2026-11-27 on pull request 103): <see cref="RangeDirection"/>, the side
+    /// the SessionRange setup took, in SessionRange mode with RangeTrendFastEma above 0; otherwise
+    /// <see cref="Bias"/>, so every other line is unchanged.
+    /// </summary>
+    internal Bias JournalBias => _rangeTrendFastEma > 0 ? RangeDirection : Bias;
+
+    /// <summary>
     /// Breakout mode (SIG-022, SIG-026): the tracker's reference day, null before the first D1 bar.
     /// Always null in ZoneFvg mode.
     /// </summary>

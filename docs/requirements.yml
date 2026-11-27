@@ -2124,7 +2124,7 @@ requirements:
     wp: WP42
     spec: "3.8, 7"
     verify: unit
-    status: planned
+    status: implemented
     text: >-
       Direction of SessionRange from two D1 EMAs (owner request of
       2026-11-27, row AY). SessionRangeParameters gain RangeTrendFastEma

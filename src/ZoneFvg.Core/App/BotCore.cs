@@ -1181,7 +1181,8 @@ public sealed class BotCore
             SkipRecord? skip = PlaceSignal(signal, guard, now, out PlannedOrder? order);
             SymbolInfo? info = SymbolOrNull();
             NewsStatus? news = NewsStatusFor(now);
-            Bias bias = _engine!.Bias;
+            // SIG-042: in SessionRange mode with RangeTrendFastEma above 0 the direction used, else the bias as before.
+            Bias bias = _engine!.JournalBias;
             SignalJournalEntry entry = skip != null
                 ? SignalJournalEntry.Skipped(signal, _symbol, bias, zone, skip, info, news)
                 : SignalJournalEntry.Taken(order!, bias, zone, info, news);
