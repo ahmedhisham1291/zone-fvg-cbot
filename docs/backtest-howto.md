@@ -32,7 +32,11 @@ false) and the drawdown brake (`DrawdownBrakePercent` 3,
 since `RiskEpochDate`, a trade risks 0.375%; the ladder and Recovery ignore
 the brake. Only the XAUUSD instance runs these defaults; for a currency pair
 set the mode of Part 2. A backtest still needs no value typed by hand except
-`LadderEnabled` if you want the ladder. The `start` line ends with
+`LadderEnabled` if you want the ladder. From WP42 on (spec v0.17, row AY)
+the default `RangeTrendFastEma` 20 takes the side of the day's order from
+the D1 EMA(20) against the D1 EMA(50) (buy above, sell below, no order when
+equal) instead of the last D1 close against the EMA(50); 0 gives the rule of
+before. The `start` line ends with
 `mode=SessionRange`, the profile and then `brake=3/0.5`. Before the
 Challenge come the gates of `deploy/README.md`, "Before SessionRange trades
 on the Challenge account" (the stop-order record, the live gold spread on a
@@ -447,7 +451,11 @@ step 4.
 
     Leave the six range values at their defaults: `RangeStartNy` 19:00,
     `RangeEndNy` 03:00, `RangeLastEntryNy` 12:00, `RangeExitNy` 16:30,
-    `RangeMinWidthAtr` 0.5, `RangeStopAtr` 1.0. Leave `InitialCapital`
+    `RangeMinWidthAtr` 0.5, `RangeStopAtr` 1.0. **From WP42 on** set
+    `RangeTrendFastEma` to `0` for this run: the figures of step 22 are
+    those of the close against the EMA(50); the default 20 (spec v0.17,
+    row AY) takes the side from the D1 EMA(20) against the D1 EMA(50).
+    Leave `InitialCapital`
     (200000), `RiskEpochDate` (empty) and `NewsEnabled` (true) as in step 6.
     The news filter is then off for this run, as in the search (the `start`
     line shows `news=disabled`). Before WP39 set `MaxVolumeUnits` to

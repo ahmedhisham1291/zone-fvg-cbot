@@ -6,11 +6,12 @@ using ZoneFvg.Core.Signals;
 namespace ZoneFvg.Core.App;
 
 /// <summary>
-/// The six cBot parameters of the SessionRange mode (PLT-015, spec 3.8 and 7) turned into
+/// The six cBot parameters of the SessionRange mode (PLT-015, spec 3.8 and 7), and from v0.17 the
+/// seventh, RangeTrendFastEma (SIG-042), turned into
 /// <see cref="SessionRangeParameters"/> and checked with <see cref="SessionRangeParameters.Validate"/>.
-/// The adapter calls <see cref="Build"/> at start in every mode. A refusal names each parameter as
-/// cTrader shows it: RangeStartNy, RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr and
-/// RangeStopAtr. Pure: no clock, no culture other than the invariant one.
+/// The adapter calls <see cref="Build(string, string, string, string, double, double, int)"/> at start in every mode. A refusal names each parameter as
+/// cTrader shows it: RangeStartNy, RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr,
+/// RangeStopAtr and RangeTrendFastEma. Pure: no clock, no culture other than the invariant one.
 /// </summary>
 public static class SessionRangeText
 {
@@ -39,6 +40,30 @@ public static class SessionRangeText
     /// </exception>
     public static SessionRangeParameters Build(string? rangeStartNy, string? rangeEndNy, string? rangeLastEntryNy, string? rangeExitNy, double rangeMinWidthAtr, double rangeStopAtr)
     {
+        return Build(rangeStartNy, rangeEndNy, rangeLastEntryNy, rangeExitNy, rangeMinWidthAtr, rangeStopAtr, 0);
+    }
+
+    /// <summary>
+    /// As <see cref="Build(string, string, string, string, double, double)"/>, with the seventh cBot
+    /// parameter RangeTrendFastEma (SIG-042, spec 3.8 and row AY of v0.17) taken as it is and checked
+    /// last, by <see cref="SessionRangeParameters.Validate"/>: 0 (off) or at least 2. A refusal names
+    /// RangeTrendFastEma, the same name in the core and in the cBot. That a value above 0 is below
+    /// BiasEmaPeriod is checked by <see cref="BotParameters.Validate"/>.
+    /// </summary>
+    /// <param name="rangeStartNy">The text of RangeStartNy, for example <c>19:00</c>.</param>
+    /// <param name="rangeEndNy">The text of RangeEndNy, for example <c>03:00</c>.</param>
+    /// <param name="rangeLastEntryNy">The text of RangeLastEntryNy, for example <c>12:00</c>.</param>
+    /// <param name="rangeExitNy">The text of RangeExitNy, for example <c>16:30</c>.</param>
+    /// <param name="rangeMinWidthAtr">The value of RangeMinWidthAtr.</param>
+    /// <param name="rangeStopAtr">The value of RangeStopAtr.</param>
+    /// <param name="rangeTrendFastEma">The value of RangeTrendFastEma; 0 is the rule of spec 3.1.</param>
+    /// <returns>The checked parameters.</returns>
+    /// <exception cref="ArgumentException">
+    /// A text is not a time of day written as <c>HH:mm</c>, or a value is out of range. The
+    /// parameter name of the exception and every parameter name in its message are the cBot's.
+    /// </exception>
+    public static SessionRangeParameters Build(string? rangeStartNy, string? rangeEndNy, string? rangeLastEntryNy, string? rangeExitNy, double rangeMinWidthAtr, double rangeStopAtr, int rangeTrendFastEma)
+    {
         var parameters = new SessionRangeParameters
         {
             RangeStartNy = TimeOfDay("RangeStartNy", rangeStartNy),
@@ -47,6 +72,7 @@ public static class SessionRangeText
             ExitNy = TimeOfDay("RangeExitNy", rangeExitNy),
             MinWidthAtr = rangeMinWidthAtr,
             StopAtrMult = rangeStopAtr,
+            RangeTrendFastEma = rangeTrendFastEma,
         };
 
         try

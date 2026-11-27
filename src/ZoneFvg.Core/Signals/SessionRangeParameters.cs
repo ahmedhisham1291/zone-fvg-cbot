@@ -39,13 +39,23 @@ public sealed record SessionRangeParameters
     public double StopAtrMult { get; init; } = 1.0;
 
     /// <summary>
+    /// Period of the fast D1 EMA that sets the side of the trading day's setup (SIG-042, spec 3.8
+    /// and row AY of v0.17, spec RangeTrendFastEma). Above 0: buy when D1 EMA(this) is above D1
+    /// EMA(BiasEmaPeriod) on the last closed D1 bar, sell when below, no setup when equal. 0, the
+    /// core default, switches it off: the side comes from the bias of spec 3.1 as before. Allowed:
+    /// 0 or at least 2 here; that it is below BiasEmaPeriod is checked by
+    /// <c>BotParameters.Validate</c>, which sees both values.
+    /// </summary>
+    public int RangeTrendFastEma { get; init; }
+
+    /// <summary>
     /// Checks every value and throws for the first one that is out of range, in this order
     /// (SIG-032): RangeStartNy, RangeEndNy, LastEntryNy and ExitNy each a time of day from 00:00
     /// up to but not including 24:00 on a 15-minute boundary; then, in the order of the trading
     /// day (SIG-030), RangeEndNy after RangeStartNy, LastEntryNy not before RangeEndNy, ExitNy
     /// after LastEntryNy; the window from RangeStartNy to RangeEndNy at least
     /// <see cref="MinRangeBars"/> M15 bars long; MinWidthAtr finite and not negative;
-    /// StopAtrMult finite and greater than zero. The message names the parameter, its rule and
+    /// StopAtrMult finite and greater than zero; RangeTrendFastEma 0 or at least 2 (SIG-042). The message names the parameter, its rule and
     /// the rejected value in invariant formatting.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A value is out of range. The exception's parameter name is the name of the parameter.</exception>
@@ -89,6 +99,11 @@ public sealed record SessionRangeParameters
         if (!double.IsFinite(StopAtrMult) || StopAtrMult <= 0.0)
         {
             throw OutOfRange(nameof(StopAtrMult), "must be a finite number greater than zero", Text(StopAtrMult));
+        }
+
+        if (RangeTrendFastEma < 0 || RangeTrendFastEma == 1)
+        {
+            throw OutOfRange(nameof(RangeTrendFastEma), "must be 0 (off) or at least 2", Text(RangeTrendFastEma));
         }
     }
 

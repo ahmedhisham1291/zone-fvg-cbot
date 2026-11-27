@@ -9,6 +9,7 @@ RangeLastEntryNy=12:00
 RangeExitNy=16:30
 RangeMinWidthAtr=0.5
 RangeStopAtr=1.0
+RangeTrendFastEma=20
 EntryModel=Fvg
 RequireSweep=false
 ChochWindowBars=32

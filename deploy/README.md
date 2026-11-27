@@ -137,8 +137,8 @@ runs one of them, chosen with the parameter `EntryMode` at start:
   below.
 
 Everything else (sizing, account limits, news, recovery, FTMO guards,
-alerts) is the same in all modes. The eleven parameters of the group
-"Entry mode" are the first eleven lines of every file in `deploy/params/`:
+alerts) is the same in all modes. The twelve parameters of the group
+"Entry mode" are the first twelve lines of every file in `deploy/params/`:
 
 | Parameter | Value in the example files | What it does |
 |---|---|---|
@@ -153,16 +153,19 @@ alerts) is the same in all modes. The eleven parameters of the group
 | `RangeExitNy` | `16:30` | SessionRange mode: an open position is closed at this New York time. After `RangeLastEntryNy` |
 | `RangeMinWidthAtr` | `0.5` | SessionRange mode: smallest range, in ATR(D1). 0 or more |
 | `RangeStopAtr` | `1.0` | SessionRange mode: stop distance from the entry, in ATR(H4). More than 0 |
+| `RangeTrendFastEma` | `20` | SessionRange mode (spec v0.17, row AY): the side of the day's order. A buy when the D1 EMA(20) is above the D1 EMA(`BiasEmaPeriod`, 50) on the last closed D1 bar, a sell when it is below, no order when they are equal. `0` switches it off: the side then comes from the last D1 close against the D1 EMA(`BiasEmaPeriod`) (spec 3.1), as before v0.17. Allowed: 0, or 2 to `BiasEmaPeriod` − 1 |
 
-The ten values after `EntryMode` are checked at start in every mode: an
+The eleven values after `EntryMode` are checked at start in every mode: an
 invalid value (for example `BreakoutStopAtr` = 0, `TrendSlowEmaPeriod` = 1,
-`RangeStopAtr` = 0 or `RangeExitNy` = `11:00`) makes the bot refuse to start
-and name the parameter, also in the other modes. The four range times are
+`RangeStopAtr` = 0, `RangeExitNy` = `11:00` or `RangeTrendFastEma` = 1)
+makes the bot refuse to start and name the parameter, also in the other
+modes. That `RangeTrendFastEma` is below `BiasEmaPeriod` is checked in
+SessionRange mode, the only mode that uses it. The four range times are
 New York wall-clock times, written `HH:mm`, each on a 15-minute boundary,
 and read in the order of the trading day, which starts at 17:00 New York.
-The four breakout values are used in Breakout mode only, the six range
+The four breakout values are used in Breakout mode only, the seven range
 values in SessionRange mode only; in the other modes they produce no signal
-and are not part of the parameter hash. The gold file uses the same eleven
+and are not part of the parameter hash. The gold file uses the same twelve
 values as the forex files.
 
 **Entry model of ZoneFvg mode (spec 3.9, v0.11).** In ZoneFvg mode the
@@ -263,20 +266,25 @@ for example `auto:0.4USD`, so gold's hash does not depend on the pip size
 the broker reports) and, in Breakout mode, the breakout
 values with the trading window (`TrendSlowEmaPeriod` and
 `BreakoutLastConfirmUtc` only when they are not switched off); in
-SessionRange mode the six range values. It does not cover the risk and
+SessionRange mode the six range values and `RangeTrendFastEma` when it is
+not 0. It does not cover the risk and
 news values (`src/ZoneFvg.Core/Execution/ParameterHash.cs`). If a hash
 differs, a value differs from the accepted run: stop that instance and
 compare the files before it trades. For the example files as they are:
 
 | Settings | Four forex files | Gold file |
 |---|---|---|
-| As the files are (SessionRange, Fvg, all day, the four values automatic) | `f949f461` | `469b1f35` |
+| As the files are (SessionRange, Fvg, `RangeTrendFastEma=20`, all day, the four values automatic) | `3280d399` | `2dea1bc3` |
+| The same with `RangeTrendFastEma=0` (the files of v0.16) | `f949f461` | `469b1f35` |
 | `EntryMode=ZoneFvg`, `EntryModel=Choch`, all day, `ChochUseBias=true` (the files of v0.14 and v0.15) | `13502944` | `0e7d9dc3` |
 | `EntryMode=Breakout`, `EntryModel=Fvg`, 07:00 to 17:00 | `b8e70ce0` | `faade1ee` |
-| `EntryMode=SessionRange`, `EntryModel=Fvg`, 07:00 to 17:00 | `f99c0872` | `57c90d56` |
+| `EntryMode=SessionRange`, `EntryModel=Fvg`, `RangeTrendFastEma=20`, 07:00 to 17:00 | `afa64011` | `9078773f` |
+| `EntryMode=SessionRange`, `EntryModel=Fvg`, `RangeTrendFastEma=0`, 07:00 to 17:00 | `f99c0872` | `57c90d56` |
 | `EntryMode=ZoneFvg`, `EntryModel=Fvg`, 07:00 to 17:00 | `a1e63feb` | `8655594c` |
 
-The gold hashes are the same at a pip of 1 and of 0.01. The risk values,
+The gold hashes are the same at a pip of 1 and of 0.01. `RangeTrendFastEma=20`
+(spec v0.17, WP42) changed the SessionRange hashes; with 0 they are those of
+v0.16. The risk values,
 the drawdown brake among them, are not in the hash, so the change of
 `RiskPercent` and the two brake values changes no hash. The hashes changed
 with spec v0.14 (WP39), because the values became automatic; the files of
@@ -284,7 +292,7 @@ v0.13 gave `8aa3f28a` / `fbdef461` (Breakout), `f681dff2` / `05ee8872`
 (ZoneFvg) and `3f0f30a3` / `377b6162` (SessionRange), and those values set
 by hand still give them. (Computed with the rule of `ParameterHash`:
 SHA-256 of the canonical text, first eight hex characters, with Python's
-hashlib. The first row is also asserted in
+hashlib. The first two rows are also asserted in
 `tests/ZoneFvg.Core.Tests/App/Plt020SessionRangeDefaultsTests.cs`, the
 second in `tests/ZoneFvg.Core.Tests/Execution/ParameterHashProfileTests.cs`.)
 
@@ -367,8 +375,8 @@ them. On a demo or FTMO Free Trial account, with the XAUUSD file, first:
 
 Then the Challenge. When it is started stays your decision (spec 15.7).
 The gold instance's `hash=` must equal that of the run you judged
-(`469b1f35` with the example files as they are, all day; `57c90d56` with
-07:00 to 17:00).
+(`2dea1bc3` with the example files as they are, all day; `9078773f` with
+07:00 to 17:00; `469b1f35` and `57c90d56` with `RangeTrendFastEma=0`).
 
 ---
 
@@ -843,7 +851,7 @@ https://help.ctrader.com/ctrader-cli/cbots/ ("Read cBot Metadata").
 Expected: the parameter list of ZoneFvgBot (EntryMode, BreakoutEntryBufferAtr,
 BreakoutStopAtr, TrendSlowEmaPeriod, BreakoutLastConfirmUtc, RangeStartNy,
 RangeEndNy, RangeLastEntryNy, RangeExitNy, RangeMinWidthAtr, RangeStopAtr,
-BiasTimeFrame ... DrawObjects).
+RangeTrendFastEma, BiasTimeFrame ... DrawObjects).
 If it says the cBot is built for an older .NET: stop here and tell the
 developer.
 

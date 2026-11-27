@@ -165,7 +165,10 @@ filter, and the drawdown brake: while the balance is 3% or more below its peak
 since `RiskEpochDate` (the kill switch's peak), a new trade risks 0.375%
 (`DrawdownBrakePercent` 3, `DrawdownBrakeFactor` 0.5; fixed sizing only,
 the ladder and Recovery ignore it); the full 0.75% comes back as soon as the
-balance is less than 3% below the peak. The `start` line ends with
+balance is less than 3% below the peak. From spec v0.17 (row AY) SessionRange
+takes its side from `RangeTrendFastEma` 20: a buy when the D1 EMA(20) is above
+the D1 EMA(50), a sell when it is below, no order when they are equal
+(`RangeTrendFastEma` 0 is the close against the EMA(50) of before). The `start` line ends with
 `brake=3/0.5`. Every account limit is unchanged (daily budget 2%, kill
 switch 8%). Only the XAUUSD instance is started with these files; no
 currency-pair instance runs SessionRange. Before the Challenge, on a demo or

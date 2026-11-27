@@ -112,7 +112,8 @@ public sealed record BotParameters
     /// true the feed address must be set; <see cref="BacktestHaltsLogOnly"/> may be true only in a
     /// backtest (REC-014). When <see cref="Breakout"/> is set it must be valid, and its window must
     /// equal the session times of the execution parameters (REC-017). When <see cref="SessionRange"/>
-    /// is set it must be valid and <see cref="Breakout"/> must be null (SIG-034). When
+    /// is set it must be valid and <see cref="Breakout"/> must be null (SIG-034), and its
+    /// RangeTrendFastEma, when above 0, must be below BiasEmaPeriod (SIG-042). When
     /// <see cref="Choch"/> is set, <see cref="Breakout"/> and <see cref="SessionRange"/> must be
     /// null and it must be valid (SIG-035).
     /// </summary>
@@ -187,6 +188,14 @@ public sealed record BotParameters
         }
 
         SessionRange.Validate();
+
+        // SIG-042, row AY: the fast EMA of the direction is below BiasEmaPeriod; 0 is off.
+        if (SessionRange.RangeTrendFastEma > 0 && SessionRange.RangeTrendFastEma >= Signal.BiasEmaPeriod)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(SessionRangeParameters.RangeTrendFastEma),
+                "RangeTrendFastEma must be 0 (off) or below BiasEmaPeriod (" + Text(Signal.BiasEmaPeriod) + ") but was " + Text(SessionRange.RangeTrendFastEma) + " (SIG-042).");
+        }
     }
 
     // EXE-032: the profile's effective values are the values the core uses; the adapter passes the same doubles.
