@@ -262,7 +262,8 @@ step 1).
    orders; it counts every closed trade of the account (both gold instances
    together in live trading), never closes a trade, and the Log shows the
    refused signals with `MonthlyLossLimit`. The `sim` commands of Part 3 do
-   not model it. `0` switches it off.
+   not model it. To see the trades without it, set
+   `MonthlyLossLimitPercent=0`.
 9. **Save the Log.** Click the **Log** tab under the chart. Click one line in
    it, press **Cmd+A** (select all) and **Cmd+C** (copy). Open **TextEdit**,
    choose **Format > Make Plain Text**, press **Cmd+V**, and save the file as
