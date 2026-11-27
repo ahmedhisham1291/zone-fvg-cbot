@@ -120,16 +120,21 @@ runs one of them, chosen with the parameter `EntryMode` at start:
 - **Breakout** (the default until spec v0.13): in the direction of the D1 trend, the bot
   waits for an M15 bar that closes beyond the previous day's high or low
   inside the trading window, then places a stop order beyond that bar.
-- **ZoneFvg** (the default from spec v0.14, owner request of 2026-11-24,
+- **ZoneFvg** (the default from spec v0.14 to v0.15, owner request of 2026-11-24,
   with the Choch entry model below, all day, with the D1 trend filter): the
   zone entry of spec 3.2 to 3.5 and 3.9.
 - **SessionRange** (added on 23 November 2026, spec 3.8): in the direction
   of the D1 trend, a stop order at the edge of the range that price made
   from 19:00 to 03:00 New York time. The order ends at 12:00 New York. It is
   cancelled when price breaks the other edge first (the setup is "void").
-  An open position is closed at 16:30 New York. It is meant for gold only,
-  and it is not accepted yet (see "Before SessionRange trades on the
-  Challenge account" below).
+  An open position is closed at 16:30 New York. It is meant for gold only.
+  **The default from spec v0.16** (owner request of 27 November 2026, rows
+  AS to AX): `EntryMode=SessionRange` with `EntryModel=Fvg`, all day, a
+  fixed 0.75% of balance per trade and the drawdown brake (see "Which mode
+  and which values go live" below). Only the XAUUSD instance is started
+  with it; no currency-pair instance runs SessionRange. The gates before the
+  Challenge are in "Before SessionRange trades on the Challenge account"
+  below.
 
 Everything else (sizing, account limits, news, recovery, FTMO guards,
 alerts) is the same in all modes. The eleven parameters of the group
@@ -137,7 +142,7 @@ alerts) is the same in all modes. The eleven parameters of the group
 
 | Parameter | Value in the example files | What it does |
 |---|---|---|
-| `EntryMode` | `ZoneFvg` | `ZoneFvg`, `Breakout` or `SessionRange`. Any other text makes the bot refuse to start and name the parameter. Breakout and SessionRange also need `EntryModel=Fvg`; Breakout also needs a window that ends before 24:00 (`SessionStartUtc=07:00`, `SessionEndUtc=17:00`) |
+| `EntryMode` | `SessionRange` | `SessionRange` (the default from spec v0.16), `ZoneFvg` or `Breakout`. Any other text makes the bot refuse to start and name the parameter. Breakout and SessionRange also need `EntryModel=Fvg`; Breakout also needs a window that ends before 24:00 (`SessionStartUtc=07:00`, `SessionEndUtc=17:00`) |
 | `BreakoutEntryBufferAtr` | `0.1` | Breakout mode: how far beyond the confirming bar the stop order is placed, in ATR(M15) |
 | `BreakoutStopAtr` | `1.0` | Breakout mode: stop distance from the entry, in ATR(H4) |
 | `TrendSlowEmaPeriod` | `200` | Breakout mode: trend filter. A buy needs the D1 EMA(`BiasEmaPeriod`) above the D1 EMA(`TrendSlowEmaPeriod`), a sell below it (spec 3.1). `0` switches it off. Allowed: 0 or 2 to 10000 |
@@ -168,7 +173,7 @@ model" are the next eight lines of every file in `deploy/params/`:
 
 | Parameter | Value in the example files | What it does |
 |---|---|---|
-| `EntryModel` | `Choch` | `Fvg` or `Choch`, exactly so. `Choch` with an `EntryMode` other than `ZoneFvg` makes the bot refuse to start and name both parameters |
+| `EntryModel` | `Fvg` | `Fvg` (the default from spec v0.16) or `Choch`, exactly so. `Choch` with an `EntryMode` other than `ZoneFvg` makes the bot refuse to start and name both parameters |
 | `RequireSweep` | `false` | Choch: a change of character counts only after a sweep of a recent M15 swing |
 | `ChochWindowBars` | `32` | Choch: M15 bars after the touch in which the change of character must come. 4 to 96 |
 | `ChochUseBias` | `true` | Choch: `true` (the default from spec v0.14) trades a zone only when the D1 trend matches it |
@@ -178,12 +183,14 @@ model" are the next eight lines of every file in `deploy/params/`:
 | `MinRewardRisk` | `2.0` | Choch: a setup whose target gives less than this reward to risk is skipped. 1 to 10 |
 
 The eight values are checked at start in every mode, like the values of
-"Entry mode". From spec v0.14 the files carry the cBot's defaults,
-`EntryMode=ZoneFvg`, `EntryModel=Choch`, `ChochUseBias=true`,
+"Entry mode". From spec v0.16 the files carry the cBot's defaults,
+`EntryMode=SessionRange`, `EntryModel=Fvg`, `ChochUseBias=true`,
 `SessionStartUtc=00:00` and `SessionEndUtc=24:00` (you trade all day;
 `24:00` is accepted for `SessionEndUtc` only, and in Breakout mode the bot
-still refuses it). For the Fvg model or Breakout set `EntryModel=Fvg`,
-`SessionStartUtc=07:00` and `SessionEndUtc=17:00`. The Choch values are part of the parameter
+still refuses it). For ZoneFvg with the Choch model set
+`EntryMode=ZoneFvg` and `EntryModel=Choch` (the files of v0.14 and v0.15);
+for Breakout set `EntryModel=Fvg`, `SessionStartUtc=07:00` and
+`SessionEndUtc=17:00`. The Choch values are part of the parameter
 hash only with `EntryModel=Choch`, so the Fvg model keeps its hash.
 
 **Warm-up of the trend filter.** The D1 EMA of period n reads 4 x n closed
@@ -200,9 +207,12 @@ reports the D1 series as a data problem and the bot does not trade (fail
 closed).
 
 **Which mode and which values go live (spec 13.1, "What goes live").** The
-example files carry `EntryMode=ZoneFvg` with `EntryModel=Choch` only because
-that is the cBot's default (spec v0.14). That is not a choice of the mode. Before the laptop stage,
-write into the five files:
+owner chose SessionRange on gold (27 November 2026, spec row AX), so the
+example files carry `EntryMode=SessionRange` with `EntryModel=Fvg`, the
+cBot's default from spec v0.16. Only the XAUUSD instance is started with
+these files; the four currency-pair files stay as examples of the format and
+no currency-pair instance is started with SessionRange. For any other mode or
+symbol, before the laptop stage, write into the files:
 
 - `EntryMode`: the mode chosen by the acceptance procedure
   ([`docs/backtest-howto.md`](../docs/backtest-howto.md), Part 4). A mode
@@ -221,11 +231,18 @@ write into the five files:
   not the backtest's start date. The parameter hash does not cover the news
   and risk values, so it cannot catch this mistake.
 - Every other value stays at its default, except the values that step 10.3
-  and "Gold (XAUUSD)" below tell you to set. The risk defaults of spec v0.12
-  and v0.14 (owner decisions and request of 2026-11-24): `InitialCapital=200000.0`,
+  and "Gold (XAUUSD)" below tell you to set. The risk defaults of spec v0.12,
+  v0.14 and v0.16 (owner decisions and requests of 2026-11-24 and
+  2026-11-27): `InitialCapital=200000.0`,
   `DailyLossLimitPercent=2.0`, `MaxVolumeUnits=0.0` (automatic: 3,000,000
-  units, gold 1,000 ounces), `LadderEnabled=false` (a fixed 0.5% per trade;
-  `true` for the ladder, the one value you choose),
+  units, gold 1,000 ounces), `RiskPercent=0.75` with `LadderEnabled=false`
+  (a fixed 0.75% of balance per trade; `true` for the ladder, the one value
+  you choose), the drawdown brake `DrawdownBrakePercent=3.0` and
+  `DrawdownBrakeFactor=0.5` (with fixed sizing only: while the balance is 3%
+  or more below its peak since `RiskEpochDate`, a new trade risks 0.375%;
+  the full 0.75% comes back as soon as it is less than 3% below; `0` switches
+  the brake off; the ladder and Recovery ignore it; the start line ends with
+  `brake=3/0.5`),
   `SizingPlan=Ladder`, `RecoveryRunLossPercent=1.0`,
   `RecoveryMaxRiskPercent=1.28`, and the per-trade sanity cap, the open-risk
   cap and the currency cap off (`SanityCapEnabled=false` with
@@ -253,25 +270,31 @@ compare the files before it trades. For the example files as they are:
 
 | Settings | Four forex files | Gold file |
 |---|---|---|
-| As the files are (ZoneFvg, Choch, all day, `ChochUseBias=true`, the four values automatic) | `13502944` | `0e7d9dc3` |
+| As the files are (SessionRange, Fvg, all day, the four values automatic) | `f949f461` | `469b1f35` |
+| `EntryMode=ZoneFvg`, `EntryModel=Choch`, all day, `ChochUseBias=true` (the files of v0.14 and v0.15) | `13502944` | `0e7d9dc3` |
 | `EntryMode=Breakout`, `EntryModel=Fvg`, 07:00 to 17:00 | `b8e70ce0` | `faade1ee` |
 | `EntryMode=SessionRange`, `EntryModel=Fvg`, 07:00 to 17:00 | `f99c0872` | `57c90d56` |
 | `EntryMode=ZoneFvg`, `EntryModel=Fvg`, 07:00 to 17:00 | `a1e63feb` | `8655594c` |
 
-The gold hashes are the same at a pip of 1 and of 0.01. The hashes changed
+The gold hashes are the same at a pip of 1 and of 0.01. The risk values,
+the drawdown brake among them, are not in the hash, so the change of
+`RiskPercent` and the two brake values changes no hash. The hashes changed
 with spec v0.14 (WP39), because the values became automatic; the files of
 v0.13 gave `8aa3f28a` / `fbdef461` (Breakout), `f681dff2` / `05ee8872`
 (ZoneFvg) and `3f0f30a3` / `377b6162` (SessionRange), and those values set
 by hand still give them. (Computed with the rule of `ParameterHash`:
 SHA-256 of the canonical text, first eight hex characters, with Python's
 hashlib. The first row is also asserted in
-`tests/ZoneFvg.Core.Tests/Execution/ParameterHashProfileTests.cs`.)
+`tests/ZoneFvg.Core.Tests/App/Plt020SessionRangeDefaultsTests.cs`, the
+second in `tests/ZoneFvg.Core.Tests/Execution/ParameterHashProfileTests.cs`.)
 
 **Check after each start.** The first adapter line ends with the mode, for
 example `ZFVG adapter version 0.1.0, symbol EURUSD, backtest no, mode Breakout`.
-In Breakout mode the core `start` line also ends with `mode=Breakout`, in
-SessionRange mode with `mode=SessionRange`; in ZoneFvg mode it has no
-`mode=` field.
+In Breakout mode the core `start` line also has `mode=Breakout`, in
+SessionRange mode `mode=SessionRange`; in ZoneFvg mode it has no
+`mode=` field. With fixed sizing (`SizingPlan=Ladder`, `LadderEnabled=false`)
+the line ends with `brake=3/0.5` (or `brake=off` with
+`DrawdownBrakePercent=0`), after every other field.
 
 **A change of mode is a parameter change.** Change `EntryMode` (or any other
 parameter) only when the bot is flat on that symbol (spec 10.2,
@@ -323,13 +346,10 @@ be run and signed by you on a demo or FTMO Free Trial account first
 Until both are signed, no instance trades in Breakout mode on the Challenge
 account.
 
-**Before SessionRange trades on the Challenge account.** SessionRange is not
-accepted (spec 13.1, "A mode on one symbol"). The rows of spec 13.1 were
-written for five symbols, and SessionRange is meant for gold alone. Which
-marks it must pass is your decision, and it is open (spec 14, question 4).
-Until you have decided it and the mode has passed those marks, no instance
-runs with `EntryMode=SessionRange` on the Challenge account. After that,
-these must also be done on a demo or FTMO Free Trial account:
+**Before SessionRange trades on the Challenge account.** You chose
+SessionRange on gold for use on 27 November 2026 (spec row AX, open question
+4 answered). It goes live through the gates already written, not around
+them. On a demo or FTMO Free Trial account, with the XAUUSD file, first:
 
 1. The stop-order record
    [`docs/test-records/WP26-stop-orders.md`](../docs/test-records/WP26-stop-orders.md)
@@ -341,12 +361,14 @@ these must also be done on a demo or FTMO Free Trial account:
    limits in the platform's pip").
 3. The SessionRange record
    [`docs/test-records/WP35-session-range.md`](../docs/test-records/WP35-session-range.md).
+4. **Proposal of the orchestrating session**, yours to accept or waive: two
+   to four weeks on the Free Trial with these files before the first trade
+   on the Challenge account.
 
-"What goes live" (spec 13.1) applies to this mode as to the others: the gold
-file carries `EntryMode=SessionRange` only if SessionRange is the accepted
-mode for gold, with the values of the judged run, and the gold instance's
-`hash=` equals that run's (`57c90d56` with the example values and
-`EntryModel=Fvg`, 07:00 to 17:00).
+Then the Challenge. When it is started stays your decision (spec 15.7).
+The gold instance's `hash=` must equal that of the run you judged
+(`469b1f35` with the example files as they are, all day; `57c90d56` with
+07:00 to 17:00).
 
 ---
 
@@ -749,7 +771,9 @@ Gold runs as a fifth instance (spec v0.9, owner decision D of 2026-11-17,
 requirement PLT-010): its own container `xauusd`, parameter file
 `params/xauusd/bot.cbotset`, storage and log volumes and heartbeat check.
 From spec v0.14 its parameter file equals the forex files apart from
-`HeartbeatUrl` (its own check, so an alert names gold). `MaxSpreadPips`,
+`HeartbeatUrl` (its own check, so an alert names gold). From spec v0.16 it
+is the one file that is started: SessionRange, a fixed 0.75% and the
+drawdown brake. `MaxSpreadPips`,
 `MinStopPips`, `ChochMinStopPips` and `MaxVolumeUnits` are `0.0`, automatic
 (spec 7.1): at start the bot sees that XAUUSD is gold (base XAU, quote USD)
 and uses 0.40 USD of spread, 8.00 USD of stop, 3.00 USD of Choch stop and

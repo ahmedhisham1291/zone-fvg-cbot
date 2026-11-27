@@ -39,9 +39,9 @@ namespace cAlgo.Robots
         // Parameter attribute (Name, DefaultValue, Group): https://help.ctrader.com/ctrader-algo/references/Attributes/ParameterAttribute/
         // Parameter types: https://help.ctrader.com/ctrader-algo/guides/parameter-types
 
-        /// <summary>Entry mode of this instance, ZoneFvg (the default from spec v0.14, PLT-018), Breakout or SessionRange (PLT-012, PLT-015, spec 3.7, 3.8 and 7).</summary>
-        [Parameter("EntryMode", DefaultValue = "ZoneFvg", Group = "Entry mode")]
-        public string EntryMode { get; set; } = "ZoneFvg";
+        /// <summary>Entry mode of this instance, SessionRange (the default from spec v0.16, meant for XAUUSD only, PLT-020), ZoneFvg or Breakout (PLT-012, PLT-015, spec 3.7, 3.8 and 7).</summary>
+        [Parameter("EntryMode", DefaultValue = "SessionRange", Group = "Entry mode")]
+        public string EntryMode { get; set; } = "SessionRange";
 
         /// <summary>Breakout entry beyond the confirming bar in ATR(M15) (PLT-012, SIG-024).</summary>
         [Parameter("BreakoutEntryBufferAtr", DefaultValue = 0.1, Group = "Entry mode")]
@@ -83,9 +83,9 @@ namespace cAlgo.Robots
         [Parameter("RangeStopAtr", DefaultValue = 1.0, Group = "Entry mode")]
         public double RangeStopAtr { get; set; }
 
-        /// <summary>Entry model of ZoneFvg mode, Choch (the default from spec v0.14, PLT-018) or Fvg (PLT-016, spec 3.9 and 7). Choch needs EntryMode ZoneFvg.</summary>
-        [Parameter("EntryModel", DefaultValue = "Choch", Group = "Entry model")]
-        public string EntryModel { get; set; } = "Choch";
+        /// <summary>Entry model of ZoneFvg mode, Fvg (the default from spec v0.16, PLT-020) or Choch (PLT-016, spec 3.9 and 7). Choch needs EntryMode ZoneFvg.</summary>
+        [Parameter("EntryModel", DefaultValue = "Fvg", Group = "Entry model")]
+        public string EntryModel { get; set; } = "Fvg";
 
         /// <summary>Choch: a change of character counts only after a sweep (PLT-016, SIG-038).</summary>
         [Parameter("RequireSweep", DefaultValue = false, Group = "Entry model")]
@@ -227,9 +227,17 @@ namespace cAlgo.Robots
         [Parameter("MaxSpreadPips", DefaultValue = 0.0, Group = "Execution")]
         public double MaxSpreadPips { get; set; }
 
-        /// <summary>Risk per trade in percent (RSK-001).</summary>
-        [Parameter("RiskPercent", DefaultValue = 0.5, Group = "Risk")]
+        /// <summary>Risk per trade in percent (RSK-001). Default 0.75 from spec v0.16 (PLT-020).</summary>
+        [Parameter("RiskPercent", DefaultValue = 0.75, Group = "Risk")]
         public double RiskPercent { get; set; }
+
+        /// <summary>Drawdown brake of fixed sizing: distance below the peak balance in percent; 0 = off (RSK-019, PLT-020, spec 4.1).</summary>
+        [Parameter("DrawdownBrakePercent", DefaultValue = 3.0, Group = "Risk")]
+        public double DrawdownBrakePercent { get; set; }
+
+        /// <summary>Drawdown brake: multiplier of RiskPercent while braked (RSK-019, PLT-020, spec 4.1).</summary>
+        [Parameter("DrawdownBrakeFactor", DefaultValue = 0.5, Group = "Risk")]
+        public double DrawdownBrakeFactor { get; set; }
 
         /// <summary>Total open risk in percent (RSK-004).</summary>
         [Parameter("MaxOpenRiskPercent", DefaultValue = 1.5, Group = "Risk")]
@@ -793,6 +801,10 @@ namespace cAlgo.Robots
             return new RiskParameters
             {
                 RiskPercent = RiskPercent,
+
+                // RSK-019, PLT-020: the drawdown brake; the core's validation refuses a value naming the parameter.
+                DrawdownBrakePercent = DrawdownBrakePercent,
+                DrawdownBrakeFactor = DrawdownBrakeFactor,
                 MaxOpenRiskPercent = MaxOpenRiskPercent,
                 MaxPositionsPerCurrency = MaxPositionsPerCurrency,
                 DailyLossLimitPercent = DailyLossLimitPercent,

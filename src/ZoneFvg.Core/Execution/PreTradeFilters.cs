@@ -13,7 +13,7 @@ namespace ZoneFvg.Core.Execution;
 
 /// <summary>
 /// Decides whether a signal becomes an order (EXE-001 to EXE-008, EXE-011, EXE-014, EXE-015,
-/// EXE-019, NWS-008, NWS-009, NWS-014, RSK-001 to RSK-006, RSK-013, RSK-016, RSK-017). Reads the
+/// EXE-019, NWS-008, NWS-009, NWS-014, RSK-001 to RSK-006, RSK-013, RSK-016, RSK-017, RSK-019). Reads the
 /// broker port at every call and keeps nothing between calls; its fields are the validated
 /// parameters and the ports.
 /// </summary>
@@ -23,7 +23,8 @@ namespace ZoneFvg.Core.Execution;
 /// session, Friday, spread, market open and symbol busy; NWS-008; NWS-009; stop and target on the
 /// correct side (RSK-002) and EXE-003 stop bounds; EXE-005; EXE-004; EXE-006; EXE-015; sizing
 /// (RSK-001, RSK-002) with the ladder percent of RSK-013 when LadderEnabled is true, or with the
-/// Recovery amount of RSK-016 and RSK-017 when SizingPlan is Recovery; the broker's
+/// Recovery amount of RSK-016 and RSK-017 when SizingPlan is Recovery, otherwise the fixed
+/// RiskPercent, halved by the drawdown brake of RSK-019 when it applies; the broker's
 /// maximum volume; the account limits of
 /// <see cref="RiskEngine.CheckNewTrade"/> (RSK-003 to RSK-006, RSK-010).</para>
 /// <para>Levels: entry, stop and target are rounded to the broker's tick size
@@ -639,8 +640,48 @@ public sealed class PreTradeFilters
                 return null;
             }
         }
+        else if (_riskParameters.DrawdownBrakePercent > 0.0)
+        {
+            // RSK-019: fixed sizing only; with the brake off (0) nothing extra is read and nothing changes.
+            refused = ApplyBrake(c, info, ref riskPercent);
+            if (refused != null)
+            {
+                return null;
+            }
+        }
 
         return _sizer.Size(c.Account!, plan, info, riskPercent);
+    }
+
+    /// <summary>
+    /// Drawdown brake of fixed sizing (RSK-019, spec 4.1): reads the history from the broker now,
+    /// computes the kill switch's peak (<see cref="RiskEngine.PeakBalance"/>) and, when the balance
+    /// is DrawdownBrakePercent or more below it, sets RiskPercent x DrawdownBrakeFactor and the
+    /// journal note. A broker read or snapshot error gives BrokerDataInvalid.
+    /// </summary>
+    private SkipRecord? ApplyBrake(Candidate c, SymbolInfo info, ref double riskPercent)
+    {
+        DateTime since = HistoryStart(c.Now);
+        double peak;
+        try
+        {
+            c.History = _broker.GetHistory(since);
+            var snapshot = new RiskSnapshot(c.Now, c.Account!, c.Positions, c.Orders, c.History, since, new[] { info });
+            peak = _risk.PeakBalance(snapshot);
+        }
+        catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException)
+        {
+            return c.Skip(SkipReason.BrokerDataInvalid, 0.0, 0.0, exception.Message);
+        }
+
+        double balance = c.Account!.Balance;
+        if (DrawdownBrake.IsBraked(peak, balance, _riskParameters.DrawdownBrakePercent))
+        {
+            riskPercent = _riskParameters.RiskPercent * _riskParameters.DrawdownBrakeFactor;
+            c.Brake = new DrawdownBrakeNote(peak, balance, riskPercent);
+        }
+
+        return null;
     }
 
     private SizingResult? SizeRecovery(Candidate c, TradePlan plan, SymbolInfo info, out SkipRecord? refused)
@@ -732,6 +773,7 @@ public sealed class PreTradeFilters
         {
             TickSize = info.TickSize,
             EntryType = IsStopEntry(c) ? EntryOrderType.Stop : EntryOrderType.Limit,
+            Brake = c.Brake,
         };
     }
 
@@ -830,6 +872,8 @@ public sealed class PreTradeFilters
         internal DateTime Expiry { get; set; }
 
         internal string? WaivedDailyBudget { get; set; }
+
+        internal DrawdownBrakeNote? Brake { get; set; }
 
         internal SkipRecord Skip(SkipReason reason, double measured, double limit, string detail)
         {

@@ -10,8 +10,9 @@ What happens, in short: you run a backtest in your cTrader app, copy its
 into a trade list and computes the numbers.
 
 The bot has three entry modes (spec v0.10 and 3.8, parameter `EntryMode`):
-**ZoneFvg** (the default from WP39 on), **Breakout** (the default before
-WP39) and **SessionRange**. Breakout and
+**SessionRange** (the default from WP41 on, spec v0.16, for gold only),
+**ZoneFvg** (the default from WP39 to WP40) and **Breakout** (the default
+before WP39). Breakout and
 ZoneFvg are backtested on all five symbols, each as its own series, and each
 is judged by itself (spec 12.1 and 13.1). So you do Parts 2 and 3 twice, once
 per mode. SessionRange is meant for gold alone; its backtest is Part 5.
@@ -22,8 +23,25 @@ character at the zone and the retest; the default from WP39 on) and **Fvg**
 (the gap entry; the default before WP39). Part 6 says how to backtest both
 side by side.
 
-**The default backtest (from WP39 on, spec v0.14).** Your request of
-24 November 2026: no value typed by hand except `LadderEnabled`. With a
+**The default backtest from WP41 on (spec v0.16).** Your request of 27
+November 2026: SessionRange on gold. With a build from WP41 on, every
+parameter at its default is `EntryMode` SessionRange, `EntryModel` Fvg, all
+day, a fixed 0.75% risk per trade (`RiskPercent` 0.75, `LadderEnabled`
+false) and the drawdown brake (`DrawdownBrakePercent` 3,
+`DrawdownBrakeFactor` 0.5): while the balance is 3% or more below its peak
+since `RiskEpochDate`, a trade risks 0.375%; the ladder and Recovery ignore
+the brake. Only the XAUUSD instance runs these defaults; for a currency pair
+set the mode of Part 2. A backtest still needs no value typed by hand except
+`LadderEnabled` if you want the ladder. The `start` line ends with
+`mode=SessionRange`, the profile and then `brake=3/0.5`. Before the
+Challenge come the gates of `deploy/README.md`, "Before SessionRange trades
+on the Challenge account" (the stop-order record, the live gold spread on a
+demo or Free Trial account, and, proposed for you to accept or waive, two to
+four weeks on the Free Trial with these files).
+
+**The default backtest of WP39 and WP40 (spec v0.14).** Your request of
+24 November 2026: no value typed by hand except `LadderEnabled`. From WP41
+on set `EntryMode` ZoneFvg and `EntryModel` Choch for it. With a
 build from WP39 on, the defaults are the setup your backtests showed best:
 `EntryMode` ZoneFvg, `EntryModel` Choch, `ChochUseBias` true (the D1 trend
 filter), all day (`SessionStartUtc` 00:00, `SessionEndUtc` 24:00), a fixed
@@ -145,8 +163,10 @@ step 1).
    - **SizingPlan:** leave it at `Ladder` (the default) for these series.
      The Recovery plan is backtested as Part 7 describes.
    - **LadderEnabled:** from WP39 on the default is `false`: every trade
-     risks a fixed 0.5% of the balance. Set `true` for the ladder (before
-     WP39 the default was `true`). It is the one value you choose.
+     risks a fixed `RiskPercent` of the balance (0.75% from WP41 on, 0.5%
+     before, with the drawdown brake of 3% / 0.5 from WP41 on). Set `true`
+     for the ladder (before WP39 the default was `true`). It is the one value
+     you choose.
    - **RiskEpochDate:** leave it empty. In a backtest an empty
      RiskEpochDate means the backtest's first day (its Prague date at the
      start), so nothing has to be typed (from WP31 on). The `start` line in
@@ -416,6 +436,11 @@ step 4.
       window of the runs before WP39, which the figures of step 22 assume)
     - leave `MinStopPips`, `MaxSpreadPips` and `MaxVolumeUnits` at 0
       (automatic: 8 USD, 0.40 USD and 1,000 ounces at any pip size).
+
+    **From WP41 on** `EntryMode` SessionRange and `EntryModel` Fvg are the
+    defaults, so only the session times are typed. The risk defaults are
+    then 0.75% with the drawdown brake; the R figures of step 22 do not
+    depend on the risk.
 
     **Before WP39** the three values were: `EntryMode` `SessionRange`,
     `MinStopPips` `8` and `MaxSpreadPips` `0.4` (for a pip of 1 USD).
